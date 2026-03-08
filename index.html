@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/umbrella.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Post Umbrella</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root">
+      <!-- Loading screen shown before React mounts -->
+      <div id="initial-loader" style="
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        font-family: 'Inter', system-ui, sans-serif;
+      ">
+        <div style="
+          animation: pulse 2s ease-in-out infinite;
+        ">
+          <img src="/umbrella.svg" alt="Post Umbrella" style="
+            width: 72px;
+            height: 72px;
+            filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.4));
+          " />
+        </div>
+        <h1 style="
+          margin-top: 24px;
+          font-size: 24px;
+          font-weight: 600;
+          color: #f1f5f9;
+          letter-spacing: -0.5px;
+        ">Post Umbrella</h1>
+        <p style="
+          margin-top: 8px;
+          font-size: 14px;
+          color: #94a3b8;
+        ">Preparing your workspace...</p>
+        <div style="
+          margin-top: 32px;
+          width: 200px;
+          height: 3px;
+          background: #334155;
+          border-radius: 3px;
+          overflow: hidden;
+        ">
+          <div style="
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            border-radius: 3px;
+            animation: loading 1.5s ease-in-out infinite;
+          "></div>
+        </div>
+      </div>
+      <style>
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.05); opacity: 0.9; }
+        }
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          50% { transform: translateX(150%); }
+          100% { transform: translateX(150%); }
+        }
+      </style>
+    </div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
