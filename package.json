@@ -36,5 +36,8 @@
   },
   "optionalDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.59.0"
+  },
+  "volta": {
+    "node": "22.22.1"
   }
 }

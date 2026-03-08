@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 
 -- Workspaces table
 CREATE TABLE IF NOT EXISTS workspaces (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   description TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,

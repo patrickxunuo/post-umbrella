@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Collections table
 CREATE TABLE IF NOT EXISTS collections (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   parent_id UUID REFERENCES collections(id) ON DELETE CASCADE,
   created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS collections (
 
 -- Requests table
 CREATE TABLE IF NOT EXISTS requests (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   method VARCHAR(10) DEFAULT 'GET',
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS requests (
 
 -- Examples table
 CREATE TABLE IF NOT EXISTS examples (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   request_id UUID NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
   name VARCHAR(255) NOT NULL,
   request_data TEXT,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS examples (
 
 -- Environments table (collection-specific)
 CREATE TABLE IF NOT EXISTS environments (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   variables TEXT,
   collection_id UUID REFERENCES collections(id) ON DELETE CASCADE,
