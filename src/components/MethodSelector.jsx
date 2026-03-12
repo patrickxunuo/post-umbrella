@@ -13,7 +13,7 @@ const METHOD_COLORS = {
   OPTIONS: '#71717a',
 };
 
-export function MethodSelector({ value, onChange }) {
+export function MethodSelector({ value, onChange, disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
@@ -39,8 +39,9 @@ export function MethodSelector({ value, onChange }) {
       <button
         type="button"
         className="method-selector-trigger"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
         style={{ '--method-color': METHOD_COLORS[value] }}
+        disabled={disabled}
       >
         <span className="method-selector-badge">{value}</span>
         <ChevronDown size={14} className={`method-selector-chevron ${isOpen ? 'open' : ''}`} />

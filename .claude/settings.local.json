@@ -40,7 +40,12 @@
       "Bash(npm run build:*)",
       "Bash(npx supabase db reset --debug)",
       "Bash(npx supabase:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(ls:*)",
+      "Bash(find /d/post-umbrella/e2e -type f -name \"*.ts\" -o -name \"*.js\" 2>/dev/null | head -20)",
+      "Bash(wc -l /d/post-umbrella/e2e/*.spec.ts)"
     ],
     "deny": [],
     "ask": []

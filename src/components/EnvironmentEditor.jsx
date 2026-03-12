@@ -1,366 +1,348 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Edit2, Copy } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Plus, Trash2, Edit2, Copy, ChevronRight } from 'lucide-react';
 import * as data from '../data/index.js';
 import { useConfirm } from './ConfirmModal';
 import { usePrompt } from './PromptModal';
 import { DropdownMenu } from './DropdownMenu';
 
-export function EnvironmentEditor({ onClose, collectionId, collectionName }) {
+const normalizeVar = (v) => ({
+  key: v.key || '',
+  value: v.value || '',
+});
+
+const varsEqual = (a, b) => {
+  const aNorm = a.filter(v => v.key?.trim()).map(normalizeVar);
+  const bNorm = b.filter(v => v.key?.trim()).map(normalizeVar);
+  if (aNorm.length !== bNorm.length) return false;
+  return aNorm.every((v, i) => v.key === bNorm[i].key && v.value === bNorm[i].value);
+};
+
+const VariableRow = ({ v, index, canEdit, isNewVar, onUpdate, onRemove }) => (
+  <tr>
+    <td className="col-key">
+      <input
+        type="text"
+        placeholder="Variable name"
+        value={v.key}
+        onChange={e => onUpdate(index, 'key', e.target.value)}
+        disabled={!canEdit && !isNewVar}
+      />
+    </td>
+    <td className="col-value">
+      <input
+        type="text"
+        placeholder="Value"
+        value={v.value || ''}
+        onChange={e => onUpdate(index, 'value', e.target.value)}
+      />
+    </td>
+    {canEdit && (
+      <td className="col-actions">
+        <button className="btn-icon small" onClick={() => onRemove(index)} title="Remove">
+          <Trash2 size={14} />
+        </button>
+      </td>
+    )}
+  </tr>
+);
+
+export function EnvironmentEditor({ onClose, workspaceId, workspaceName, canEdit = false }) {
   const confirm = useConfirm();
   const prompt = usePrompt();
-  const modalRef = useRef(null);
   const [environments, setEnvironments] = useState([]);
   const [selectedEnv, setSelectedEnv] = useState(null);
   const [editingVars, setEditingVars] = useState([]);
+  const [newVarIndices, setNewVarIndices] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const hasChanges = useMemo(() => {
+    if (!selectedEnv) return false;
+    return !varsEqual(editingVars, selectedEnv.variables || []);
+  }, [editingVars, selectedEnv]);
 
   useEffect(() => {
-    if (collectionId) {
-      loadEnvironments(true);
-    }
-  }, [collectionId]);
+    workspaceId && loadEnvironments(true);
+  }, [workspaceId]);
 
-  const loadEnvironments = async (autoSelectFirst = false) => {
-    if (!collectionId) return;
+  const loadEnvironments = async (autoSelect = false) => {
+    if (!workspaceId) return;
     setLoading(true);
     try {
-      const envs = await data.getEnvironments(collectionId);
+      const envs = await data.getEnvironments(workspaceId);
       setEnvironments(envs);
-      // Auto-select first environment or active one on initial load
-      if (autoSelectFirst && envs.length > 0) {
-        const active = envs.find(e => e.is_active);
-        const envToSelect = active || envs[0];
-        setSelectedEnv(envToSelect);
-        setEditingVars(envToSelect.variables.map(v => ({ ...v })));
+      if (autoSelect && envs.length > 0) {
+        const env = envs.find(e => e.is_active) || envs[0];
+        setSelectedEnv(env);
+        setEditingVars(env.variables.map(v => ({ ...v })));
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSelectEnv = async (env) => {
-    // Check for unsaved changes before switching
-    if (hasUnsavedChanges) {
-      const confirmed = await confirm({
-        title: 'Unsaved Changes',
-        message: 'You have unsaved changes. Discard them?',
-        confirmText: 'Discard',
-        cancelText: 'Cancel',
-        variant: 'danger',
-      });
-      if (!confirmed) return;
-    }
+  const confirmDiscard = async () => {
+    if (!hasChanges) return true;
+    return confirm({
+      title: 'Unsaved Changes',
+      message: 'You have unsaved changes. Discard them?',
+      confirmText: 'Discard',
+      variant: 'danger',
+    });
+  };
+
+  const selectEnv = (env) => {
     setSelectedEnv(env);
     setEditingVars(env.variables.map(v => ({ ...v })));
-    setHasUnsavedChanges(false);
+    setNewVarIndices(new Set());
   };
 
-  const handleAddVariable = () => {
-    setEditingVars([...editingVars, { key: '', value: '', enabled: true }]);
-    setHasUnsavedChanges(true);
+  const handleSelectEnv = async (env) => {
+    if (await confirmDiscard()) selectEnv(env);
   };
 
-  const handleUpdateVariable = (index, field, value) => {
-    const newVars = [...editingVars];
-    newVars[index] = { ...newVars[index], [field]: value };
-    setEditingVars(newVars);
-    setHasUnsavedChanges(true);
+  const updateVar = (index, field, value) => {
+    setEditingVars(vars => vars.map((v, i) => i === index ? { ...v, [field]: value } : v));
   };
 
-  const handleRemoveVariable = (index) => {
-    setEditingVars(editingVars.filter((_, i) => i !== index));
-    setHasUnsavedChanges(true);
+  const addVar = () => {
+    const newIndex = editingVars.length;
+    setEditingVars(v => [...v, { key: '', value: '' }]);
+    setNewVarIndices(prev => new Set([...prev, newIndex]));
+  };
+
+  const removeVar = (index) => {
+    if (!canEdit) return;
+    setEditingVars(vars => vars.filter((_, i) => i !== index));
+    setNewVarIndices(prev => {
+      const updated = new Set();
+      prev.forEach(i => {
+        if (i < index) updated.add(i);
+        else if (i > index) updated.add(i - 1);
+      });
+      return updated;
+    });
   };
 
   const handleSave = async () => {
     if (!selectedEnv) return;
     setSaving(true);
     try {
-      const filteredVars = editingVars.filter(v => v.key.trim());
-      await data.updateEnvironment(selectedEnv.id, {
-        name: selectedEnv.name,
-        variables: filteredVars,
+      const vars = editingVars.filter(v => v.key.trim());
+      const existingKeys = new Set(selectedEnv.variables.map(v => v.key));
+
+      // Check if there are new variables to create
+      const newVars = vars.filter((v, i) => newVarIndices.has(i) && !existingKeys.has(v.key));
+
+      // Check if any variables were deleted
+      const currentKeys = new Set(vars.map(v => v.key));
+      const deletedVars = selectedEnv.variables.filter(v => !currentKeys.has(v.key));
+
+      if (canEdit && (newVars.length > 0 || deletedVars.length > 0)) {
+        // Admin: pass all current variables to updateEnvironment
+        // It will detect additions and deletions
+        const allVars = vars.map(v => {
+          const isNew = newVarIndices.has(editingVars.indexOf(v)) && !existingKeys.has(v.key);
+          const original = selectedEnv.variables.find(ov => ov.key === v.key);
+          return {
+            key: v.key,
+            initial_value: isNew ? v.value : (original?.initial_value || ''),
+          };
+        });
+        await data.updateEnvironment(selectedEnv.id, {
+          name: selectedEnv.name,
+          variables: allVars,
+        });
+      }
+
+      // Everyone (admin and non-admin): save value changes to current_value
+      const currentValues = {};
+      const newVarKeys = new Set(newVars.map(v => v.key));
+      vars.forEach(v => {
+        // Skip newly created variables (their initial_value IS their value)
+        if (newVarKeys.has(v.key)) return;
+
+        const original = selectedEnv.variables.find(ov => ov.key === v.key);
+        const initialVal = original?.initial_value || '';
+        // Save to current_value if different from initial
+        currentValues[v.key] = v.value !== initialVal ? v.value : null;
       });
-      // Update local state instead of reloading
-      setEnvironments(prev => prev.map(env =>
-        env.id === selectedEnv.id
-          ? { ...env, variables: filteredVars }
-          : env
-      ));
-      setSelectedEnv(prev => ({ ...prev, variables: filteredVars }));
-      setEditingVars(filteredVars);
-      setHasUnsavedChanges(false);
+      if (Object.keys(currentValues).length > 0) {
+        await data.updateCurrentValues(selectedEnv.id, currentValues);
+      }
+
+      // Ensure vars have enabled flag for substitution to work
+      const varsWithEnabled = vars.map(v => ({ ...v, enabled: true }));
+      setEnvironments(envs => envs.map(e => e.id === selectedEnv.id ? { ...e, variables: varsWithEnabled } : e));
+      setSelectedEnv(prev => ({ ...prev, variables: varsWithEnabled }));
+      setEditingVars(varsWithEnabled);
+      setNewVarIndices(new Set());
     } finally {
       setSaving(false);
     }
   };
 
-  const handleCreateEnv = async () => {
-    if (!collectionId) return;
+  const handleCreate = async () => {
+    if (!workspaceId || !canEdit) return;
     const name = await prompt({
       title: 'New Environment',
       message: 'Enter a name for the new environment:',
       defaultValue: 'New Environment',
-      placeholder: 'Environment name',
     });
     if (name) {
-      const env = await data.createEnvironment({ name, variables: [], collection_id: collectionId });
+      const env = await data.createEnvironment({ name, variables: [], workspace_id: workspaceId });
       setEnvironments(prev => [...prev, env]);
-      setSelectedEnv(env);
-      setEditingVars([]);
-      setHasUnsavedChanges(false);
+      selectEnv(env);
     }
   };
 
-  const handleDeleteEnv = async (envId) => {
+  const handleDelete = async (envId) => {
+    if (!canEdit) return;
     const env = environments.find(e => e.id === envId);
-    const confirmed = await confirm({
+    if (await confirm({
       title: 'Delete Environment',
-      message: `Are you sure you want to delete "${env?.name || 'this environment'}"? This will affect all users.`,
+      message: `Delete "${env?.name}"? This affects all users.`,
       confirmText: 'Delete',
-      cancelText: 'Cancel',
       variant: 'danger',
-    });
-    if (confirmed) {
+    })) {
       await data.deleteEnvironment(envId);
-      setEnvironments(prev => prev.filter(e => e.id !== envId));
+      const remaining = environments.filter(e => e.id !== envId);
+      setEnvironments(remaining);
       if (selectedEnv?.id === envId) {
-        const remaining = environments.filter(e => e.id !== envId);
-        if (remaining.length > 0) {
-          setSelectedEnv(remaining[0]);
-          setEditingVars(remaining[0].variables.map(v => ({ ...v })));
-        } else {
-          setSelectedEnv(null);
-          setEditingVars([]);
-        }
+        remaining.length ? selectEnv(remaining[0]) : (setSelectedEnv(null), setEditingVars([]));
       }
-      setHasUnsavedChanges(false);
     }
   };
 
-  const handleRenameEnv = async (envId) => {
-    const env = envId ? environments.find(e => e.id === envId) : selectedEnv;
-    if (!env) return;
-
+  const handleRename = async (envId) => {
+    if (!canEdit) return;
+    const env = environments.find(e => e.id === envId);
     const name = await prompt({
       title: 'Rename Environment',
-      message: 'Enter a new name for the environment:',
-      defaultValue: env.name,
-      placeholder: 'Environment name',
+      message: 'Enter a new name:',
+      defaultValue: env?.name,
     });
-    if (name && name !== env.name) {
+    if (name && name !== env?.name) {
       await data.updateEnvironment(env.id, { name });
-      setEnvironments(prev => prev.map(e =>
-        e.id === env.id ? { ...e, name } : e
-      ));
-      if (selectedEnv?.id === env.id) {
-        setSelectedEnv(prev => ({ ...prev, name }));
-      }
+      setEnvironments(envs => envs.map(e => e.id === env.id ? { ...e, name } : e));
+      if (selectedEnv?.id === env.id) setSelectedEnv(prev => ({ ...prev, name }));
     }
   };
 
-  const handleDuplicateEnv = async (envId) => {
+  const handleDuplicate = async (envId) => {
+    if (!canEdit) return;
     const env = environments.find(e => e.id === envId);
-    if (!env || !collectionId) return;
-
+    if (!env) return;
     const newEnv = await data.createEnvironment({
       name: `${env.name} - copy`,
-      variables: env.variables || [],
-      collection_id: collectionId,
+      variables: env.variables?.map(({ key, initial_value, value, enabled }) => ({ key, initial_value: initial_value || value, enabled })) || [],
+      workspace_id: workspaceId,
     });
     setEnvironments(prev => [...prev, newEnv]);
-    setSelectedEnv(newEnv);
-    setEditingVars(newEnv.variables?.map(v => ({ ...v })) || []);
-    setHasUnsavedChanges(false);
+    selectEnv(newEnv);
   };
 
   const handleClose = async () => {
-    if (hasUnsavedChanges) {
-      const confirmed = await confirm({
-        title: 'Unsaved Changes',
-        message: 'You have unsaved changes. Discard them?',
-        confirmText: 'Discard',
-        cancelText: 'Cancel',
-        variant: 'danger',
-      });
-      if (!confirmed) return;
-    }
-    onClose();
-  };
-
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
-      handleClose();
+    if (await confirmDiscard()) {
+      setIsClosing(true);
+      setTimeout(onClose, 200);
     }
   };
 
-  const getEnvMenuItems = (env) => [
-    {
-      icon: <Edit2 size={14} />,
-      label: 'Rename',
-      onClick: () => handleRenameEnv(env.id),
-    },
-    {
-      icon: <Copy size={14} />,
-      label: 'Duplicate',
-      onClick: () => handleDuplicateEnv(env.id),
-    },
+  const menuItems = (env) => canEdit ? [
+    { icon: <Edit2 size={14} />, label: 'Rename', onClick: () => handleRename(env.id) },
+    { icon: <Copy size={14} />, label: 'Duplicate', onClick: () => handleDuplicate(env.id) },
     { type: 'divider' },
-    {
-      icon: <Trash2 size={14} />,
-      label: 'Delete',
-      variant: 'danger',
-      onClick: () => handleDeleteEnv(env.id),
-    },
-  ];
+    { icon: <Trash2 size={14} />, label: 'Delete', variant: 'danger', onClick: () => handleDelete(env.id) },
+  ] : [];
+
+  const closingClass = isClosing ? 'closing' : '';
 
   return (
-    <div className="env-editor-overlay" onClick={handleOverlayClick}>
-      <div className="env-editor" ref={modalRef}>
-        <div className="env-editor-header">
-          <h2>Manage Environments{collectionName ? ` - ${collectionName}` : ''}</h2>
-          <button className="btn-icon" onClick={handleClose} title="Close">
-            <X size={18} />
-          </button>
+    <div className={`env-drawer-overlay ${closingClass}`} onClick={e => e.target === e.currentTarget && handleClose()}>
+      <div className={`env-drawer ${closingClass}`}>
+        <div className="env-drawer-header">
+          <div className="env-drawer-title">
+            <h2>Environments</h2>
+            {workspaceName && <span className="env-drawer-workspace">{workspaceName}</span>}
+          </div>
+          <button className="btn-icon" onClick={handleClose} title="Close"><X size={18} /></button>
         </div>
 
-        <div className="env-editor-body">
-          {!collectionId ? (
-            <div className="env-no-collection">
-              <p>Please select a request first to manage environments for its collection.</p>
-            </div>
+        <div className="env-drawer-body">
+          {!workspaceId ? (
+            <div className="env-no-collection"><p>Select a workspace to manage environments.</p></div>
           ) : (
-          <>
-          <div className="env-list">
-            <div className="env-list-header">
-              <span>Environments</span>
-              <button className="btn-icon small" onClick={handleCreateEnv} title="Add Environment">
-                <Plus size={16} />
-              </button>
-            </div>
-            {loading ? (
-              <div className="env-loading">Loading...</div>
-            ) : environments.length === 0 ? (
-              <div className="env-empty">
-                <p>No environments yet</p>
-                <button className="btn-create-first" onClick={handleCreateEnv}>
-                  Create Environment
-                </button>
-              </div>
-            ) : (
-              <div className="env-items">
-                {environments.map(env => (
-                  <div
-                    key={env.id}
-                    className={`env-item ${selectedEnv?.id === env.id ? 'selected' : ''}`}
-                    onClick={() => handleSelectEnv(env)}
-                  >
-                    <div className="env-item-info">
-                      <span className="env-name">{env.name}</span>
-                      <span className="env-item-meta">
-                        {env.variables?.length || 0} vars
-                        {env.created_by_email && (
-                          <span className="env-creator"> · {env.created_by_email}</span>
-                        )}
-                      </span>
-                    </div>
-                    <DropdownMenu items={getEnvMenuItems(env)} />
+            <>
+              <div className="env-drawer-sidebar">
+                <div className="env-list-header">
+                  <span>Environments</span>
+                  {canEdit && <button className="btn-icon small" onClick={handleCreate} title="Add"><Plus size={16} /></button>}
+                </div>
+                {loading ? (
+                  <div className="env-loading">Loading...</div>
+                ) : !environments.length ? (
+                  <div className="env-empty">
+                    <p>No environments yet</p>
+                    {canEdit && <button className="btn-create-first" onClick={handleCreate}>Create Environment</button>}
                   </div>
-                ))}
+                ) : (
+                  <div className="env-items">
+                    {environments.map(env => (
+                      <div key={env.id} className={`env-item ${selectedEnv?.id === env.id ? 'selected' : ''}`} onClick={() => handleSelectEnv(env)}>
+                        <div className="env-item-info">
+                          <span className="env-name">{env.name}</span>
+                          <span className="env-item-meta">{env.variables?.length || 0} vars</span>
+                        </div>
+                        <ChevronRight size={14} className="env-item-chevron" />
+                        {canEdit && <DropdownMenu items={menuItems(env)} />}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="env-variables">
-            {selectedEnv ? (
-              <>
-                <div className="env-var-header">
-                  <span className="env-var-title">{selectedEnv.name}</span>
-                  <button className="btn-icon small" onClick={() => handleRenameEnv(selectedEnv?.id)} title="Rename">
-                    <Edit2 size={14} />
-                  </button>
-                </div>
-                <div className="env-var-table">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th className="col-enabled"></th>
-                        <th className="col-key">Variable</th>
-                        <th className="col-value">Value</th>
-                        <th className="col-actions"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editingVars.map((v, index) => (
-                        <tr key={index} className={v.enabled === false ? 'disabled' : ''}>
-                          <td className="col-enabled">
-                            <input
-                              type="checkbox"
-                              checked={v.enabled !== false}
-                              onChange={(e) => handleUpdateVariable(index, 'enabled', e.target.checked)}
-                            />
-                          </td>
-                          <td className="col-key">
-                            <input
-                              type="text"
-                              placeholder="Variable name"
-                              value={v.key}
-                              onChange={(e) => handleUpdateVariable(index, 'key', e.target.value)}
-                            />
-                          </td>
-                          <td className="col-value">
-                            <input
-                              type="text"
-                              placeholder="Value"
-                              value={v.value}
-                              onChange={(e) => handleUpdateVariable(index, 'value', e.target.value)}
-                            />
-                          </td>
-                          <td className="col-actions">
-                            <button
-                              className="btn-icon small"
-                              onClick={() => handleRemoveVariable(index)}
-                              title="Remove"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {editingVars.length === 0 && (
-                        <tr className="empty-row">
-                          <td colSpan="4">No variables yet</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                  <button className="btn-add-var" onClick={handleAddVariable}>
-                    <Plus size={14} />
-                    Add Variable
-                  </button>
-                </div>
-                <div className="env-var-footer">
-                  <button
-                    className="btn-save"
-                    onClick={handleSave}
-                    disabled={saving || !hasUnsavedChanges}
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="env-var-empty">
-                {environments.length > 0
-                  ? 'Select an environment to edit variables'
-                  : 'Create an environment to get started'
-                }
+              <div className="env-drawer-content">
+                {selectedEnv ? (
+                  <>
+                    <div className="env-var-header">
+                      <span className="env-var-title">{selectedEnv.name}</span>
+                      {canEdit && <button className="btn-icon small" onClick={() => handleRename(selectedEnv.id)} title="Rename"><Edit2 size={14} /></button>}
+                    </div>
+                    <div className="env-var-table">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th className="col-key">Variable</th>
+                            <th className="col-value">Value</th>
+                            {canEdit && <th className="col-actions" />}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editingVars.map((v, i) => (
+                            <VariableRow key={i} v={v} index={i} canEdit={canEdit} isNewVar={newVarIndices.has(i)} onUpdate={updateVar} onRemove={removeVar} />
+                          ))}
+                          {!editingVars.length && <tr className="empty-row"><td colSpan={canEdit ? 3 : 2}>No variables yet</td></tr>}
+                        </tbody>
+                      </table>
+                      <button className="btn-add-var" onClick={addVar}>
+                        <Plus size={14} />Add Variable
+                      </button>
+                    </div>
+                    <div className="env-var-footer">
+                      <button className="btn-save" onClick={handleSave} disabled={saving || !hasChanges}>
+                        {saving ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="env-var-empty">
+                    {environments.length ? 'Select an environment' : canEdit ? 'Create an environment' : 'No environments'}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          </>
+            </>
           )}
         </div>
       </div>

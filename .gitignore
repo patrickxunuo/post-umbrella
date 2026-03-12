@@ -61,6 +61,7 @@ coverage
 
 # Build artifacts
 build
+release
 .cache
 .parcel-cache
 
@@ -69,3 +70,10 @@ tmp
 temp
 *.tmp
 *.temp
+
+# Playwright auth state
+e2e/.auth/
+e2e/screenshots
+
+# Generated at build time
+public/version.json

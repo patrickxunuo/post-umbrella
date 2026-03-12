@@ -1,0 +1,162 @@
+/* ============================================
+   Workspace Presence Avatars
+   Shows online/offline members in header
+   ============================================ */
+
+.presence-avatars {
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 50;
+}
+
+.presence-avatar {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--avatar-color, var(--bg-tertiary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  margin-right: -6px;
+  transition: filter 0.15s ease;
+}
+
+
+.presence-avatar:last-child {
+  margin-right: 0;
+}
+
+.presence-avatar:hover {
+  z-index: 20;
+}
+
+/* Stack z-index: first avatar on top */
+.presence-avatar:nth-child(1) { z-index: 10; }
+.presence-avatar:nth-child(2) { z-index: 9; }
+.presence-avatar:nth-child(3) { z-index: 8; }
+.presence-avatar:nth-child(4) { z-index: 7; }
+.presence-avatar:nth-child(5) { z-index: 6; }
+.presence-avatar:nth-child(6) { z-index: 5; }
+
+/* Offline - muted and desaturated */
+.presence-avatar.offline {
+  filter: grayscale(100%) brightness(0.6);
+}
+
+.presence-avatar.overflow {
+  background: var(--bg-tertiary);
+}
+
+.presence-avatar-initials {
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  user-select: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.presence-avatar.overflow .presence-avatar-initials {
+  color: var(--text-secondary);
+  font-size: 9px;
+  text-shadow: none;
+}
+
+/* Tooltip */
+.presence-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.presence-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: var(--border-primary);
+}
+
+.presence-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-bottom-color: var(--bg-primary);
+  z-index: 1;
+}
+
+.presence-avatar:hover .presence-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.presence-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.presence-tooltip-role {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.presence-tooltip-role.admin {
+  background: var(--accent-primary-subtle);
+  color: var(--accent-primary);
+}
+
+.presence-tooltip-role.developer {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.presence-tooltip-email {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.presence-tooltip-you {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.presence-tooltip-status {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.presence-tooltip-status.active {
+  color: var(--accent-success);
+  font-weight: 500;
+}

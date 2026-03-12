@@ -110,6 +110,7 @@ export function RequestEditor({
   height,
   activeDetailTab = 'params',
   onActiveDetailTabChange,
+  canEdit = true,
 }) {
   const toast = useToast();
   const [method, setMethod] = useState('GET');
@@ -137,7 +138,7 @@ export function RequestEditor({
     for (const v of activeEnvironment.variables) {
       if (v.enabled && v.key) {
         const regex = new RegExp(`\\{\\{${v.key}\\}\\}`, 'g');
-        result = result.replace(regex, v.value);
+        result = result.replace(regex, v.value || '');
       }
     }
     return result;
@@ -458,6 +459,7 @@ export function RequestEditor({
         <MethodSelector
           value={method}
           onChange={handleMethodChange}
+          disabled={!canEdit}
         />
         <EnvVariableInput
           className="url-input"
@@ -467,6 +469,7 @@ export function RequestEditor({
           onKeyDown={(e) => e.key === 'Enter' && !isExample && handleSend()}
           activeEnvironment={activeEnvironment}
           onEnvironmentUpdate={onEnvironmentUpdate}
+          disabled={!canEdit}
         />
         {isExample ? (
           <button
@@ -475,8 +478,9 @@ export function RequestEditor({
               method,
               url,
               headers: headers.filter((h) => h.key),
-              body: '',
-              bodyType: 'none',
+              body,
+              bodyType,
+              formData: formData.filter((field) => field.key),
               authType,
               authToken,
               exampleName: example?.name,
@@ -492,38 +496,40 @@ export function RequestEditor({
             {loading ? 'Sending...' : 'Send'}
           </button>
         )}
-        <div className="save-button-group" ref={saveDropdownRef}>
-          <button
-            className={`btn-save ${dirty ? 'dirty' : ''}`}
-            onClick={handleSave}
-            disabled={isTemporary && !isExample}
-            title={isExample ? 'Save example' : (isTemporary ? 'Temporary requests cannot be saved' : 'Save request')}
-          >
-            Save{dirty ? ' *' : ''}
-          </button>
-          {!isExample && !isTemporary && (
+        {canEdit && (
+          <div className="save-button-group" ref={saveDropdownRef}>
             <button
-              className="btn-save-dropdown"
-              onClick={() => setShowSaveDropdown(!showSaveDropdown)}
-              title="More save options"
+              className={`btn-save ${dirty ? 'dirty' : ''}`}
+              onClick={handleSave}
+              disabled={isTemporary && !isExample}
+              title={isExample ? 'Save example' : (isTemporary ? 'Temporary requests cannot be saved' : 'Save request')}
             >
-              <ChevronDown size={14} />
+              Save{dirty ? ' *' : ''}
             </button>
-          )}
-          {showSaveDropdown && (
-            <div className="save-dropdown-menu">
+            {!isExample && !isTemporary && (
               <button
-                className="save-dropdown-item"
-                onClick={() => {
-                  setShowSaveDropdown(false);
-                  setShowExampleModal(true);
-                }}
+                className="btn-save-dropdown"
+                onClick={() => setShowSaveDropdown(!showSaveDropdown)}
+                title="More save options"
               >
-                Save as Example...
+                <ChevronDown size={14} />
               </button>
-            </div>
-          )}
-        </div>
+            )}
+            {showSaveDropdown && (
+              <div className="save-dropdown-menu">
+                <button
+                  className="save-dropdown-item"
+                  onClick={() => {
+                    setShowSaveDropdown(false);
+                    setShowExampleModal(true);
+                  }}
+                >
+                  Save as Example...
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <button
           className="btn-copy-curl"
           onClick={async () => {

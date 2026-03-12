@@ -10,7 +10,7 @@ Project memory. Read this file first to find what you need.
 - [devSetup.md](devSetup.md) — Local development environment setup
 
 ## Topic Files
-(none yet — will be created as the project grows)
+- [testBaseline.md](testBaseline.md) — E2E test baseline plan and progress
 
 ## Last Updated
 2026-03-06

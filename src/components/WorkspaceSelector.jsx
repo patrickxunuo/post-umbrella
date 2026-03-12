@@ -1,16 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Settings, Plus, Briefcase, Check } from 'lucide-react';
 
+// Default workspace ID to hide from selector
+const DEFAULT_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+
 export function WorkspaceSelector({
   workspaces,
   activeWorkspace,
   onWorkspaceChange,
   onCreateWorkspace,
   onOpenSettings,
-  isAdmin,
+  canCreateWorkspace,
+  canOpenSettings,
+  loading = false,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
+
+  // Filter out the default workspace
+  const visibleWorkspaces = workspaces.filter(ws => ws.id !== DEFAULT_WORKSPACE_ID);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -53,10 +61,15 @@ export function WorkspaceSelector({
       <button
         className="workspace-selector-trigger"
         onClick={() => setIsOpen(!isOpen)}
+        disabled={loading}
       >
-        <Briefcase size={14} className="workspace-icon" />
+        {loading ? (
+          <div className="loading-spinner small" />
+        ) : (
+          <Briefcase size={14} className="workspace-icon" />
+        )}
         <span className="workspace-selector-label">
-          {activeWorkspace ? activeWorkspace.name : 'No Workspace'}
+          {loading ? 'Loading...' : activeWorkspace ? activeWorkspace.name : 'No Workspace'}
         </span>
         <ChevronDown size={14} className={`workspace-selector-chevron ${isOpen ? 'open' : ''}`} />
       </button>
@@ -64,7 +77,7 @@ export function WorkspaceSelector({
       {isOpen && (
         <div className="workspace-selector-dropdown">
           <div className="workspace-selector-options">
-            {workspaces.map(workspace => (
+            {visibleWorkspaces.map(workspace => (
               <div
                 key={workspace.id}
                 className={`workspace-selector-option ${activeWorkspace?.id === workspace.id ? 'selected' : ''}`}
@@ -77,20 +90,22 @@ export function WorkspaceSelector({
               </div>
             ))}
           </div>
-          <div className="workspace-selector-footer">
-            {isAdmin && (
-              <button className="workspace-selector-action" onClick={handleCreateClick}>
-                <Plus size={14} />
-                New Workspace
-              </button>
-            )}
-            {isAdmin && activeWorkspace && (
-              <button className="workspace-selector-action" onClick={handleSettingsClick}>
-                <Settings size={14} />
-                Workspace Settings
-              </button>
-            )}
-          </div>
+          {(canCreateWorkspace || canOpenSettings) && (
+            <div className="workspace-selector-footer">
+              {canCreateWorkspace && (
+                <button className="workspace-selector-action" onClick={handleCreateClick}>
+                  <Plus size={14} />
+                  New Workspace
+                </button>
+              )}
+              {canOpenSettings && activeWorkspace && (
+                <button className="workspace-selector-action" onClick={handleSettingsClick}>
+                  <Settings size={14} />
+                  Workspace Settings
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

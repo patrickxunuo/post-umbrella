@@ -7,14 +7,17 @@ const router = Router();
 // Session duration: 30 days
 const SESSION_DURATION = 30 * 24 * 60 * 60;
 
+// Optional email domain restriction from env
+const EMAIL_DOMAIN = process.env.EMAIL_DOMAIN || '';
+
 // Login
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate email ends with @emonster.ca
-    if (!email || !email.toLowerCase().endsWith('@emonster.ca')) {
-      return res.status(401).json({ error: 'Email must end with @emonster.ca' });
+    // Validate email domain if restriction is set
+    if (EMAIL_DOMAIN && (!email || !email.toLowerCase().endsWith(EMAIL_DOMAIN))) {
+      return res.status(401).json({ error: `Email must end with ${EMAIL_DOMAIN}` });
     }
 
     // Validate password is 7777

@@ -19,42 +19,64 @@ export function Login({ onLogin }) {
     return emailAddr.endsWith(EMAIL_DOMAIN);
   };
 
-  // Check for auth callback (Supabase magic link redirect)
+  // Handle user authentication and activation
+  const handleAuthenticatedUser = async (user) => {
+    // Verify email domain if restriction is set
+    if (EMAIL_DOMAIN && user.email && !user.email.endsWith(EMAIL_DOMAIN)) {
+      setError(`Only ${EMAIL_DOMAIN} emails are allowed.`);
+      await data.logout();
+      return;
+    }
+    // Activate/bootstrap user (handles first user, pending activation, unauthorized)
+    try {
+      const result = await data.activateUser();
+      console.log('Activation result:', result);
+    } catch (e) {
+      console.error('Activation error:', e);
+      // Check if it's an authorization or disabled error
+      if (e.action === 'unauthorized' || e.action === 'disabled' ||
+          e.message?.includes('not authorized') || e.message?.includes('disabled')) {
+        setError(e.message || 'Your account is not authorized. Please contact an administrator.');
+        await data.logout();
+        return;
+      }
+      setError(e.message || 'Failed to finish account activation. Please try again.');
+      await data.logout();
+      return;
+    }
+    onLogin(user);
+  };
+
+  // Check for existing auth session on mount
   useEffect(() => {
     if (useMagicLink) {
-      const checkAuth = async () => {
+      const checkExistingSession = async () => {
         try {
           const user = await data.checkAuth();
           if (user) {
-            // Verify email domain if restriction is set
-            if (EMAIL_DOMAIN && user.email && !user.email.endsWith(EMAIL_DOMAIN)) {
-              setError(`Only ${EMAIL_DOMAIN} emails are allowed.`);
-              await data.logout();
-              return;
-            }
-            // Activate/bootstrap user (handles first user, pending activation, unauthorized)
-            try {
-              const result = await data.activateUser();
-              console.log('Activation result:', result);
-            } catch (e) {
-              console.error('Activation error:', e);
-              // Check if it's an authorization or disabled error
-              if (e.action === 'unauthorized' || e.action === 'disabled' ||
-                  e.message?.includes('not authorized') || e.message?.includes('disabled')) {
-                setError(e.message || 'Your account is not authorized. Please contact an administrator.');
-                await data.logout();
-                return;
-              }
-              // Other errors - might be network issues, proceed anyway
-            }
-            onLogin(user);
+            await handleAuthenticatedUser(user);
           }
-        } catch (e) {
+        } catch {
           // Not authenticated, show login form
         }
       };
-      checkAuth();
+      checkExistingSession();
     }
+  }, [useMagicLink]);
+
+  // Listen for auth state changes (handles async hash token processing)
+  useEffect(() => {
+    if (!useMagicLink || !data.onAuthStateChange) return;
+
+    const subscription = data.onAuthStateChange(async (event, user) => {
+      if (event === 'SIGNED_IN' && user) {
+        await handleAuthenticatedUser(user);
+      }
+    });
+
+    return () => {
+      subscription?.unsubscribe?.();
+    };
   }, [useMagicLink, onLogin]);
 
   const handleSubmit = async (e) => {

@@ -38,15 +38,19 @@ serve(async (req: Request) => {
           autoRefreshToken: false,
           persistSession: false,
         },
-        global: {
-          headers: { Authorization: authHeader },
-        },
       });
 
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      // Extract token from "Bearer <token>" header
+      const token = authHeader.replace("Bearer ", "");
+
+      // Validate JWT by passing token directly to getUser()
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
       if (authError || !user) {
         return new Response(
-          JSON.stringify({ error: "Invalid or expired token" }),
+          JSON.stringify({
+            error: "Invalid or expired token",
+            details: authError?.message,
+          }),
           { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

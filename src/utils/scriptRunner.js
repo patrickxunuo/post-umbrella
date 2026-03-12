@@ -35,7 +35,8 @@ function createPmObject(context) {
         }
         if (!environment?.variables) return undefined;
         const variable = environment.variables.find(v => v.key === key && v.enabled);
-        return variable?.value;
+        // Use current_value if set, fallback to initial_value
+        return variable?.current_value ?? variable?.initial_value ?? variable?.value;
       },
       set: (key, value) => {
         envUpdates[key] = String(value);
@@ -48,7 +49,8 @@ function createPmObject(context) {
         if (environment?.variables) {
           environment.variables.forEach(v => {
             if (v.enabled && v.key) {
-              obj[v.key] = v.value;
+              // Use current_value if set, fallback to initial_value
+              obj[v.key] = v.current_value ?? v.initial_value ?? v.value;
             }
           });
         }
@@ -280,9 +282,10 @@ function formatArg(arg) {
 
 /**
  * Apply environment updates to the environment object
+ * Updates current_value (private/user-specific) NOT initial_value (shared)
  * @param {Object} environment - Current environment
  * @param {Object} updates - Updates from script execution
- * @returns {Object} Updated environment
+ * @returns {Object} Updated environment with modified current_value fields
  */
 export function applyEnvironmentUpdates(environment, updates) {
   if (!environment || !updates || Object.keys(updates).length === 0) {
@@ -295,16 +298,16 @@ export function applyEnvironmentUpdates(environment, updates) {
     const existingIndex = variables.findIndex(v => v.key === key);
 
     if (value === null) {
-      // Delete the variable
+      // Clear the current_value (don't delete the variable itself)
       if (existingIndex >= 0) {
-        variables.splice(existingIndex, 1);
+        variables[existingIndex] = { ...variables[existingIndex], current_value: '' };
       }
     } else if (existingIndex >= 0) {
-      // Update existing variable
-      variables[existingIndex] = { ...variables[existingIndex], value };
+      // Update existing variable's current_value
+      variables[existingIndex] = { ...variables[existingIndex], current_value: value };
     } else {
-      // Add new variable
-      variables.push({ key, value, enabled: true });
+      // Add new variable with current_value (empty initial_value)
+      variables.push({ key, initial_value: '', current_value: value, enabled: true });
     }
   });
 

@@ -20,7 +20,13 @@ export function useWebSocket(onMessage) {
         const { type, data } = message;
         // type is like 'collection:INSERT', 'request:UPDATE', etc.
         const [table, eventType] = type.split(':');
-        const event = `${table}:${eventType.toLowerCase()}`;
+        const normalizedEventType = (
+          eventType === 'INSERT' ? 'create'
+            : eventType === 'UPDATE' ? 'update'
+            : eventType === 'DELETE' ? 'delete'
+            : eventType.toLowerCase()
+        );
+        const event = `${table}:${normalizedEventType}`;
         onMessageRef.current({ event, data });
       });
 

@@ -7,7 +7,7 @@ export function EnvironmentSelector({
   activeEnvironment,
   onEnvironmentChange,
   onOpenEditor,
-  collectionId,
+  workspaceId,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -31,10 +31,10 @@ export function EnvironmentSelector({
 
   const handleSelect = async (env) => {
     setIsOpen(false);
-    if (!collectionId) return;
+    if (!workspaceId) return;
     if (env === null) {
       // Deactivate
-      await data.deactivateEnvironments(collectionId);
+      await data.deactivateEnvironments(workspaceId);
       onEnvironmentChange();
     } else if (env.id !== activeEnvironment?.id) {
       await data.activateEnvironment(env.id);
@@ -51,13 +51,13 @@ export function EnvironmentSelector({
   return (
     <div className="env-selector" ref={containerRef}>
       <button
-        className={`env-selector-trigger ${activeEnvironment ? 'has-env' : ''} ${!collectionId ? 'disabled' : ''}`}
-        onClick={() => collectionId && setIsOpen(!isOpen)}
-        disabled={!collectionId}
-        title={!collectionId ? 'Select a request to manage environments' : undefined}
+        className={`env-selector-trigger ${activeEnvironment ? 'has-env' : ''} ${!workspaceId ? 'disabled' : ''}`}
+        onClick={() => workspaceId && setIsOpen(!isOpen)}
+        disabled={!workspaceId}
+        title={!workspaceId ? 'Select a workspace to manage environments' : undefined}
       >
         <span className="env-selector-label">
-          {!collectionId ? 'No Collection' : (activeEnvironment ? activeEnvironment.name : 'No Environment')}
+          {!workspaceId ? 'No Workspace' : (activeEnvironment ? activeEnvironment.name : 'No Environment')}
         </span>
         <ChevronDown size={14} className={`env-selector-chevron ${isOpen ? 'open' : ''}`} />
       </button>

@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Add an existing user to a workspace (admin only)
+// Add an existing user to a workspace
+// System can add to any workspace, admin can add to workspaces they belong to
 // User must already exist in user_profiles (invited through User Management)
 
 Deno.serve(async (req: Request) => {
@@ -31,11 +32,12 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Verify user is authenticated
-    const { data: { user: currentUser }, error: authError } = await userClient.auth.getUser();
+    // Extract token and verify user
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: currentUser }, error: authError } = await userClient.auth.getUser(token);
     if (authError || !currentUser) {
       return new Response(
         JSON.stringify({ message: "Unauthorized" }),
@@ -46,27 +48,52 @@ Deno.serve(async (req: Request) => {
     // Create admin client with service role key
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if current user is an admin (global role)
-    const { data: currentProfile } = await adminClient
-      .from("user_profiles")
-      .select("role, status")
-      .eq("user_id", currentUser.id)
-      .single();
-
-    if (!currentProfile || currentProfile.status !== "active" || currentProfile.role !== "admin") {
-      return new Response(
-        JSON.stringify({ message: "Only admins can add workspace members" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Parse request body
+    // Parse request body first (need workspaceId for permission check)
     const { workspaceId, email } = await req.json();
 
     if (!workspaceId || !email) {
       return new Response(
         JSON.stringify({ message: "Missing required fields: workspaceId, email" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check current user's role and status
+    const { data: currentProfile } = await adminClient
+      .from("user_profiles")
+      .select("role, status")
+      .eq("user_id", currentUser.id)
+      .single();
+
+    if (!currentProfile || currentProfile.status !== "active") {
+      return new Response(
+        JSON.stringify({ message: "Unauthorized" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // System can add to any workspace, admin can only add to their workspaces
+    if (currentProfile.role === "system") {
+      // System can proceed
+    } else if (currentProfile.role === "admin") {
+      // Check if admin is member of target workspace
+      const { data: membership } = await adminClient
+        .from("workspace_members")
+        .select("user_id")
+        .eq("workspace_id", workspaceId)
+        .eq("user_id", currentUser.id)
+        .single();
+
+      if (!membership) {
+        return new Response(
+          JSON.stringify({ message: "You can only add members to workspaces you belong to" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    } else {
+      return new Response(
+        JSON.stringify({ message: "Only system and admin users can add workspace members" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

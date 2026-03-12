@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView } from '@codemirror/view';
+import JSON5 from 'json5';
 
 // Custom theme that matches the app's design system using CSS variables
 const baseTheme = EditorView.theme({
@@ -135,7 +136,8 @@ export function JsonEditor({
   const handleBeautify = useCallback(() => {
     if (!value) return;
     try {
-      const parsed = JSON.parse(value);
+      // Parse with JSON5 to support comments, then output standard JSON
+      const parsed = JSON5.parse(value);
       const formatted = JSON.stringify(parsed, null, 2);
       onChange?.(formatted);
     } catch (e) {
@@ -147,7 +149,8 @@ export function JsonEditor({
   const handleMinify = useCallback(() => {
     if (!value) return;
     try {
-      const parsed = JSON.parse(value);
+      // Parse with JSON5 to support comments, then output standard JSON
+      const parsed = JSON5.parse(value);
       const minified = JSON.stringify(parsed);
       onChange?.(minified);
     } catch (e) {
@@ -156,10 +159,11 @@ export function JsonEditor({
   }, [value, onChange]);
 
   // Check if JSON is valid for showing beautify button state
+  // Uses JSON5 to allow comments and trailing commas
   const isValidJson = useMemo(() => {
     if (!value) return true;
     try {
-      JSON.parse(value);
+      JSON5.parse(value);
       return true;
     } catch {
       return false;
@@ -189,7 +193,7 @@ export function JsonEditor({
             Minify
           </button>
           {!isValidJson && value && (
-            <span className="json-error-indicator">Invalid JSON</span>
+            <span className="json-error-indicator">Invalid syntax</span>
           )}
         </div>
       )}

@@ -10,6 +10,7 @@ export function EnvVariableInput({
   className,
   activeEnvironment,
   onEnvironmentUpdate,
+  disabled = false,
 }) {
   const [hoveredVar, setHoveredVar] = useState(null);
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
@@ -20,6 +21,7 @@ export function EnvVariableInput({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [autocompleteInfo, setAutocompleteInfo] = useState(null); // { start, filterText }
+  const [suggestionsPos, setSuggestionsPos] = useState({ top: 0, left: 0, width: 0 });
   const inputRef = useRef(null);
   const popoverRef = useRef(null);
   const suggestionsRef = useRef(null);
@@ -151,6 +153,15 @@ export function EnvVariableInput({
           setAutocompleteInfo(info);
           setShowSuggestions(true);
           setSuggestionIndex(0);
+          // Calculate position for fixed positioning
+          if (inputRef.current) {
+            const rect = inputRef.current.getBoundingClientRect();
+            setSuggestionsPos({
+              top: rect.bottom + 4,
+              left: rect.left,
+              width: rect.width,
+            });
+          }
         } else {
           setShowSuggestions(false);
         }
@@ -420,6 +431,7 @@ export function EnvVariableInput({
         onKeyDown={handleInputKeyDown}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        disabled={disabled}
       />
 
       {/* Autocomplete suggestions dropdown */}
@@ -427,7 +439,16 @@ export function EnvVariableInput({
         const filtered = getFilteredVariables(autocompleteInfo.filterText);
         if (filtered.length === 0) return null;
         return (
-          <div className="env-suggestions" ref={suggestionsRef}>
+          <div
+            className="env-suggestions"
+            ref={suggestionsRef}
+            style={{
+              position: 'fixed',
+              top: suggestionsPos.top,
+              left: suggestionsPos.left,
+              width: suggestionsPos.width,
+            }}
+          >
             {filtered.map((v, i) => (
               <div
                 key={v.key}

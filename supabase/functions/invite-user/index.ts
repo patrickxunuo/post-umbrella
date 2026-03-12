@@ -22,17 +22,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create Supabase client with user's token for verification
+    // Create Supabase clients
     const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Verify user is authenticated
-    const { data: { user: currentUser }, error: authError } = await userClient.auth.getUser();
+    // Extract token and verify user
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: currentUser }, error: authError } = await userClient.auth.getUser(token);
     if (authError || !currentUser) {
       return new Response(
         JSON.stringify({ message: "Unauthorized" }),
@@ -43,27 +44,70 @@ Deno.serve(async (req: Request) => {
     // Create admin client with service role key
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Check if current user is an admin (global role)
+    // Check current user's role and status
     const { data: currentProfile } = await adminClient
       .from("user_profiles")
       .select("role, status")
       .eq("user_id", currentUser.id)
       .single();
 
-    if (!currentProfile || currentProfile.status !== "active" || currentProfile.role !== "admin") {
+    if (!currentProfile || currentProfile.status !== "active") {
       return new Response(
-        JSON.stringify({ message: "Only admins can invite users" }),
+        JSON.stringify({ message: "Unauthorized" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Parse request body
+    // Parse request body first to check workspace access
     const { email, role, workspaceIds } = await req.json();
 
     if (!email || !role) {
       return new Response(
         JSON.stringify({ message: "Missing required fields: email, role" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Only system, admin, and developer can invite users
+    if (!["system", "admin", "developer"].includes(currentProfile.role)) {
+      return new Response(
+        JSON.stringify({ message: "Only system, admin, or developer can invite users" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Non-system users can only invite to workspaces they belong to
+    let validWorkspaceIds = Array.isArray(workspaceIds) ? workspaceIds : [];
+    if (currentProfile.role !== "system" && validWorkspaceIds.length > 0) {
+      const { data: userWorkspaces } = await adminClient
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", currentUser.id);
+
+      const userWsIds = new Set(userWorkspaces?.map((w: { workspace_id: string }) => w.workspace_id) || []);
+      validWorkspaceIds = validWorkspaceIds.filter((id: string) => userWsIds.has(id));
+
+      if (validWorkspaceIds.length === 0 && workspaceIds.length > 0) {
+        return new Response(
+          JSON.stringify({ message: "You can only invite users to workspaces you belong to" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // System role cannot be assigned via invite - only via direct DB update
+    if (role === "system") {
+      return new Response(
+        JSON.stringify({ message: "System role can only be assigned via database" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Developers can only invite reader or developer (not admin)
+    if (currentProfile.role === "developer" && !["reader", "developer"].includes(role)) {
+      return new Response(
+        JSON.stringify({ message: "Developers can only invite readers or developers" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -74,47 +118,84 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check if user with this email already exists
-    const { data: { users }, error: listError } = await adminClient.auth.admin.listUsers();
-    if (listError) {
-      return new Response(
-        JSON.stringify({ message: "Failed to check existing users" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Check if user with this email already exists in user_profiles
+    const { data: existingProfile } = await adminClient
+      .from("user_profiles")
+      .select("user_id, status")
+      .eq("email", email.toLowerCase())
+      .single();
 
-    const existingUser = users.find((u: { email?: string }) => u.email?.toLowerCase() === email.toLowerCase());
-
-    if (existingUser) {
+    if (existingProfile) {
       return new Response(
         JSON.stringify({ message: "User with this email already exists" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create new user in auth.users
-    const { data: newUserData, error: createError } = await adminClient.auth.admin.createUser({
-      email,
-      email_confirm: true, // Auto-confirm so they can login via magic link
-    });
+    // Get the redirect URL for the invitation email
+    const siteUrl = Deno.env.get("SITE_URL") || "https://post-umbrella.vercel.app";
 
-    if (createError) {
-      return new Response(
-        JSON.stringify({ message: `Failed to create user: ${createError.message}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    // Check if we should skip sending the invite email (for testing)
+    const skipEmail = Deno.env.get("SKIP_INVITE_EMAIL") === "true";
+
+    let newUserId: string;
+    let inviteLink: string | undefined;
+
+    if (skipEmail) {
+      // Test mode: Create user without sending email, generate link manually
+      const { data: newUserData, error: createError } = await adminClient.auth.admin.createUser({
+        email,
+        email_confirm: true,
+      });
+
+      if (createError) {
+        return new Response(
+          JSON.stringify({ message: `Failed to create user: ${createError.message}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      newUserId = newUserData.user.id;
+
+      // Generate invite link (not sent via email)
+      const { data: linkData } = await adminClient.auth.admin.generateLink({
+        type: "invite",
+        email,
+        options: { redirectTo: siteUrl },
+      });
+      inviteLink = linkData?.properties?.action_link;
+    } else {
+      // Production mode: Invite user and send email
+      const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+        email,
+        {
+          redirectTo: siteUrl,
+          data: {
+            invited_by: currentUser.id,
+            role: role,
+          },
+        }
       );
-    }
 
-    const newUserId = newUserData.user.id;
+      if (inviteError) {
+        return new Response(
+          JSON.stringify({ message: `Failed to invite user: ${inviteError.message}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      newUserId = inviteData.user.id;
+    }
     const now = Math.floor(Date.now() / 1000);
 
-    // Create user_profile with pending status
+    // Create user_profile with active status
     const { error: profileError } = await adminClient
       .from("user_profiles")
       .insert({
         user_id: newUserId,
+        email: email.toLowerCase(),
         role,
-        status: "pending",
+        status: "active",
         invited_by: currentUser.id,
         invited_at: now,
         created_at: now,
@@ -130,8 +211,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Add user to specified workspaces
-    const validWorkspaceIds = Array.isArray(workspaceIds) ? workspaceIds : [];
+    // Add user to specified workspaces (validWorkspaceIds already filtered above)
     if (validWorkspaceIds.length > 0) {
       const workspaceMembers = validWorkspaceIds.map((wsId: string) => ({
         workspace_id: wsId,
@@ -147,31 +227,40 @@ Deno.serve(async (req: Request) => {
       if (memberError) {
         // Don't fail the whole operation, just log it
         console.error("Failed to add user to workspaces:", memberError.message);
+      } else {
+        // Set the first workspace as the user's active workspace
+        const { error: activeError } = await adminClient
+          .from("user_active_workspace")
+          .insert({
+            user_id: newUserId,
+            workspace_id: validWorkspaceIds[0],
+          });
+
+        if (activeError) {
+          console.error("Failed to set active workspace:", activeError.message);
+        }
       }
     }
 
-    // Send magic link email so user can activate their account
-    const { error: magicLinkError } = await adminClient.auth.admin.generateLink({
-      type: "magiclink",
+    const responseData: Record<string, unknown> = {
+      success: true,
+      user_id: newUserId,
       email,
-      options: {
-        redirectTo: supabaseUrl.replace(".supabase.co", ".vercel.app") || undefined,
-      },
-    });
+      role,
+      status: "active",
+      workspaces: validWorkspaceIds,
+    };
 
-    if (magicLinkError) {
-      console.error("Failed to generate magic link:", magicLinkError.message);
+    // Include invite link in response when in test mode (no email sent)
+    if (skipEmail && inviteLink) {
+      responseData.invite_link = inviteLink;
+      responseData.email_sent = false;
+    } else {
+      responseData.email_sent = true;
     }
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        user_id: newUserId,
-        email,
-        role,
-        status: "pending",
-        workspaces: validWorkspaceIds,
-      }),
+      JSON.stringify(responseData),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

@@ -34,8 +34,30 @@ const initUser = async () => {
 };
 initUser();
 
+// Check if email is allowed to login (calls RPC function that bypasses RLS)
+export const checkEmailAllowed = async (email) => {
+  const { data, error } = await supabase.rpc('check_email_allowed', {
+    check_email: email,
+  });
+
+  if (error) {
+    // If RPC function doesn't exist yet, allow login (graceful degradation)
+    console.warn('check_email_allowed RPC not available:', error.message);
+    return { allowed: true, status: null, message: null };
+  }
+
+  return data;
+};
+
 // Auth - Magic Link (email only)
 export const sendMagicLink = async (email) => {
+  // Check if user is allowed to login before sending magic link
+  const result = await checkEmailAllowed(email);
+
+  if (!result.allowed) {
+    throw new Error(result.message || 'This email is not registered.');
+  }
+
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
     options: {
@@ -96,6 +118,23 @@ export const checkAuth = async () => {
     email: session.user.email,
   };
   return currentUser;
+};
+
+// Subscribe to auth state changes (for handling async hash token processing)
+export const onAuthStateChange = (callback) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      currentUser = {
+        id: session.user.id,
+        email: session.user.email,
+      };
+      callback(event, currentUser);
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      callback(event, null);
+    }
+  });
+  return subscription;
 };
 
 // Collections
@@ -221,6 +260,68 @@ export const deleteCollection = async (id) => {
     .eq('id', id);
   if (error) throw new Error(error.message);
   return null;
+};
+
+export const getCollection = async (id) => {
+  const { data, error } = await supabase
+    .from('collections')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+// Fetch a single collection tree (with children and requests) by root ID
+export const getCollectionTree = async (rootId) => {
+  // Fetch the root collection
+  const { data: rootCollection, error: rootError } = await supabase
+    .from('collections')
+    .select('*')
+    .eq('id', rootId)
+    .single();
+  if (rootError) throw new Error(rootError.message);
+
+  let allCollections = [rootCollection];
+
+  // Recursively fetch children
+  const fetchChildren = async (parentIds) => {
+    if (parentIds.length === 0) return;
+    const { data: children, error } = await supabase
+      .from('collections')
+      .select('*')
+      .in('parent_id', parentIds);
+    if (error) throw new Error(error.message);
+    if (children && children.length > 0) {
+      allCollections = [...allCollections, ...children];
+      await fetchChildren(children.map(c => c.id));
+    }
+  };
+  await fetchChildren([rootId]);
+
+  // Fetch all requests for these collections
+  const allCollectionIds = allCollections.map(c => c.id);
+  const { data: requests, error: reqError } = await supabase
+    .from('requests')
+    .select('*')
+    .in('collection_id', allCollectionIds)
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  if (reqError) throw new Error(reqError.message);
+
+  // Build collections with requests
+  return allCollections.map(col => ({
+    ...col,
+    requests: (requests || [])
+      .filter(r => r.collection_id === col.id)
+      .map(r => ({
+        ...r,
+        headers: typeof r.headers === 'string' ? JSON.parse(r.headers || '[]') : (r.headers || []),
+        params: typeof r.params === 'string' ? JSON.parse(r.params || '[]') : (r.params || []),
+        form_data: typeof r.form_data === 'string' ? JSON.parse(r.form_data || '[]') : (r.form_data || []),
+        example_count: 0,
+      })),
+  }));
 };
 
 // Requests
@@ -420,70 +521,163 @@ export const deleteExample = async (id) => {
 };
 
 // Environments
-export const getEnvironments = async (collectionId) => {
+// Now workspace-scoped with normalized variables table
+
+// Get environments for a workspace
+export const getEnvironments = async (workspaceId) => {
   const user = await checkAuth();
 
+  // Get environments with their variables
   const { data: environments, error: envError } = await supabase
     .from('environments')
-    .select('*')
-    .eq('collection_id', collectionId)
+    .select(`
+      *,
+      environment_variables (
+        id,
+        key,
+        initial_value,
+        enabled,
+        sort_order
+      )
+    `)
+    .eq('workspace_id', workspaceId)
     .order('name', { ascending: true });
   if (envError) throw new Error(envError.message);
 
-  // Get active environment for this user and collection
-  const { data: activeEnv, error: activeError } = await supabase
+  if (!environments || environments.length === 0) {
+    return [];
+  }
+
+  // Get active environment for this user and workspace
+  const { data: activeEnv } = await supabase
     .from('user_active_environment')
     .select('environment_id')
     .eq('user_id', user.id)
-    .eq('collection_id', collectionId)
+    .eq('workspace_id', workspaceId)
     .single();
 
   const activeEnvId = activeEnv?.environment_id;
 
+  // Get all variable IDs across all environments
+  const allVarIds = environments.flatMap(e =>
+    (e.environment_variables || []).map(v => v.id)
+  );
+
+  // Get user's current values
+  let userValuesMap = {};
+  if (allVarIds.length > 0) {
+    const { data: userValues } = await supabase
+      .from('environment_user_values')
+      .select('variable_id, current_value')
+      .eq('user_id', user.id)
+      .in('variable_id', allVarIds);
+
+    (userValues || []).forEach(uv => {
+      userValuesMap[uv.variable_id] = uv.current_value;
+    });
+  }
+
   return environments.map(env => ({
     ...env,
-    variables: typeof env.variables === 'string' ? JSON.parse(env.variables || '[]') : (env.variables || []),
+    variables: (env.environment_variables || [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map(v => {
+        const current_value = userValuesMap[v.id] || '';
+        return {
+          id: v.id,
+          key: v.key,
+          initial_value: v.initial_value || '',
+          current_value,
+          value: current_value || v.initial_value || '',
+          enabled: v.enabled !== false,
+        };
+      }),
+    environment_variables: undefined, // Remove raw join data
     is_active: env.id === activeEnvId,
   }));
 };
 
-export const getActiveEnvironment = async (collectionId) => {
+
+// Get active environment for a workspace (with merged current values)
+export const getActiveEnvironment = async (workspaceId) => {
   const user = await checkAuth();
 
   const { data: activeEnv } = await supabase
     .from('user_active_environment')
     .select('environment_id')
     .eq('user_id', user.id)
-    .eq('collection_id', collectionId)
+    .eq('workspace_id', workspaceId)
     .single();
 
   if (!activeEnv?.environment_id) return null;
 
+  // Get environment with variables
   const { data: env, error } = await supabase
     .from('environments')
-    .select('*')
+    .select(`
+      *,
+      environment_variables (
+        id,
+        key,
+        initial_value,
+        enabled,
+        sort_order
+      )
+    `)
     .eq('id', activeEnv.environment_id)
     .single();
 
   if (error) return null;
+
+  // Get user's current values for variables in this environment
+  const varIds = (env.environment_variables || []).map(v => v.id);
+  let userValuesMap = {};
+
+  if (varIds.length > 0) {
+    const { data: userValues } = await supabase
+      .from('environment_user_values')
+      .select('variable_id, current_value')
+      .eq('user_id', user.id)
+      .in('variable_id', varIds);
+
+    (userValues || []).forEach(uv => {
+      userValuesMap[uv.variable_id] = uv.current_value;
+    });
+  }
+
   return {
     ...env,
-    variables: typeof env.variables === 'string' ? JSON.parse(env.variables || '[]') : (env.variables || []),
+    variables: (env.environment_variables || [])
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map(v => {
+        const current_value = userValuesMap[v.id] || '';
+        return {
+          id: v.id,
+          key: v.key,
+          initial_value: v.initial_value || '',
+          current_value,
+          value: current_value || v.initial_value || '',
+          enabled: v.enabled !== false,
+        };
+      }),
+    environment_variables: undefined,
     is_active: true,
   };
 };
 
+
 export const createEnvironment = async (environment) => {
   const user = await checkAuth();
   const now = Math.floor(Date.now() / 1000);
+  const envId = crypto.randomUUID();
 
+  // Create the environment
   const { data, error } = await supabase
     .from('environments')
     .insert({
-      id: crypto.randomUUID(),
+      id: envId,
       name: environment.name,
-      variables: JSON.stringify(environment.variables || []),
-      collection_id: environment.collection_id,
+      workspace_id: environment.workspace_id,
       created_by: user.id,
       updated_by: user.id,
       created_at: now,
@@ -492,21 +686,53 @@ export const createEnvironment = async (environment) => {
     .select()
     .single();
   if (error) throw new Error(error.message);
+
+  // Insert variables into environment_variables table
+  const variables = (environment.variables || []).map((v, index) => ({
+    id: crypto.randomUUID(),
+    environment_id: envId,
+    key: v.key,
+    initial_value: v.initial_value ?? v.value ?? '',
+    enabled: v.enabled !== false,
+    sort_order: index,
+    created_at: now,
+    updated_at: now,
+  }));
+
+  let createdVars = [];
+  if (variables.length > 0) {
+    const { data: varData, error: varError } = await supabase
+      .from('environment_variables')
+      .insert(variables)
+      .select();
+    if (varError) throw new Error(varError.message);
+    createdVars = varData || [];
+  }
+
   return {
     ...data,
-    variables: typeof data.variables === 'string' ? JSON.parse(data.variables || '[]') : (data.variables || []),
+    variables: createdVars.map(v => ({
+      id: v.id,
+      key: v.key,
+      initial_value: v.initial_value || '',
+      current_value: '',
+      value: v.initial_value || '',
+      enabled: v.enabled !== false,
+    })),
   };
 };
 
+// Update environment (name and/or add new variables)
 export const updateEnvironment = async (id, updates) => {
   const user = await checkAuth();
+  const now = Math.floor(Date.now() / 1000);
 
+  // Update environment metadata
   const updateData = {
     updated_by: user.id,
-    updated_at: Math.floor(Date.now() / 1000),
+    updated_at: now,
   };
   if (updates.name !== undefined) updateData.name = updates.name;
-  if (updates.variables !== undefined) updateData.variables = JSON.stringify(updates.variables);
 
   const { data, error } = await supabase
     .from('environments')
@@ -515,46 +741,205 @@ export const updateEnvironment = async (id, updates) => {
     .select()
     .single();
   if (error) throw new Error(error.message);
+
+  // Handle variable changes if provided
+  if (updates.variables !== undefined) {
+    // Get existing variables
+    const { data: existingVars } = await supabase
+      .from('environment_variables')
+      .select('id, key')
+      .eq('environment_id', id);
+
+    const existingVarsMap = new Map((existingVars || []).map(v => [v.key, v.id]));
+    const updatedKeys = new Set(updates.variables.filter(v => v.key).map(v => v.key));
+
+    // Find variables to delete (exist in DB but not in updates)
+    const varsToDelete = (existingVars || []).filter(v => !updatedKeys.has(v.key));
+
+    // Delete removed variables (CASCADE will delete user values too)
+    if (varsToDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('environment_variables')
+        .delete()
+        .in('id', varsToDelete.map(v => v.id));
+      if (deleteError) throw new Error(deleteError.message);
+    }
+
+    // Find new variables to insert
+    const newVars = updates.variables.filter(v => v.key && !existingVarsMap.has(v.key));
+
+    // Get max sort_order for new variables
+    const maxOrder = (existingVars || []).length - varsToDelete.length;
+
+    // Insert new variables
+    if (newVars.length > 0) {
+      const varsToInsert = newVars.map((v, index) => ({
+        id: crypto.randomUUID(),
+        environment_id: id,
+        key: v.key,
+        initial_value: v.initial_value ?? v.value ?? '',
+        enabled: v.enabled !== false,
+        sort_order: maxOrder + index,
+        created_at: now,
+        updated_at: now,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('environment_variables')
+        .insert(varsToInsert);
+      if (insertError) throw new Error(insertError.message);
+    }
+  }
+
+  // Fetch updated variables with user's current values
+  const { data: vars } = await supabase
+    .from('environment_variables')
+    .select('id, key, initial_value, enabled, sort_order')
+    .eq('environment_id', id)
+    .order('sort_order');
+
+  const varIds = (vars || []).map(v => v.id);
+  let userValuesMap = {};
+
+  if (varIds.length > 0) {
+    const { data: userValues } = await supabase
+      .from('environment_user_values')
+      .select('variable_id, current_value')
+      .eq('user_id', user.id)
+      .in('variable_id', varIds);
+
+    (userValues || []).forEach(uv => {
+      userValuesMap[uv.variable_id] = uv.current_value;
+    });
+  }
+
   return {
     ...data,
-    variables: typeof data.variables === 'string' ? JSON.parse(data.variables || '[]') : (data.variables || []),
+    variables: (vars || []).map(v => {
+      const current_value = userValuesMap[v.id] || '';
+      return {
+        id: v.id,
+        key: v.key,
+        initial_value: v.initial_value || '',
+        current_value,
+        value: current_value || v.initial_value || '',
+        enabled: v.enabled !== false,
+      };
+    }),
   };
+};
+
+// Update user's current values (private, not synced)
+// currentValues can be { variableKey: value } or { variableId: value }
+export const updateCurrentValues = async (environmentId, currentValues) => {
+  const user = await checkAuth();
+  const now = Math.floor(Date.now() / 1000);
+
+  // Get variables for this environment to map keys to IDs
+  const { data: vars } = await supabase
+    .from('environment_variables')
+    .select('id, key')
+    .eq('environment_id', environmentId);
+
+  const keyToId = {};
+  (vars || []).forEach(v => {
+    keyToId[v.key] = v.id;
+  });
+
+  const entries = Object.entries(currentValues);
+
+  for (const [keyOrId, currentValue] of entries) {
+    // Determine if keyOrId is a UUID or a variable key
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(keyOrId);
+    const variableId = isUuid ? keyOrId : keyToId[keyOrId];
+
+    if (!variableId) continue; // Skip if variable not found
+
+    if (currentValue === null || currentValue === undefined || currentValue === '') {
+      // Delete if empty/null
+      await supabase
+        .from('environment_user_values')
+        .delete()
+        .eq('variable_id', variableId)
+        .eq('user_id', user.id);
+    } else {
+      // Upsert the current value
+      const { error } = await supabase
+        .from('environment_user_values')
+        .upsert({
+          variable_id: variableId,
+          user_id: user.id,
+          current_value: currentValue,
+          updated_at: now,
+        }, {
+          onConflict: 'variable_id,user_id',
+        });
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  return { success: true };
+};
+
+// Clear all current values for an environment (reset to initial values)
+export const clearCurrentValues = async (environmentId) => {
+  const user = await checkAuth();
+
+  // Get variable IDs for this environment
+  const { data: vars } = await supabase
+    .from('environment_variables')
+    .select('id')
+    .eq('environment_id', environmentId);
+
+  const varIds = (vars || []).map(v => v.id);
+
+  if (varIds.length > 0) {
+    const { error } = await supabase
+      .from('environment_user_values')
+      .delete()
+      .eq('user_id', user.id)
+      .in('variable_id', varIds);
+
+    if (error) throw new Error(error.message);
+  }
+
+  return { success: true };
 };
 
 export const activateEnvironment = async (id) => {
   const user = await checkAuth();
 
-  // Get the environment to find its collection_id
+  // Get the environment to find its workspace_id
   const { data: env, error: envError } = await supabase
     .from('environments')
-    .select('collection_id')
+    .select('workspace_id')
     .eq('id', id)
     .single();
   if (envError) throw new Error(envError.message);
 
-  // Upsert the active environment
+  // Upsert the active environment for this workspace
   const { error } = await supabase
     .from('user_active_environment')
     .upsert({
       user_id: user.id,
-      collection_id: env.collection_id,
+      workspace_id: env.workspace_id,
       environment_id: id,
     }, {
-      onConflict: 'user_id,collection_id',
+      onConflict: 'user_id,workspace_id',
     });
   if (error) throw new Error(error.message);
 
   return { success: true };
 };
 
-export const deactivateEnvironments = async (collectionId) => {
+export const deactivateEnvironments = async (workspaceId) => {
   const user = await checkAuth();
 
   const { error } = await supabase
     .from('user_active_environment')
     .delete()
     .eq('user_id', user.id)
-    .eq('collection_id', collectionId);
+    .eq('workspace_id', workspaceId);
   if (error) throw new Error(error.message);
 
   return { success: true };
@@ -589,12 +974,34 @@ export const sendRequest = async (data) => {
     return sendDirectRequest(data);
   }
 
+  // Get session and check if token needs refresh
+  let { data: { session } } = await supabase.auth.getSession();
+
+  // Check if token is expired or about to expire (within 60 seconds)
+  const isTokenExpired = () => {
+    if (!session?.expires_at) return true;
+    const expiresAt = session.expires_at * 1000; // Convert to ms
+    return Date.now() > expiresAt - 60000; // 60 second buffer
+  };
+  console.log('is exipired: ', isTokenExpired())
+
+  // Refresh if no session or token is expired/expiring
+  if (!session || isTokenExpired()) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session) {
+      throw new Error('Session expired. Please log in again.');
+    }
+    session = refreshData.session;
+  }
+
+  const accessToken = session.access_token;
+
   // Send via Edge Function proxy
   const response = await fetch(PROXY_FUNCTION_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+      'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify(data),
   });
@@ -843,224 +1250,46 @@ export const exportCollection = async (id) => {
 };
 
 export const importCollection = async (postmanData, workspaceId = null) => {
-  const user = await checkAuth();
+  await checkAuth();
 
   if (!postmanData || !postmanData.info) {
     throw new Error('Invalid Postman collection format');
   }
 
-  const collectionName = postmanData.info?.name || 'Imported Collection';
-
-  // Check if collection with this name already exists
-  const { data: existing } = await supabase
-    .from('collections')
-    .select('id')
-    .eq('name', collectionName)
-    .is('parent_id', null)
-    .single();
-
-  if (existing) {
-    throw new Error(`A collection named "${collectionName}" already exists. Please rename or delete the existing collection before importing.`);
+  // Get auth token for Edge Function
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
   }
 
-  // Import the collection recursively
-  const result = await importPostmanCollection(postmanData, null, workspaceId);
+  // Call Edge Function to handle the entire import
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const response = await fetch(`${supabaseUrl}/functions/v1/import-collection`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ postmanData, workspaceId }),
+  });
 
-  // Import environment variables if present
-  let environment = null;
-  if (postmanData.variable && postmanData.variable.length > 0 && result.collections.length > 0) {
-    const rootCollectionId = result.collections[0].id;
-    environment = await importEnvironmentVariables(postmanData, user.id, rootCollectionId);
-  }
+  const result = await response.json();
 
-  return { success: true, ...result, environment };
-};
-
-// Helper: Import Postman collection recursively
-async function importPostmanCollection(postmanData, parentId, workspaceId = null) {
-  const collectionId = crypto.randomUUID();
-  const collectionName = postmanData.info?.name || 'Imported Collection';
-  const now = Math.floor(Date.now() / 1000);
-
-  // Only root collections get workspace_id (children inherit via parent_id)
-  const insertData = {
-    id: collectionId,
-    name: collectionName,
-    parent_id: parentId,
-    created_at: now,
-    updated_at: now,
-  };
-  if (!parentId && workspaceId) {
-    insertData.workspace_id = workspaceId;
-  }
-
-  const { error: collError } = await supabase
-    .from('collections')
-    .insert(insertData);
-
-  if (collError) throw new Error(collError.message);
-
-  const result = {
-    collections: [{ id: collectionId, name: collectionName }],
-    requests: [],
-  };
-
-  if (postmanData.item) {
-    for (const item of postmanData.item) {
-      if (item.request) {
-        const req = await importPostmanRequest(item, collectionId);
-        result.requests.push(req);
-      } else if (item.item) {
-        // Child collections don't need workspace_id (inherited via parent)
-        const subResult = await importPostmanCollection(
-          { info: { name: item.name }, item: item.item },
-          collectionId,
-          null
-        );
-        result.collections.push(...subResult.collections);
-        result.requests.push(...subResult.requests);
-      }
-    }
+  if (!response.ok) {
+    throw new Error(result.message || 'Failed to import collection');
   }
 
   return result;
-}
-
-// Helper: Import single request
-async function importPostmanRequest(item, collectionId) {
-  const requestId = crypto.randomUUID();
-  const req = item.request;
-  const now = Math.floor(Date.now() / 1000);
-
-  const headers = (req.header || []).map(h => ({
-    key: h.key,
-    value: h.value,
-    enabled: !h.disabled,
-  }));
-
-  let url = '';
-  if (typeof req.url === 'string') {
-    url = req.url;
-  } else if (req.url?.raw) {
-    url = req.url.raw;
-  }
-
-  let body = '';
-  let bodyType = 'none';
-  if (req.body) {
-    bodyType = req.body.mode || 'raw';
-    if (bodyType === 'raw') {
-      body = req.body.raw || '';
-      if (req.body.options?.raw?.language === 'json') {
-        bodyType = 'json';
-      }
-    }
-  }
-
-  const { error: reqError } = await supabase
-    .from('requests')
-    .insert({
-      id: requestId,
-      collection_id: collectionId,
-      name: item.name,
-      method: req.method || 'GET',
-      url,
-      headers: JSON.stringify(headers),
-      body,
-      body_type: bodyType,
-      created_at: now,
-      updated_at: now,
-    });
-
-  if (reqError) throw new Error(reqError.message);
-
-  // Import examples (saved responses)
-  if (item.response && item.response.length > 0) {
-    for (const resp of item.response) {
-      await importPostmanExample(resp, requestId);
-    }
-  }
-
-  return { id: requestId, name: item.name };
-}
-
-// Helper: Import example
-async function importPostmanExample(resp, requestId) {
-  const exampleId = crypto.randomUUID();
-  const now = Math.floor(Date.now() / 1000);
-
-  const requestData = {
-    method: resp.originalRequest?.method || 'GET',
-    url: resp.originalRequest?.url?.raw || '',
-    headers: (resp.originalRequest?.header || []).map(h => ({
-      key: h.key,
-      value: h.value,
-      enabled: true,
-    })),
-    body: resp.originalRequest?.body?.raw || '',
-  };
-
-  const responseData = {
-    status: resp.code || 200,
-    statusText: resp.status || 'OK',
-    headers: (resp.header || []).map(h => ({
-      key: h.key,
-      value: h.value,
-    })),
-    body: resp.body || '',
-  };
-
-  const { error } = await supabase
-    .from('examples')
-    .insert({
-      id: exampleId,
-      request_id: requestId,
-      name: resp.name || 'Example',
-      request_data: JSON.stringify(requestData),
-      response_data: JSON.stringify(responseData),
-      created_at: now,
-    });
-
-  if (error) throw new Error(error.message);
-}
-
-// Helper: Import environment variables
-async function importEnvironmentVariables(postmanData, userId, collectionId) {
-  const variables = postmanData.variable || [];
-  if (variables.length === 0) return null;
-
-  const envId = crypto.randomUUID();
-  const envName = `${postmanData.info?.name || 'Imported'} Variables`;
-  const now = Math.floor(Date.now() / 1000);
-
-  const envVariables = variables.map(v => ({
-    key: v.key,
-    value: v.value || '',
-    enabled: !v.disabled,
-  }));
-
-  const { error } = await supabase
-    .from('environments')
-    .insert({
-      id: envId,
-      name: envName,
-      variables: JSON.stringify(envVariables),
-      collection_id: collectionId,
-      created_by: userId,
-      updated_by: userId,
-      created_at: now,
-      updated_at: now,
-    });
-
-  if (error) throw new Error(error.message);
-
-  return { id: envId, name: envName, variables: envVariables, collection_id: collectionId };
-}
+};
 
 // Realtime subscriptions
 let realtimeChannel = null;
 
 export const subscribeToChanges = (callback, workspaceId = null) => {
+  const getRealtimeData = (payload) => (
+    payload.eventType === 'DELETE' ? payload.old : payload.new
+  );
+
   // Unsubscribe from existing channel if any
   if (realtimeChannel) {
     supabase.removeChannel(realtimeChannel);
@@ -1072,37 +1301,37 @@ export const subscribeToChanges = (callback, workspaceId = null) => {
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'collections' },
-      (payload) => callback({ type: `collection:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `collection:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'requests' },
-      (payload) => callback({ type: `request:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `request:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'examples' },
-      (payload) => callback({ type: `example:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `example:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'environments' },
-      (payload) => callback({ type: `environment:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `environment:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'workspaces' },
-      (payload) => callback({ type: `workspace:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `workspace:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'workspace_members' },
-      (payload) => callback({ type: `workspace_member:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `workspace_member:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'user_profiles' },
-      (payload) => callback({ type: `user_profile:${payload.eventType}`, data: payload.new || payload.old })
+      (payload) => callback({ type: `user_profile:${payload.eventType}`, data: getRealtimeData(payload) })
     )
     .subscribe();
 
@@ -1122,8 +1351,6 @@ export const subscribeToChanges = (callback, workspaceId = null) => {
 // Get current user's profile
 export const getUserProfile = async () => {
   const user = await checkAuth();
-
-  console.log('getUserProfile for user:', user.id);
 
   const { data, error } = await supabase
     .from('user_profiles')
@@ -1162,6 +1389,26 @@ export const updateUserProfile = async (userId, updates) => {
 
   if (error) throw new Error(error.message);
   return data;
+};
+
+// Delete user (admin only - via edge function)
+export const deleteUser = async (userId) => {
+  const response = await fetch(`${PROXY_FUNCTION_URL.replace('/proxy', '/delete-user')}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+    },
+    body: JSON.stringify({ userId }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.message || 'Failed to delete user');
+  }
+
+  return result;
 };
 
 // Bootstrap/activate user on login (via database function)
@@ -1276,6 +1523,20 @@ export const updateUserWorkspaces = async (userId, workspaceIds) => {
 export const getWorkspaces = async () => {
   const user = await checkAuth();
 
+  // Check if user is system - they can see all workspaces
+  const profile = await getUserProfile();
+  if (profile?.role === 'system') {
+    // System users get all workspaces directly
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('id, name, description, created_by, created_at, updated_at')
+      .order('name', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  }
+
+  // Regular users get workspaces via membership
   const { data, error } = await supabase
     .from('workspace_members')
     .select(`
@@ -1371,31 +1632,52 @@ export const deleteWorkspace = async (id) => {
 // WORKSPACE MEMBERS
 // ============================================
 
-// Get members of a workspace (with their profiles)
+// Get members of a workspace (with their profiles) - for admin use
 export const getWorkspaceMembers = async (workspaceId) => {
-  const { data, error } = await supabase
+  const { data: memberships, error } = await supabase
     .from('workspace_members')
-    .select(`
-      user_id,
-      added_by,
-      created_at,
-      profile:user_profiles (
-        role,
-        status
-      )
-    `)
+    .select('user_id, added_by, created_at')
     .eq('workspace_id', workspaceId)
     .order('created_at', { ascending: true });
 
   if (error) throw new Error(error.message);
+  if (!memberships || memberships.length === 0) return [];
 
-  return data.map(m => ({
-    user_id: m.user_id,
-    added_by: m.added_by,
-    created_at: m.created_at,
-    role: m.profile?.role,
-    status: m.profile?.status,
-  }));
+  const userIds = memberships.map(member => member.user_id);
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from('user_profiles')
+    .select('user_id, email, role, status, display_name, avatar_url, last_seen')
+    .in('user_id', userIds);
+
+  if (profilesError) throw new Error(profilesError.message);
+
+  const profileMap = new Map((profiles || []).map(profile => [profile.user_id, profile]));
+
+  return memberships.map(member => {
+    const profile = profileMap.get(member.user_id);
+    return {
+      user_id: member.user_id,
+      added_by: member.added_by,
+      created_at: member.created_at,
+      email: profile?.email || null,
+      role: profile?.role || null,
+      status: profile?.status || null,
+      display_name: profile?.display_name || null,
+      avatar_url: profile?.avatar_url || null,
+      last_seen: profile?.last_seen || null,
+    };
+  });
+};
+
+// Get minimal workspace members info (for presence avatars - all users can access)
+export const getWorkspaceMembersMinimal = async (workspaceId) => {
+  const { data, error } = await supabase.rpc('get_workspace_members_minimal', {
+    ws_id: workspaceId,
+  });
+
+  if (error) throw new Error(error.message);
+  return data || [];
 };
 
 // Add existing user to workspace (admin only - via edge function)
@@ -1527,8 +1809,93 @@ export const isMemberOf = async (workspaceId) => {
   return !!data;
 };
 
+// ============================================
+// WORKSPACE PRESENCE
+// ============================================
+
+let presenceChannel = null;
+let presenceHeartbeatInterval = null;
+
+// Update user's last_seen timestamp in database
+export const updateLastSeen = async () => {
+  const user = await checkAuth();
+  const now = Math.floor(Date.now() / 1000);
+
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({ last_seen: now })
+    .eq('user_id', user.id);
+
+  if (error) {
+    console.warn('Failed to update last_seen:', error.message);
+  }
+};
+
+// Join workspace presence channel
+export const joinWorkspacePresence = async (workspaceId, userInfo) => {
+  const user = await checkAuth();
+
+  // Leave existing channel if any
+  if (presenceChannel) {
+    await supabase.removeChannel(presenceChannel);
+    presenceChannel = null;
+  }
+
+  // Clear any existing heartbeat
+  if (presenceHeartbeatInterval) {
+    clearInterval(presenceHeartbeatInterval);
+    presenceHeartbeatInterval = null;
+  }
+
+  // Create presence channel for this workspace
+  const channelName = `workspace:${workspaceId}:presence`;
+
+  presenceChannel = supabase.channel(channelName, {
+    config: {
+      presence: {
+        key: user.id,
+      },
+    },
+  });
+
+  // Update last_seen immediately and start heartbeat (every 60 seconds)
+  await updateLastSeen();
+  presenceHeartbeatInterval = setInterval(updateLastSeen, 60000);
+
+  return presenceChannel;
+};
+
+// Track user presence with state
+export const trackPresence = async (state) => {
+  if (!presenceChannel) return;
+
+  await presenceChannel.track(state);
+};
+
+// Leave workspace presence channel
+export const leaveWorkspacePresence = async () => {
+  // Update last_seen one final time before leaving
+  await updateLastSeen();
+
+  // Clear heartbeat
+  if (presenceHeartbeatInterval) {
+    clearInterval(presenceHeartbeatInterval);
+    presenceHeartbeatInterval = null;
+  }
+
+  if (presenceChannel) {
+    await presenceChannel.untrack();
+    await supabase.removeChannel(presenceChannel);
+    presenceChannel = null;
+  }
+};
+
+// Get current presence channel (for subscribing to events)
+export const getPresenceChannel = () => presenceChannel;
+
 // Provider info
 export const providerName = 'supabase';
 export const supportsRealtime = true;
 export const supportsMagicLink = true;
 export const supportsWorkspaces = true;
+export const supportsPresence = true;

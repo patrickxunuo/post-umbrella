@@ -17,8 +17,9 @@
 
 ## Testing
 - Unit/API tests: None configured
-- E2E tests: None configured
-- Test directory: N/A
+- E2E tests: Playwright (TypeScript)
+- Test directory: e2e/
+- Config: playwright.config.ts
 
 ## Database
 - MySQL (via mysql2/promise)

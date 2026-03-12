@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, FolderInput, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download } from 'lucide-react';
+import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, FolderInput, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Share2 } from 'lucide-react';
 import * as data from '../data/index.js';
 import { useConfirm } from './ConfirmModal';
 import { DropdownMenu } from './DropdownMenu';
@@ -34,7 +34,17 @@ export function Sidebar({
   onDeleteExample,
   onDuplicateExample,
   onRenameExample,
+  onShareRequest,
+  onShareExample,
+  pendingRequestIds = new Set(),
+  pendingExampleIds = new Set(),
+  pendingExampleListRequestIds = new Set(),
+  pendingCollectionIds = new Set(),
   canAddCollection = true,
+  canEdit = true,
+  loading = false,
+  revealRequestId = null,
+  onRevealComplete,
 }) {
   const confirm = useConfirm();
   const [expandedCollections, setExpandedCollections] = useState(() => {
@@ -46,6 +56,7 @@ export function Sidebar({
     return saved ? new Set(JSON.parse(saved)) : new Set();
   });
   const [requestExamples, setRequestExamples] = useState({});
+  const [loadingExamples, setLoadingExamples] = useState({}); // Track which requests are loading examples
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
   const [menuOpen, setMenuOpen] = useState(null);
@@ -70,12 +81,83 @@ export function Sidebar({
     localStorage.setItem('expandedRequests', JSON.stringify([...expandedRequests]));
   }, [expandedRequests]);
 
-  // Refresh examples for expanded requests when collections change
-  // This handles WebSocket updates when examples are created/deleted
   useEffect(() => {
-    // Only refresh if collections actually changed (not initial mount)
-    if (collectionsRef.current !== collections && collectionsRef.current.length > 0) {
-      expandedRequests.forEach(async (requestId) => {
+    const requestIdsInCollections = new Set();
+    collections.forEach((collection) => {
+      (collection.requests || []).forEach((request) => {
+        requestIdsInCollections.add(request.id);
+      });
+    });
+
+    const missingExpandedRequestIds = [...expandedRequests].filter((requestId) => (
+      requestIdsInCollections.has(requestId) &&
+      !requestExamples[requestId] &&
+      !loadingExamples[requestId]
+    ));
+
+    if (missingExpandedRequestIds.length === 0) {
+      return;
+    }
+
+    missingExpandedRequestIds.forEach(async (requestId) => {
+      setLoadingExamples((prev) => ({ ...prev, [requestId]: true }));
+      try {
+        const examples = await data.getExamples(requestId);
+        setRequestExamples((prev) => ({
+          ...prev,
+          [requestId]: examples,
+        }));
+      } catch (err) {
+        console.error('Failed to load examples for expanded request:', err);
+      } finally {
+        setLoadingExamples((prev) => ({ ...prev, [requestId]: false }));
+      }
+    });
+  }, [collections, expandedRequests, loadingExamples, requestExamples]);
+
+  // Refresh examples only for expanded requests whose row actually changed.
+  useEffect(() => {
+    const previousCollections = collectionsRef.current;
+
+    if (previousCollections !== collections && previousCollections.length > 0) {
+      const previousRequests = new Map();
+      const nextRequests = new Map();
+
+      previousCollections.forEach((collection) => {
+        (collection.requests || []).forEach((request) => {
+          previousRequests.set(request.id, request);
+        });
+      });
+
+      collections.forEach((collection) => {
+        (collection.requests || []).forEach((request) => {
+          nextRequests.set(request.id, request);
+        });
+      });
+
+      const changedExpandedRequestIds = [...expandedRequests].filter((requestId) => {
+        const previousRequest = previousRequests.get(requestId);
+        const nextRequest = nextRequests.get(requestId);
+
+        if (!previousRequest || !nextRequest) {
+          return Boolean(nextRequest);
+        }
+
+        return previousRequest !== nextRequest;
+      });
+
+      const deletedRequestIds = [...previousRequests.keys()].filter((requestId) => !nextRequests.has(requestId));
+      if (deletedRequestIds.length > 0) {
+        setRequestExamples((prev) => {
+          const next = { ...prev };
+          deletedRequestIds.forEach((requestId) => {
+            delete next[requestId];
+          });
+          return next;
+        });
+      }
+
+      changedExpandedRequestIds.forEach(async (requestId) => {
         try {
           const examples = await data.getExamples(requestId);
           setRequestExamples(prev => ({
@@ -87,6 +169,7 @@ export function Sidebar({
         }
       });
     }
+
     collectionsRef.current = collections;
   }, [collections, expandedRequests]);
 
@@ -147,6 +230,7 @@ export function Sidebar({
 
     // Fetch examples if expanding and not already loaded
     if (isExpanding && !requestExamples[requestId]) {
+      setLoadingExamples(prev => ({ ...prev, [requestId]: true }));
       try {
         const examples = await data.getExamples(requestId);
         setRequestExamples(prev => ({
@@ -155,6 +239,8 @@ export function Sidebar({
         }));
       } catch (err) {
         console.error('Failed to load examples:', err);
+      } finally {
+        setLoadingExamples(prev => ({ ...prev, [requestId]: false }));
       }
     }
   };
@@ -286,7 +372,19 @@ export function Sidebar({
         onDuplicateRequest?.(request);
         break;
       case 'add-example':
-        onCreateExample?.(request.id);
+        {
+          const created = await onCreateExample?.(request.id);
+          if (created) {
+            setRequestExamples(prev => ({
+              ...prev,
+              [request.id]: [created, ...(prev[request.id] || [])],
+            }));
+          }
+        }
+        setExpandedRequests((prev) => new Set([...prev, request.id]));
+        break;
+      case 'share':
+        await onShareRequest?.(request.id);
         break;
       case 'delete':
         const confirmed = await confirm({
@@ -313,7 +411,18 @@ export function Sidebar({
         setEditingName(example.name);
         break;
       case 'duplicate':
-        onDuplicateExample?.(example);
+        {
+          const duplicated = await onDuplicateExample?.(example);
+          if (duplicated) {
+            setRequestExamples(prev => ({
+              ...prev,
+              [parentRequest.id]: [duplicated, ...(prev[parentRequest.id] || [])],
+            }));
+          }
+        }
+        break;
+      case 'share':
+        await onShareExample?.(example.id);
         break;
       case 'delete':
         const confirmed = await confirm({
@@ -324,8 +433,11 @@ export function Sidebar({
           variant: 'danger',
         });
         if (confirmed) {
-          onDeleteExample?.(example.id);
-          refreshExamples(parentRequest.id);
+          await onDeleteExample?.(example.id, parentRequest.id);
+          setRequestExamples(prev => ({
+            ...prev,
+            [parentRequest.id]: (prev[parentRequest.id] || []).filter((item) => item.id !== example.id),
+          }));
         }
         break;
     }
@@ -333,7 +445,15 @@ export function Sidebar({
 
   const handleExampleRename = async (exampleId) => {
     if (editingName.trim()) {
-      await onRenameExample?.(exampleId, editingName);
+      const updated = await onRenameExample?.(exampleId, editingName);
+      if (updated) {
+        setRequestExamples(prev => ({
+          ...prev,
+          [updated.request_id]: (prev[updated.request_id] || []).map((example) => (
+            example.id === exampleId ? { ...example, name: updated.name } : example
+          )),
+        }));
+      }
     }
     setEditingId(null);
     setEditingName('');
@@ -473,6 +593,46 @@ export function Sidebar({
     }, 100);
   };
 
+  // Auto-reveal request when revealRequestId is set (e.g., from shared link)
+  useEffect(() => {
+    if (!revealRequestId || collections.length === 0) return;
+
+    // Find the request in collections
+    let targetRequest = null;
+    for (const collection of collections) {
+      const found = collection.requests?.find((r) => r.id === revealRequestId);
+      if (found) {
+        targetRequest = { ...found, collection_id: collection.id };
+        break;
+      }
+    }
+
+    if (!targetRequest) {
+      onRevealComplete?.();
+      return;
+    }
+
+    // Expand all parent collections
+    const collectionsToExpand = new Set();
+    let currentCollectionId = targetRequest.collection_id;
+    while (currentCollectionId) {
+      collectionsToExpand.add(currentCollectionId);
+      const parentCollection = collections.find((c) => c.id === currentCollectionId);
+      currentCollectionId = parentCollection?.parent_id;
+    }
+
+    setExpandedCollections((prev) => new Set([...prev, ...collectionsToExpand]));
+
+    // Scroll to the request after expansion
+    setTimeout(() => {
+      const requestElement = document.querySelector(`[data-request-id="${revealRequestId}"]`);
+      if (requestElement) {
+        requestElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      onRevealComplete?.();
+    }, 100);
+  }, [revealRequestId, collections, onRevealComplete]);
+
   // Recursive collection renderer
   const renderCollection = (collection, depth = 0) => {
     // Skip collections with no matching requests when searching
@@ -496,6 +656,7 @@ export function Sidebar({
           <span className="collection-arrow">
             {hasChildren ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
           </span>
+          {collection.parent_id && <Folder size={12} className="folder-icon" />}
           {editingId === collection.id ? (
             <input
               className="rename-input"
@@ -513,36 +674,46 @@ export function Sidebar({
             <span className="collection-name">{collection.name}</span>
           )}
           <div className="collection-actions">
-            <button
-              onClick={(e) => toggleCollectionMenu(collection.id, e)}
-              className="btn-icon small btn-menu"
-              title="More actions"
-            >
-              <MoreHorizontal size={14} />
-            </button>
+            {pendingCollectionIds.has(collection.id) ? (
+              <span className="sidebar-inline-spinner" title="Updating folder">
+                <span className="loading-spinner small" />
+              </span>
+            ) : (
+              <button
+                onClick={(e) => toggleCollectionMenu(collection.id, e)}
+                className="btn-icon small btn-menu"
+                title="More actions"
+              >
+                <MoreHorizontal size={14} />
+              </button>
+            )}
             {collectionMenuOpen === collection.id && (
               <div className="request-menu collection-menu" ref={collectionMenuRef}>
-                <button
-                  className="request-menu-item"
-                  onClick={(e) => handleCollectionMenuAction('add-request', collection, e)}
-                >
-                  <Plus size={14} />
-                  Add Request
-                </button>
-                <button
-                  className="request-menu-item"
-                  onClick={(e) => handleCollectionMenuAction('add-folder', collection, e)}
-                >
-                  <FolderPlus size={14} />
-                  Add Folder
-                </button>
-                <button
-                  className="request-menu-item"
-                  onClick={(e) => handleCollectionMenuAction('rename', collection, e)}
-                >
-                  <Edit2 size={14} />
-                  Rename
-                </button>
+                {canEdit && (
+                  <>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('add-request', collection, e)}
+                    >
+                      <Plus size={14} />
+                      Add Request
+                    </button>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('add-folder', collection, e)}
+                    >
+                      <FolderPlus size={14} />
+                      Add Folder
+                    </button>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('rename', collection, e)}
+                    >
+                      <Edit2 size={14} />
+                      Rename
+                    </button>
+                  </>
+                )}
                 {!collection.parent_id && (
                   <button
                     className="request-menu-item"
@@ -552,14 +723,18 @@ export function Sidebar({
                     Export
                   </button>
                 )}
-                <div className="request-menu-divider" />
-                <button
-                  className="request-menu-item danger"
-                  onClick={(e) => handleCollectionMenuAction('delete', collection, e)}
-                >
-                  <Trash2 size={14} />
-                  Delete
-                </button>
+                {canEdit && (
+                  <>
+                    <div className="request-menu-divider" />
+                    <button
+                      className="request-menu-item danger"
+                      onClick={(e) => handleCollectionMenuAction('delete', collection, e)}
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -578,18 +753,20 @@ export function Sidebar({
                   const isRequestExpanded = expandedRequests.has(request.id);
                   const examples = requestExamples[request.id] || [];
                   const hasExamples = request.example_count > 0 || examples.length > 0;
+                  const requestPending = pendingRequestIds.has(request.id) || pendingExampleListRequestIds.has(request.id);
 
                   return (
                     <div key={request.id} className="request-wrapper">
                       <div
                         className={`request-item ${isSelected ? 'selected' : ''} ${draggedRequest?.id === request.id ? 'dragging' : ''} ${dragOverRequest === request.id ? 'drag-over' : ''}`}
+                        data-request-id={request.id}
                         onClick={() => onSelectRequest(request)}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, request, collection.id)}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={(e) => handleDragOver(e, request)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, request, collection.id, collection.requests)}
+                        draggable={canEdit}
+                        onDragStart={canEdit ? (e) => handleDragStart(e, request, collection.id) : undefined}
+                        onDragEnd={canEdit ? handleDragEnd : undefined}
+                        onDragOver={canEdit ? (e) => handleDragOver(e, request) : undefined}
+                        onDragLeave={canEdit ? handleDragLeave : undefined}
+                        onDrop={canEdit ? (e) => handleDrop(e, request, collection.id, collection.requests) : undefined}
                       >
                         {hasExamples ? (
                           <span
@@ -624,58 +801,91 @@ export function Sidebar({
                           <span className="request-name">{request.name}</span>
                         )}
                         <div className="request-actions">
-                          <button
-                            onClick={(e) => toggleMenu(request.id, e)}
-                            className="btn-icon small btn-menu"
-                            title="More actions"
-                          >
-                            <MoreHorizontal size={14} />
-                          </button>
+                          {requestPending ? (
+                            <span className="sidebar-inline-spinner" title="Updating request">
+                              <span className="loading-spinner small" />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => toggleMenu(request.id, e)}
+                              className="btn-icon small btn-menu"
+                              title="More actions"
+                            >
+                              <MoreHorizontal size={14} />
+                            </button>
+                          )}
                           {menuOpen === request.id && (
                             <div className="request-menu" ref={menuRef}>
+                              {canEdit && (
+                                <>
+                                  <button
+                                    className="request-menu-item"
+                                    onClick={(e) => handleMenuAction('add-example', request, e)}
+                                  >
+                                    <Plus size={14} />
+                                    Add Example
+                                  </button>
+                                  <button
+                                    className="request-menu-item"
+                                    onClick={(e) => handleMenuAction('rename', request, e)}
+                                  >
+                                    <Edit2 size={14} />
+                                    Rename
+                                  </button>
+                                  <button
+                                    className="request-menu-item"
+                                    onClick={(e) => handleMenuAction('duplicate', request, e)}
+                                  >
+                                    <Copy size={14} />
+                                    Duplicate
+                                  </button>
+                                  <button
+                                    className="request-menu-item"
+                                    onClick={(e) => handleMoveToAction(request, e)}
+                                  >
+                                    <FolderInput size={14} />
+                                    Move to...
+                                  </button>
+                                </>
+                              )}
                               <button
                                 className="request-menu-item"
-                                onClick={(e) => handleMenuAction('add-example', request, e)}
+                                onClick={(e) => handleMenuAction('share', request, e)}
                               >
-                                <Plus size={14} />
-                                Add Example
+                                <Share2 size={14} />
+                                Share
                               </button>
-                              <button
-                                className="request-menu-item"
-                                onClick={(e) => handleMenuAction('rename', request, e)}
-                              >
-                                <Edit2 size={14} />
-                                Rename
-                              </button>
-                              <button
-                                className="request-menu-item"
-                                onClick={(e) => handleMenuAction('duplicate', request, e)}
-                              >
-                                <Copy size={14} />
-                                Duplicate
-                              </button>
-                              <button
-                                className="request-menu-item"
-                                onClick={(e) => handleMoveToAction(request, e)}
-                              >
-                                <FolderInput size={14} />
-                                Move to...
-                              </button>
-                              <div className="request-menu-divider" />
-                              <button
-                                className="request-menu-item danger"
-                                onClick={(e) => handleMenuAction('delete', request, e)}
-                              >
-                                <Trash2 size={14} />
-                                Delete
-                              </button>
+                              {canEdit && (
+                                <>
+                                  <div className="request-menu-divider" />
+                                  <button
+                                    className="request-menu-item danger"
+                                    onClick={(e) => handleMenuAction('delete', request, e)}
+                                  >
+                                    <Trash2 size={14} />
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>
                       </div>
 
                       {/* Examples as children */}
-                      {isRequestExpanded && examples.length > 0 && (
+                      {isRequestExpanded && loadingExamples[request.id] && (
+                        <div className="examples-list-sidebar examples-loading">
+                          <div className="loading-spinner small" />
+                          <span className="loading-text">Loading...</span>
+                        </div>
+                      )}
+                      {isRequestExpanded && pendingExampleListRequestIds.has(request.id) && !loadingExamples[request.id] && (
+                        <div className="examples-list-sidebar examples-loading">
+                          <div className="loading-spinner small" />
+                          <span className="loading-text">Updating...</span>
+                        </div>
+                      )}
+                      {isRequestExpanded && !loadingExamples[request.id] && examples.length > 0 && (
                         <div className="examples-list-sidebar">
                           {examples.map((example) => (
                             <div
@@ -704,37 +914,58 @@ export function Sidebar({
                                 {example.response_data?.status || '---'}
                               </span>
                               <div className="example-actions">
-                                <button
-                                  onClick={(e) => toggleExampleMenu(example.id, e)}
-                                  className="btn-icon small btn-menu"
-                                  title="More actions"
-                                >
-                                  <MoreHorizontal size={12} />
-                                </button>
+                                {pendingExampleIds.has(example.id) ? (
+                                  <span className="sidebar-inline-spinner" title="Updating example">
+                                    <span className="loading-spinner small" />
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={(e) => toggleExampleMenu(example.id, e)}
+                                    className="btn-icon small btn-menu"
+                                    title="More actions"
+                                  >
+                                    <MoreHorizontal size={12} />
+                                  </button>
+                                )}
                                 {exampleMenuOpen === example.id && (
                                   <div className="request-menu example-menu" ref={exampleMenuRef}>
+                                    {canEdit && (
+                                      <>
+                                        <button
+                                          className="request-menu-item"
+                                          onClick={(e) => handleExampleMenuAction('rename', example, request, e)}
+                                        >
+                                          <Edit2 size={14} />
+                                          Rename
+                                        </button>
+                                        <button
+                                          className="request-menu-item"
+                                          onClick={(e) => handleExampleMenuAction('duplicate', example, request, e)}
+                                        >
+                                          <Copy size={14} />
+                                          Duplicate
+                                        </button>
+                                      </>
+                                    )}
                                     <button
                                       className="request-menu-item"
-                                      onClick={(e) => handleExampleMenuAction('rename', example, request, e)}
+                                      onClick={(e) => handleExampleMenuAction('share', example, request, e)}
                                     >
-                                      <Edit2 size={14} />
-                                      Rename
+                                      <Share2 size={14} />
+                                      Share
                                     </button>
-                                    <button
-                                      className="request-menu-item"
-                                      onClick={(e) => handleExampleMenuAction('duplicate', example, request, e)}
-                                    >
-                                      <Copy size={14} />
-                                      Duplicate
-                                    </button>
-                                    <div className="request-menu-divider" />
-                                    <button
-                                      className="request-menu-item danger"
-                                      onClick={(e) => handleExampleMenuAction('delete', example, request, e)}
-                                    >
-                                      <Trash2 size={14} />
-                                      Delete
-                                    </button>
+                                    {canEdit && (
+                                      <>
+                                        <div className="request-menu-divider" />
+                                        <button
+                                          className="request-menu-item danger"
+                                          onClick={(e) => handleExampleMenuAction('delete', example, request, e)}
+                                        >
+                                          <Trash2 size={14} />
+                                          Delete
+                                        </button>
+                                      </>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -786,14 +1017,16 @@ export function Sidebar({
           >
             <ChevronsDownUp size={14} />
           </button>
-          <button
-            onClick={onCreateCollection}
-            className="btn-icon small"
-            title={canAddCollection ? "New Collection" : "Select a workspace first"}
-            disabled={!canAddCollection}
-          >
-            <Plus size={14} />
-          </button>
+          {canEdit && (
+            <button
+              onClick={onCreateCollection}
+              className="btn-icon small"
+              title={canAddCollection ? "New Collection" : "Select a workspace first"}
+              disabled={!canAddCollection}
+            >
+              <Plus size={14} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -808,7 +1041,12 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-content">
-        {collections.length === 0 ? (
+        {loading ? (
+          <div className="loading-container">
+            <div className="loading-spinner medium" />
+            <span className="loading-text">Loading collections...</span>
+          </div>
+        ) : collections.length === 0 ? (
           <div className="sidebar-empty">
             No collections yet.
             <br />

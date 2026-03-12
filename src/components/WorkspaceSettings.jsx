@@ -1,37 +1,24 @@
 import { useState, useEffect } from 'react';
 import {
   X,
-  Users,
   Settings,
   Trash2,
-  UserPlus,
   AlertTriangle,
-  Crown,
-  Code,
-  Eye,
-  MoreVertical,
 } from 'lucide-react';
 
 export function WorkspaceSettings({
   workspace,
-  members,
   onClose,
   onUpdateWorkspace,
-  onAddMember,
-  onRemoveMember,
   onDeleteWorkspace,
-  currentUserId,
   isAdmin,
 }) {
   const [activeTab, setActiveTab] = useState('general');
   const [workspaceName, setWorkspaceName] = useState(workspace?.name || '');
   const [workspaceDescription, setWorkspaceDescription] = useState(workspace?.description || '');
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [showMemberDropdown, setShowMemberDropdown] = useState(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [addingMember, setAddingMember] = useState(false);
 
   useEffect(() => {
     setWorkspaceName(workspace?.name || '');
@@ -51,49 +38,14 @@ export function WorkspaceSettings({
     }
   };
 
-  const handleAddMember = async (e) => {
-    e.preventDefault();
-    if (!newMemberEmail.trim()) return;
-    setAddingMember(true);
-    try {
-      await onAddMember(workspace.id, newMemberEmail.trim());
-      setNewMemberEmail('');
-    } finally {
-      setAddingMember(false);
-    }
-  };
-
-  const handleRemoveMember = async (userId) => {
-    await onRemoveMember(workspace.id, userId);
-  };
-
   const handleDeleteWorkspace = async () => {
     if (deleteConfirmText !== workspace.name) return;
     await onDeleteWorkspace(workspace.id);
     onClose();
   };
 
-  const getRoleIcon = (role) => {
-    switch (role) {
-      case 'admin': return <Crown size={12} />;
-      case 'developer': return <Code size={12} />;
-      case 'reader': return <Eye size={12} />;
-      default: return null;
-    }
-  };
-
-  const getRoleLabel = (role) => {
-    switch (role) {
-      case 'admin': return 'Admin';
-      case 'developer': return 'Developer';
-      case 'reader': return 'Reader';
-      default: return role;
-    }
-  };
-
   const tabs = [
     { id: 'general', label: 'General', icon: Settings },
-    { id: 'members', label: 'Members', icon: Users, count: members?.length },
     { id: 'danger', label: 'Danger Zone', icon: AlertTriangle },
   ];
 
@@ -157,87 +109,6 @@ export function WorkspaceSettings({
                     {saving ? 'Saving...' : 'Save Changes'}
                   </button>
                 )}
-              </div>
-            )}
-
-            {activeTab === 'members' && (
-              <div className="settings-section">
-                {isAdmin && (
-                  <>
-                    <div className="section-title">Add Existing User</div>
-                    <form className="add-member-form" onSubmit={handleAddMember}>
-                      <input
-                        type="email"
-                        value={newMemberEmail}
-                        onChange={e => setNewMemberEmail(e.target.value)}
-                        placeholder="Email address of existing user"
-                        required
-                      />
-                      <button
-                        type="submit"
-                        className="btn-primary"
-                        disabled={addingMember || !newMemberEmail.trim()}
-                      >
-                        <UserPlus size={14} />
-                        {addingMember ? 'Adding...' : 'Add'}
-                      </button>
-                    </form>
-                    <p className="add-member-hint">
-                      Only existing users can be added. Use User Management to invite new users.
-                    </p>
-                  </>
-                )}
-
-                <div className="section-title" style={{ marginTop: isAdmin ? '24px' : 0 }}>
-                  Members ({members?.length || 0})
-                </div>
-                <div className="members-list">
-                  {members?.map(member => (
-                    <div key={member.user_id} className="member-item">
-                      <div className="member-avatar">
-                        {(member.email || 'U')[0].toUpperCase()}
-                      </div>
-                      <div className="member-info">
-                        <div className="member-email">{member.email || 'Unknown'}</div>
-                        <div className={`member-role role-${member.role}`}>
-                          {getRoleIcon(member.role)}
-                          {getRoleLabel(member.role)}
-                        </div>
-                      </div>
-                      {isAdmin && member.user_id !== currentUserId && (
-                        <div className="member-actions">
-                          <div className="member-dropdown-container">
-                            <button
-                              className="btn-icon"
-                              onClick={() => setShowMemberDropdown(
-                                showMemberDropdown === member.user_id ? null : member.user_id
-                              )}
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                            {showMemberDropdown === member.user_id && (
-                              <div className="member-dropdown">
-                                <button
-                                  className="dropdown-item danger"
-                                  onClick={() => {
-                                    handleRemoveMember(member.user_id);
-                                    setShowMemberDropdown(null);
-                                  }}
-                                >
-                                  <Trash2 size={14} />
-                                  Remove from Workspace
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      {member.user_id === currentUserId && (
-                        <span className="you-badge">You</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
