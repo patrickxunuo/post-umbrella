@@ -345,27 +345,24 @@ export function EnvVariableInput({
   const saveVariable = async () => {
     if (!activeEnvironment || !hoveredVar) return;
 
-    const updatedVariables = activeEnvironment.variables.map(v => {
-      if (v.key === hoveredVar.name) {
-        return { ...v, value: editValue };
-      }
-      return v;
-    });
-
-    // Check if variable exists, if not add it
-    const exists = activeEnvironment.variables.some(v => v.key === hoveredVar.name);
-    if (!exists) {
-      updatedVariables.push({
-        key: hoveredVar.name,
-        value: editValue,
-        enabled: true,
-      });
-    }
-
     try {
-      await data.updateEnvironment(activeEnvironment.id, {
-        variables: updatedVariables,
-      });
+      const exists = activeEnvironment.variables.some(v => v.key === hoveredVar.name);
+
+      if (!exists) {
+        // Variable doesn't exist yet — add it via updateEnvironment
+        const updatedVariables = [
+          ...activeEnvironment.variables,
+          { key: hoveredVar.name, value: editValue, enabled: true },
+        ];
+        await data.updateEnvironment(activeEnvironment.id, {
+          variables: updatedVariables,
+        });
+      } else {
+        // Variable exists — update user's current value
+        await data.updateCurrentValues(activeEnvironment.id, {
+          [hoveredVar.name]: editValue,
+        });
+      }
       onEnvironmentUpdate?.();
     } catch (err) {
       console.error('Failed to update environment variable:', err);

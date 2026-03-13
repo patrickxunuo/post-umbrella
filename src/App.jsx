@@ -775,7 +775,7 @@ function AppContent() {
             dirty={activeTab?.dirty}
             isTemporary={activeTab?.isTemporary}
             activeEnvironment={activeEnvironment}
-            onEnvironmentUpdate={loadEnvironments}
+            onEnvironmentUpdate={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
             height={requestEditorHeight}
             activeDetailTab={activeTab?.activeDetailTab || 'params'}
             onActiveDetailTabChange={updateActiveDetailTab}
