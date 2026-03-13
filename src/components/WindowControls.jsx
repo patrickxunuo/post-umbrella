@@ -3,7 +3,7 @@ import { Minus, Square, Copy, X } from 'lucide-react';
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
 
-export function WindowControls() {
+export function WindowControls({ className = '', compact = false }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export function WindowControls() {
   };
 
   return (
-    <div className="window-controls">
+    <div className={`window-controls ${compact ? 'window-controls-compact' : ''} ${className}`.trim()}>
       <button className="window-control-btn" onClick={handleMinimize} title="Minimize">
         <Minus size={14} />
       </button>

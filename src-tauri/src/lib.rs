@@ -8,6 +8,12 @@ fn log_to_file(msg: &str) {
   let _ = fs::write(path, format!("{}{}\n", existing, msg));
 }
 
+fn extract_deep_link(argv: &[String]) -> Option<String> {
+  argv.iter()
+    .find(|arg| arg.starts_with("postumbrella://"))
+    .cloned()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   // Log the command line args (deep link URL comes as an arg on Windows)
@@ -15,6 +21,19 @@ pub fn run() {
   log_to_file(&format!("App started with args: {:?}", args));
 
   tauri::Builder::default()
+    .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+      log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
+
+      if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+      }
+
+      if let Some(url) = extract_deep_link(&argv) {
+        inject_tokens(app, &url);
+      }
+    }))
     .plugin(tauri_plugin_window_state::Builder::new().build())
     .plugin(tauri_plugin_deep_link::init())
     .setup(|app| {
@@ -53,16 +72,13 @@ pub fn run() {
 
       // Also check command line args (Windows passes deep link as first arg)
       let args: Vec<String> = std::env::args().collect();
-      if args.len() > 1 {
-        let url = args[1].clone();
+      if let Some(url) = extract_deep_link(&args) {
         log_to_file(&format!("Deep link from CLI arg: {}", url));
-        if url.starts_with("postumbrella://") {
-          let handle = app.handle().clone();
-          std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(3));
-            inject_tokens(&handle, &url);
-          });
-        }
+        let handle = app.handle().clone();
+        std::thread::spawn(move || {
+          std::thread::sleep(Duration::from_secs(3));
+          inject_tokens(&handle, &url);
+        });
       }
 
       Ok(())
