@@ -956,21 +956,29 @@ export const deleteEnvironment = async (id) => {
 
 // Proxy - send HTTP request via Edge Function
 export const sendRequest = async (data) => {
-  // Check if localhost - send directly from browser
-  const isLocalhost = (url) => {
+  // Check if URL points to a local/private address (should bypass remote proxy)
+  const isLocal = (url) => {
     try {
       let urlToParse = url;
       if (!url.match(/^https?:\/\//i)) {
         urlToParse = 'http://' + url;
       }
       const parsed = new URL(urlToParse);
-      return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      const h = parsed.hostname;
+      // Explicit localhost
+      if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+      // Local TLDs (Herd, Valet, dnsmasq, etc.)
+      if (/\.(test|local|localhost|invalid|example|wip|ddev\.site)$/i.test(h)) return true;
+      // Private IP ranges
+      if (/^10\./.test(h) || /^192\.168\./.test(h)) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+      return false;
     } catch (e) {
       return false;
     }
   };
 
-  if (isLocalhost(data.url)) {
+  if (isLocal(data.url)) {
     return sendDirectRequest(data);
   }
 
