@@ -233,6 +233,7 @@ body {
   border-bottom: 1px solid var(--border-primary);
   z-index: 100;
   flex-shrink: 0;
+  position: relative;
 }
 
 .header-left {
@@ -268,6 +269,127 @@ body {
   gap: var(--space-3);
 }
 
+/* Window Controls (Tauri desktop only) */
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  z-index: 200;
+  -webkit-app-region: no-drag;
+}
+
+.window-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  min-height: 38px;
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 0;
+  transition: background 0.12s, color 0.12s;
+  padding: 0;
+}
+
+.window-control-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.window-control-close:hover {
+  background: #e81123;
+  color: white;
+}
+
+/* Tauri desktop: compact header */
+.tauri .app-header {
+  padding: 0 12px;
+  padding-right: 142px;
+  min-height: 36px;
+}
+
+.tauri .app-logo {
+  width: 18px;
+  height: 18px;
+}
+
+.tauri .app-header h1 {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.tauri .app-title {
+  gap: 6px;
+}
+
+.tauri .header-left {
+  gap: 8px;
+}
+
+.tauri .header-right {
+  gap: 8px;
+}
+
+.tauri .user-menu {
+  padding-left: 8px;
+}
+
+.tauri .user-menu-trigger {
+  padding: 3px 8px;
+}
+
+.tauri .user-email {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.tauri .user-dropdown {
+  min-width: 180px;
+}
+
+.tauri .env-selector-trigger {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  max-width: 160px;
+}
+
+.tauri .import-dropdown-trigger {
+  padding: 4px 8px;
+  font-size: 11px;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.tauri .theme-toggle {
+  gap: 4px;
+  padding: 2px;
+}
+
+.tauri .theme-toggle button {
+  padding: 4px;
+}
+
+.tauri .theme-toggle button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tauri .btn-admin {
+  padding: 5px;
+  border-radius: var(--radius-sm);
+}
+
+.tauri .header-presence-group {
+  gap: 6px;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
@@ -276,17 +398,106 @@ body {
 
 /* User Menu */
 .user-menu {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
   padding-left: var(--space-3);
   border-left: 1px solid var(--border-primary);
+}
+
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: var(--text-secondary);
+}
+
+.user-menu-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-primary);
 }
 
 .user-email {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.user-dropdown-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+}
+
+.user-dropdown-email {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.user-dropdown-role {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: capitalize;
+}
+
+.user-dropdown-divider {
+  height: 1px;
+  background: var(--border-primary);
+}
+
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.user-dropdown-item:hover {
+  background: var(--bg-hover);
+}
+
+.user-dropdown-item.danger {
+  color: var(--accent-danger);
+}
+
+.user-dropdown-item.danger:hover {
+  background: rgba(var(--accent-danger-rgb), 0.1);
+}
+
+.dropdown-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
 }
 
 /* Buttons */
@@ -486,23 +697,6 @@ body {
   color: var(--text-primary);
 }
 
-.btn-logout {
-  padding: 8px 14px;
-  background: transparent;
-  border: 1px solid var(--border-primary);
-  color: var(--text-secondary);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.15s ease;
-}
-
-.btn-logout:hover {
-  background: rgba(var(--accent-danger-rgb), 0.1);
-  border-color: var(--accent-danger);
-  color: var(--accent-danger);
-}
 
 .btn-admin {
   display: flex;

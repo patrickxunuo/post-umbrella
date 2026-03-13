@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus } from 'lucide-react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, Minus, Square, Copy, LogOut, ChevronDown } from 'lucide-react';
+import { WindowControls } from './components/WindowControls';
+import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
 import { RequestEditor } from './components/RequestEditor';
@@ -141,6 +143,7 @@ function upsertExampleInList(examples, example) {
 function AppContent() {
   const [showEnvEditor, setShowEnvEditor] = useState(false);
   const [showImportCurl, setShowImportCurl] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
   const toast = useToast();
@@ -597,6 +600,11 @@ function AppContent() {
     return null;
   }
 
+  // Show auth callback page (deep link handoff to desktop app)
+  if (window.location.pathname === '/auth/callback') {
+    return <AuthCallback />;
+  }
+
   // Show login if not authenticated
   if (!user) {
     return <Login onLogin={handleLogin} />;
@@ -610,7 +618,7 @@ function AppContent() {
           <button onClick={() => window.location.reload()}>Refresh</button>
         </div>
       )}
-      <header className="app-header">
+      <header className="app-header" data-tauri-drag-region>
         <div className="header-left">
           <div className="app-title">
             <img src="/umbrella.svg" alt="" className="app-logo" />
@@ -660,10 +668,29 @@ function AppContent() {
             />
           </div>
           <div className="user-menu">
-            <span className="user-email">{user.email}</span>
-            <button className="btn-logout" onClick={handleLogout}>Logout</button>
+            <button className="user-menu-trigger" onClick={() => setShowUserDropdown(prev => !prev)}>
+              <span className="user-email">{user.email}</span>
+              <ChevronDown size={12} />
+            </button>
+            {showUserDropdown && (
+              <>
+                <div className="dropdown-backdrop" onClick={() => setShowUserDropdown(false)} />
+                <div className="user-dropdown">
+                  <div className="user-dropdown-header">
+                    <span className="user-dropdown-email">{user.email}</span>
+                    {userProfile?.role && <span className="user-dropdown-role">{userProfile.role}</span>}
+                  </div>
+                  <div className="user-dropdown-divider" />
+                  <button className="user-dropdown-item danger" onClick={() => { setShowUserDropdown(false); handleLogout(); }}>
+                    <LogOut size={14} />
+                    Sign Out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
+        <WindowControls />
       </header>
 
       <div className="app-body">

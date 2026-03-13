@@ -61,7 +61,7 @@ export const sendMagicLink = async (email) => {
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: import.meta.env.VITE_AUTH_CALLBACK_URL || `${window.location.origin}/auth/callback`,
     },
   });
   if (error) throw new Error(error.message);

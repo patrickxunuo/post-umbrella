@@ -9,12 +9,16 @@
     "server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-json": "^6.0.2",
     "@supabase/supabase-js": "^2.39.0",
+    "@tauri-apps/api": "^2.10.1",
     "@uiw/react-codemirror": "^4.25.7",
     "@uiw/react-json-view": "^2.0.0-alpha.41",
     "axios": "^1.6.2",
@@ -32,12 +36,14 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@tauri-apps/cli": "^2.10.1",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "vite": "^5.4.2"
   },
   "optionalDependencies": {
-    "@rollup/rollup-win32-x64-msvc": "^4.59.0"
+    "@rollup/rollup-win32-x64-msvc": "^4.59.0",
+    "@tauri-apps/cli-win32-x64-msvc": "^2.10.1"
   },
   "volta": {
     "node": "22.22.1"
