@@ -190,6 +190,67 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     });
   }, [openTabs]);
 
+  // Apply UI state transferred from web via "Open in App" deep link
+  const transferHandledRef = useRef(false);
+  useEffect(() => {
+    if (transferHandledRef.current || collectionsLoading || !user) return;
+    const transfer = window.__DESKTOP_TRANSFER__;
+    if (!transfer) return;
+    transferHandledRef.current = true;
+    delete window.__DESKTOP_TRANSFER__;
+
+    const hasTabs = transfer.tabIds.length > 0;
+    const hasSidebar = transfer.expandedCollections.length > 0 || transfer.expandedRequests.length > 0;
+    if (!hasTabs && !hasSidebar) return;
+
+    (async () => {
+      const accepted = await confirm({
+        title: 'Restore browser session?',
+        message: 'Apply your open tabs and sidebar state from the browser?',
+        confirmText: 'Restore',
+        cancelText: 'Skip',
+      });
+      if (!accepted) return;
+
+      // Restore expanded state
+      if (transfer.expandedCollections.length) {
+        localStorage.setItem('expandedCollections', JSON.stringify(transfer.expandedCollections));
+      }
+      if (transfer.expandedRequests.length) {
+        localStorage.setItem('expandedRequests', JSON.stringify(transfer.expandedRequests));
+      }
+      // Dispatch event so Sidebar picks up new expanded state without reload
+      window.dispatchEvent(new CustomEvent('expanded-state-updated'));
+
+      // Fetch and open transferred tabs
+      if (transfer.tabIds.length === 0) return;
+      const newTabs = (await Promise.all(
+        transfer.tabIds.map(async (id) => {
+          try {
+            const fullRequest = await data.getRequest(id);
+            const hasBody = fullRequest.body_type && fullRequest.body_type !== 'none';
+            return {
+              id: `request-${id}`,
+              type: 'request',
+              entityId: id,
+              request: fullRequest,
+              dirty: false,
+              response: null,
+              activeDetailTab: hasBody ? 'body' : 'params',
+            };
+          } catch {
+            return null;
+          }
+        })
+      )).filter(Boolean);
+
+      if (newTabs.length > 0) {
+        setOpenTabs(newTabs);
+        setActiveTabId(transfer.activeTabId ? `request-${transfer.activeTabId}` : newTabs[0].id);
+      }
+    })();
+  }, [collectionsLoading, confirm, setOpenTabs, setActiveTabId, user]);
+
   const {
     openRequestInTab,
     openExampleInTab,

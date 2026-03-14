@@ -61,7 +61,7 @@ export const sendMagicLink = async (email) => {
   const { data, error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: import.meta.env.VITE_AUTH_CALLBACK_URL || `${window.location.origin}/auth/callback`,
     },
   });
   if (error) throw new Error(error.message);
@@ -109,6 +109,32 @@ export const logout = async () => {
 };
 
 export const checkAuth = async () => {
+  // If desktop app received auth tokens via deep link, set session explicitly
+  if (window.__DEEP_LINK_AUTH__) {
+    const { access_token, refresh_token } = window.__DEEP_LINK_AUTH__;
+    delete window.__DEEP_LINK_AUTH__;
+    if (access_token && refresh_token) {
+      // Try setSession first (works if access token is still valid)
+      let { data: { session }, error } = await supabase.auth.setSession({ access_token, refresh_token });
+
+      // If access token expired, refresh using the refresh token
+      if (error || !session) {
+        const refreshResult = await supabase.auth.refreshSession({ refresh_token });
+        session = refreshResult.data?.session;
+        error = refreshResult.error;
+      }
+
+      if (error || !session?.user) {
+        const msg = error?.message || 'Failed to authenticate from deep link';
+        window.__DEEP_LINK_AUTH_ERROR__ = msg;
+        throw new Error(msg);
+      }
+      currentUser = { id: session.user.id, email: session.user.email };
+      return currentUser;
+    }
+    throw new Error('Failed to authenticate from deep link');
+  }
+
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw new Error(error.message);
   if (!session) throw new Error('Not authenticated');
@@ -118,6 +144,24 @@ export const checkAuth = async () => {
     email: session.user.email,
   };
   return currentUser;
+};
+
+export const getDesktopDeepLink = async (uiState = {}) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+  const params = new URLSearchParams({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    expires_in: String(session.expires_in || 3600),
+    expires_at: String(session.expires_at || Math.floor(Date.now() / 1000) + 3600),
+    token_type: 'bearer',
+    type: 'magiclink',
+  });
+  if (uiState.tabIds?.length) params.set('_t', uiState.tabIds.join(','));
+  if (uiState.activeTabId) params.set('_at', uiState.activeTabId);
+  if (uiState.expandedCollections?.length) params.set('_ec', uiState.expandedCollections.join(','));
+  if (uiState.expandedRequests?.length) params.set('_er', uiState.expandedRequests.join(','));
+  return `postumbrella://auth?${params.toString()}`;
 };
 
 // Subscribe to auth state changes (for handling async hash token processing)
@@ -956,21 +1000,29 @@ export const deleteEnvironment = async (id) => {
 
 // Proxy - send HTTP request via Edge Function
 export const sendRequest = async (data) => {
-  // Check if localhost - send directly from browser
-  const isLocalhost = (url) => {
+  // Check if URL points to a local/private address (should bypass remote proxy)
+  const isLocal = (url) => {
     try {
       let urlToParse = url;
       if (!url.match(/^https?:\/\//i)) {
         urlToParse = 'http://' + url;
       }
       const parsed = new URL(urlToParse);
-      return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1';
+      const h = parsed.hostname;
+      // Explicit localhost
+      if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
+      // Local TLDs (Herd, Valet, dnsmasq, etc.)
+      if (/\.(test|local|localhost|invalid|example|wip|ddev\.site)$/i.test(h)) return true;
+      // Private IP ranges
+      if (/^10\./.test(h) || /^192\.168\./.test(h)) return true;
+      if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+      return false;
     } catch (e) {
       return false;
     }
   };
 
-  if (isLocalhost(data.url)) {
+  if (isLocal(data.url)) {
     return sendDirectRequest(data);
   }
 
@@ -1014,7 +1066,17 @@ export const sendRequest = async (data) => {
   return response.json();
 };
 
-// Direct request for localhost
+// Get the appropriate fetch function (native in Tauri, browser otherwise)
+let _tauriFetch = null;
+const getNativeFetch = async () => {
+  if (!('__TAURI_INTERNALS__' in window)) return window.fetch.bind(window);
+  if (_tauriFetch) return _tauriFetch;
+  const { fetch: tFetch } = await import('@tauri-apps/plugin-http');
+  _tauriFetch = tFetch;
+  return _tauriFetch;
+};
+
+// Direct request for localhost (uses native fetch in Tauri to bypass macOS ATS)
 const sendDirectRequest = async (data) => {
   const { method, headers, body, bodyType, formData, timeout } = data;
   let url = data.url;
@@ -1024,6 +1086,8 @@ const sendDirectRequest = async (data) => {
   const startTime = Date.now();
 
   try {
+    const fetchFn = await getNativeFetch();
+
     const headersObj = {};
     if (Array.isArray(headers)) {
       headers.forEach(h => {
@@ -1066,7 +1130,7 @@ const sendDirectRequest = async (data) => {
     const timeoutId = setTimeout(() => controller.abort(), timeout || 30000);
     config.signal = controller.signal;
 
-    const response = await fetch(url, config);
+    const response = await fetchFn(url, config);
     clearTimeout(timeoutId);
 
     const endTime = Date.now();

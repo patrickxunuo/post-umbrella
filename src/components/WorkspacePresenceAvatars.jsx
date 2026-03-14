@@ -76,7 +76,7 @@ export function WorkspacePresenceAvatars({ user, activeWorkspace, userProfile })
             <div className="presence-tooltip">
               <div className="presence-tooltip-row">
                 {member.role && (
-                  <span className={`presence-tooltip-role ${member.role}`}>{member.role}</span>
+                  <span className={`presence-tooltip-role ${member.role}`}>{member.role === 'system' ? 'admin' : member.role}</span>
                 )}
                 <span className="presence-tooltip-email">{member.email}</span>
                 {isMe && <span className="presence-tooltip-you">(You)</span>}

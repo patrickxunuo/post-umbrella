@@ -1,21 +1,20 @@
 # Active Task
-- Skill: /ef-baseline
-- Skill file: .claude/skills/ef-baseline/SKILL.md
-- Action: next (Batch 5 complete)
-- Current step: Completed
-- Waiting for: nothing
+- Skill: /ef-implement
+- Skill file: .claude/skills/ef-implement/SKILL.md
+- Feature: magic-link-deep-link
+- Current step: Step 6: Final Verification
+- Waiting for: developer (Supabase dashboard config)
 
 ## Completed
-- [x] Batch 1-5 completed (22 flows)
-
-## Batch 5 Results: All Passed
-- [x] example-save — user can save request as example
-- [x] example-view — user can view a saved example
-- [x] example-delete — user can delete an example
-- [x] import-curl — user can import a cURL command
-- [x] import-postman — user can import a Postman collection file
+- [x] Step 0: Branch isolation (skipped)
+- [x] Step 1: Context read
+- [x] Step 2: Acceptance spec (inline in plan)
+- [x] CHECKPOINT 1: Developer confirmed
+- [x] Step 4/5: Implementation complete
+- [x] Build verified
 
 ## Key Artifacts
-- Test baseline: memory-bank/testBaseline.md
-- Auth state: e2e/.auth/user.json
-- Test files: e2e/example.spec.ts, e2e/import.spec.ts
+- Auth callback page: public/auth/callback/index.html
+- Deep link handler: src-tauri/src/lib.rs
+- Redirect URL: src/data/supabase/index.js (line 64)
+- Jira ticket: N/A

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as data from '../data/index.js';
+import { WindowControls } from './WindowControls';
 
 // Optional email domain restriction from env
 const EMAIL_DOMAIN = import.meta.env.VITE_EMAIL_DOMAIN || '';
@@ -109,6 +110,8 @@ export function Login({ onLogin }) {
   if (magicLinkSent) {
     return (
       <div className="login-container">
+        <div className="login-drag-region" data-tauri-drag-region />
+        <WindowControls className="login-window-controls" compact />
         <div className="login-box">
           <div className="login-logo">
             <img src="/umbrella.svg" alt="Post Umbrella" />
@@ -134,6 +137,8 @@ export function Login({ onLogin }) {
 
   return (
     <div className="login-container">
+      <div className="login-drag-region" data-tauri-drag-region />
+      <WindowControls className="login-window-controls" compact />
       <div className="login-box">
         <div className="login-logo">
           <img src="/umbrella.svg" alt="Post Umbrella" />

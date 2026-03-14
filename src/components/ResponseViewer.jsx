@@ -1,8 +1,33 @@
 import { useState, useMemo } from 'react';
+import { Monitor, Download, Terminal } from 'lucide-react';
 import JsonView from '@uiw/react-json-view';
 import { JsonEditor } from './JsonEditor';
 
-export function ResponseViewer({ response, loading, isExample, example, onExampleChange }) {
+const isTauri = () => '__TAURI_INTERNALS__' in window;
+
+const isLocalOrPrivateUrl = (url) => {
+  if (!url) return false;
+  try {
+    let urlToParse = url;
+    if (!url.match(/^https?:\/\//i)) urlToParse = 'http://' + url;
+    const parsed = new URL(urlToParse);
+    const hostname = parsed.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+    if (hostname.endsWith('.local') || hostname.endsWith('.test') || hostname.endsWith('.localhost')) return true;
+    // Private IP ranges
+    const parts = hostname.split('.').map(Number);
+    if (parts.length === 4 && parts.every(p => !isNaN(p))) {
+      if (parts[0] === 10) return true;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+      if (parts[0] === 192 && parts[1] === 168) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+export function ResponseViewer({ response, loading, isExample, example, onExampleChange, requestUrl }) {
   const [activeTab, setActiveTab] = useState('body');
 
   // For examples, use example.response_data
@@ -118,53 +143,67 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
 
   return (
     <div className="response-viewer">
-      <div className="response-meta">
-        {isExample ? (
-          <span className={`status ${getStatusClass(displayResponse?.status)}`}>
-            <input
-              type="number"
-              className="status-input"
-              value={displayResponse?.status || ''}
-              onChange={handleStatusChange}
-              placeholder="200"
-            />
-            <input
-              type="text"
-              className="status-text-input"
-              value={displayResponse?.statusText || ''}
-              onChange={(e) => {
-                onExampleChange?.({
-                  response_data: {
-                    ...displayResponse,
-                    statusText: e.target.value,
-                  }
-                });
-              }}
-              placeholder="OK"
-            />
-          </span>
-        ) : (
-          <span className={`status ${getStatusClass(displayResponse?.status)}`}>
-            {displayResponse?.status} {displayResponse?.statusText}
-          </span>
-        )}
-        <span className="time">{displayResponse?.time || 0} ms</span>
-        <span className="size">{formatSize(displayResponse?.size || 0)}</span>
-      </div>
-
-      <div className="response-tabs">
-        <button
-          className={activeTab === 'body' ? 'active' : ''}
-          onClick={() => setActiveTab('body')}
-        >
-          Body
-        </button>
-        <button
-          className={activeTab === 'headers' ? 'active' : ''}
-          onClick={() => setActiveTab('headers')}
-        >
-          Headers
-        </button>
+      <div className="response-toolbar">
+        <div className="response-tabs">
+          <button
+            className={activeTab === 'body' ? 'active' : ''}
+            onClick={() => setActiveTab('body')}
+          >
+            Body
+          </button>
+          <button
+            className={activeTab === 'headers' ? 'active' : ''}
+            onClick={() => setActiveTab('headers')}
+          >
+            Headers
+          </button>
+          {!isExample && (
+            <button
+              className={`${activeTab === 'console' ? 'active' : ''} ${displayResponse?.consoleLogs?.some(l => l.type === 'error') ? 'has-errors' : ''}`}
+              onClick={() => setActiveTab('console')}
+            >
+              Console
+              {displayResponse?.consoleLogs?.length > 0 && (
+                <span className={`console-badge ${displayResponse.consoleLogs.some(l => l.type === 'error') ? 'error' : ''}`}>
+                  {displayResponse.consoleLogs.length}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+        <div className="response-meta">
+          {isExample ? (
+            <span className={`status ${getStatusClass(displayResponse?.status)}`}>
+              <input
+                type="number"
+                className="status-input"
+                value={displayResponse?.status || ''}
+                onChange={handleStatusChange}
+                placeholder="200"
+              />
+              <input
+                type="text"
+                className="status-text-input"
+                value={displayResponse?.statusText || ''}
+                onChange={(e) => {
+                  onExampleChange?.({
+                    response_data: {
+                      ...displayResponse,
+                      statusText: e.target.value,
+                    }
+                  });
+                }}
+                placeholder="OK"
+              />
+            </span>
+          ) : (
+            <span className={`status ${getStatusClass(displayResponse?.status)}`}>
+              {displayResponse?.status} {displayResponse?.statusText}
+            </span>
+          )}
+          <span className="time">{displayResponse?.time || 0} ms</span>
+          <span className="size">{formatSize(displayResponse?.size || 0)}</span>
+        </div>
       </div>
 
       <div className="response-content">
@@ -223,6 +262,27 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           )
         )}
 
+        {activeTab === 'body' && !isExample && displayResponse?.error && displayResponse?.status === 0 && !isTauri() && (isLocalOrPrivateUrl(requestUrl) || isLocalOrPrivateUrl(displayResponse?.resolvedUrl)) && (
+          <div className="desktop-agent-banner">
+            <div className="desktop-agent-banner-icon">
+              <Monitor size={20} />
+            </div>
+            <div className="desktop-agent-banner-content">
+              <strong>Can't send request from the browser</strong>
+              <p>Requests to local and private URLs require the Post Umbrella desktop app.</p>
+            </div>
+            <a
+              className="desktop-agent-banner-action"
+              href="https://github.com/emonster-org/post-umbrella/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Download size={14} />
+              Download Desktop App
+            </a>
+          </div>
+        )}
+
         {activeTab === 'headers' && (
           <div className="response-headers">
             {displayResponse?.headers?.length > 0 ? (
@@ -244,6 +304,21 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               </table>
             ) : (
               <p>No headers</p>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'console' && (
+          <div className="response-console">
+            {displayResponse?.consoleLogs?.length > 0 ? (
+              displayResponse.consoleLogs.map((log, i) => (
+                <div key={i} className={`console-line console-${log.type}`}>
+                  <span className="console-source">{log.source}</span>
+                  <span className="console-message">{log.message}</span>
+                </div>
+              ))
+            ) : (
+              <div className="console-empty">No console output</div>
             )}
           </div>
         )}

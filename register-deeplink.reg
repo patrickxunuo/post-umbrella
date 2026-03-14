@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\postumbrella]
+@="URL:Post Umbrella"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\postumbrella\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\postumbrella\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\postumbrella\shell\open\command]
+@="\"D:\\post-umbrella\\src-tauri\\target\\release\\post-umbrella.exe\" \"%1\""

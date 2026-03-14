@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus } from 'lucide-react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor } from 'lucide-react';
+import { WindowControls } from './components/WindowControls';
+import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
 import { RequestEditor } from './components/RequestEditor';
@@ -141,6 +143,7 @@ function upsertExampleInList(examples, example) {
 function AppContent() {
   const [showEnvEditor, setShowEnvEditor] = useState(false);
   const [showImportCurl, setShowImportCurl] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
   const toast = useToast();
@@ -166,7 +169,6 @@ function AppContent() {
   const {
     activeWorkspace,
     workspaces,
-    workspaceMembers,
     showWorkspaceSettings,
     setShowWorkspaceSettings,
     showUserManagement,
@@ -180,8 +182,6 @@ function AppContent() {
     handleCreateWorkspace,
     handleOpenWorkspaceSettings,
     handleUpdateWorkspace,
-    handleAddWorkspaceMember,
-    handleRemoveWorkspaceMember,
     handleDeleteWorkspace,
     handleInviteUser,
     handleUpdateUser,
@@ -216,7 +216,6 @@ function AppContent() {
     setExamples,
     environments,
     activeEnvironment,
-    currentRootCollectionId,
     loadCollections,
     loadEnvironments,
     loading,
@@ -592,9 +591,31 @@ function AppContent() {
     }
   }, [authChecked]);
 
-  // Keep showing initial HTML loader while checking auth (render nothing)
+  // Show deep link auth error as toast once auth check completes
+  useEffect(() => {
+    if (!authChecked) return;
+    if (window.__DEEP_LINK_AUTH_ERROR__) {
+      toast.error(`Sign in failed: ${window.__DEEP_LINK_AUTH_ERROR__}`);
+      delete window.__DEEP_LINK_AUTH_ERROR__;
+    }
+  }, [authChecked, toast]);
+
+  // Show spinner while checking auth via deep link in desktop app
   if (!authChecked) {
+    if ('__TAURI_INTERNALS__' in window && window.__DEEP_LINK_AUTH__) {
+      return (
+        <div className="deeplink-auth-loader">
+          <div className="loading-spinner" />
+          <p>Signing in...</p>
+        </div>
+      );
+    }
     return null;
+  }
+
+  // Show auth callback page (deep link handoff to desktop app)
+  if (window.location.pathname === '/auth/callback') {
+    return <AuthCallback />;
   }
 
   // Show login if not authenticated
@@ -610,7 +631,7 @@ function AppContent() {
           <button onClick={() => window.location.reload()}>Refresh</button>
         </div>
       )}
-      <header className="app-header">
+      <header className="app-header" data-tauri-drag-region>
         <div className="header-left">
           <div className="app-title">
             <img src="/umbrella.svg" alt="" className="app-logo" />
@@ -660,10 +681,54 @@ function AppContent() {
             />
           </div>
           <div className="user-menu">
-            <span className="user-email">{user.email}</span>
-            <button className="btn-logout" onClick={handleLogout}>Logout</button>
+            <button className="user-menu-trigger" onClick={() => setShowUserDropdown(prev => !prev)}>
+              <span className="user-email">{user.email}</span>
+              <ChevronDown size={12} />
+            </button>
+            {showUserDropdown && (
+              <>
+                <div className="dropdown-backdrop" onClick={() => setShowUserDropdown(false)} />
+                <div className="user-dropdown">
+                  <div className="user-dropdown-header">
+                    <span className="user-dropdown-email">{user.email}</span>
+                    {userProfile?.role && <span className="user-dropdown-role">{userProfile.role}</span>}
+                  </div>
+                  {!('__TAURI_INTERNALS__' in window) && (
+                    <button className="user-dropdown-item" onClick={async () => {
+                      setShowUserDropdown(false);
+                      const tabIds = openTabs.filter(t => t.type === 'request').map(t => t.entityId || t.request?.id).filter(Boolean);
+                      const expandedC = JSON.parse(localStorage.getItem('expandedCollections') || '[]');
+                      const expandedR = JSON.parse(localStorage.getItem('expandedRequests') || '[]');
+                      const link = await data.getDesktopDeepLink({
+                        tabIds,
+                        activeTabId: activeTab?.entityId || activeTab?.request?.id,
+                        expandedCollections: expandedC,
+                        expandedRequests: expandedR,
+                      });
+                      if (link) {
+                        const a = document.createElement('a');
+                        a.href = link;
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                      }
+                    }}>
+                      <Monitor size={14} />
+                      Open in Desktop App
+                    </button>
+                  )}
+                  <div className="user-dropdown-divider" />
+                  <button className="user-dropdown-item danger" onClick={() => { setShowUserDropdown(false); handleLogout(); }}>
+                    <LogOut size={14} />
+                    Sign Out
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
+        <WindowControls />
       </header>
 
       <div className="app-body">
@@ -775,7 +840,7 @@ function AppContent() {
             dirty={activeTab?.dirty}
             isTemporary={activeTab?.isTemporary}
             activeEnvironment={activeEnvironment}
-            onEnvironmentUpdate={loadEnvironments}
+            onEnvironmentUpdate={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
             height={requestEditorHeight}
             activeDetailTab={activeTab?.activeDetailTab || 'params'}
             onActiveDetailTabChange={updateActiveDetailTab}
@@ -791,6 +856,7 @@ function AppContent() {
             isExample={activeTab?.type === 'example'}
             example={selectedExample}
             onExampleChange={activeTab?.type === 'example' ? updateTabExample : undefined}
+            requestUrl={activeTab?.type === 'example' ? null : (activeTab?.request?.url || selectedRequest?.url)}
           />
         </main>
 

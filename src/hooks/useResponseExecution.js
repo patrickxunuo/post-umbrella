@@ -40,9 +40,12 @@ export function useResponseExecution({
   }) => {
     setLoading(true);
     let scriptLogs = [];
+    let consoleLogs = [];
     let currentEnv = activeEnvironment;
 
     try {
+      consoleLogs.push({ type: 'info', source: 'system', message: `${method} ${url}`, timestamp: Date.now() });
+
       if (preScript) {
         const preResult = await executeScript(preScript, {
           environment: currentEnv,
@@ -50,8 +53,10 @@ export function useResponseExecution({
         });
 
         scriptLogs.push(...preResult.logs);
+        consoleLogs.push(...preResult.logs.map(l => ({ ...l, source: 'pre-script', timestamp: Date.now() })));
 
         if (!preResult.success) {
+          consoleLogs.push({ type: 'error', source: 'pre-script', message: `Error: ${preResult.errors[0]?.message || 'Unknown error'}`, timestamp: Date.now() });
           toast.error(`Pre-script error: ${preResult.errors[0]?.message || 'Unknown error'}`);
         }
 
@@ -131,7 +136,20 @@ export function useResponseExecution({
         requestPayload.body = resolvedBody;
       }
 
+      if (resolvedUrl !== url) {
+        consoleLogs.push({ type: 'info', source: 'system', message: `Resolved URL: ${resolvedUrl}`, timestamp: Date.now() });
+      }
+
       const result = await data.sendRequest(requestPayload);
+
+      consoleLogs.push({
+        type: result.error ? 'error' : 'info',
+        source: 'system',
+        message: result.error
+          ? `Request failed: ${result.body || result.statusText}`
+          : `${result.status} ${result.statusText} — ${result.time}ms`,
+        timestamp: Date.now(),
+      });
 
       if (postScript) {
         const postResult = await executeScript(postScript, {
@@ -140,8 +158,10 @@ export function useResponseExecution({
         });
 
         scriptLogs.push(...postResult.logs);
+        consoleLogs.push(...postResult.logs.map(l => ({ ...l, source: 'post-script', timestamp: Date.now() })));
 
         if (!postResult.success) {
+          consoleLogs.push({ type: 'error', source: 'post-script', message: `Error: ${postResult.errors[0]?.message || 'Unknown error'}`, timestamp: Date.now() });
           toast.error(`Post-script error: ${postResult.errors[0]?.message || 'Unknown error'}`);
         }
 
@@ -165,9 +185,10 @@ export function useResponseExecution({
       }
 
       setOpenTabs((prev) => prev.map((tab) => (
-        tab.id === activeTabId ? { ...tab, response: { ...result, scriptLogs } } : tab
+        tab.id === activeTabId ? { ...tab, response: { ...result, resolvedUrl, scriptLogs, consoleLogs } } : tab
       )));
     } catch (error) {
+      consoleLogs.push({ type: 'error', source: 'system', message: error.message, timestamp: Date.now() });
       setOpenTabs((prev) => prev.map((tab) => (
         tab.id === activeTabId
           ? {
@@ -180,6 +201,7 @@ export function useResponseExecution({
                 time: 0,
                 error: true,
                 scriptLogs,
+                consoleLogs,
               },
             }
           : tab

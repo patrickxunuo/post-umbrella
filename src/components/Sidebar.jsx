@@ -81,6 +81,18 @@ export function Sidebar({
     localStorage.setItem('expandedRequests', JSON.stringify([...expandedRequests]));
   }, [expandedRequests]);
 
+  // Listen for expanded state updates from "Open in App" transfer
+  useEffect(() => {
+    const handler = () => {
+      const savedC = localStorage.getItem('expandedCollections');
+      const savedR = localStorage.getItem('expandedRequests');
+      if (savedC) setExpandedCollections(new Set(JSON.parse(savedC)));
+      if (savedR) setExpandedRequests(new Set(JSON.parse(savedR)));
+    };
+    window.addEventListener('expanded-state-updated', handler);
+    return () => window.removeEventListener('expanded-state-updated', handler);
+  }, []);
+
   useEffect(() => {
     const requestIdsInCollections = new Set();
     collections.forEach((collection) => {
