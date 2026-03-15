@@ -18,7 +18,7 @@ export const authRouter = Router();
 // OAuth 2.1 Protected Resource Metadata (RFC 9728)
 authRouter.get('/.well-known/oauth-protected-resource', (_req: Request, res: Response) => {
   res.json({
-    resource: `${BASE_URL}/mcp`,
+    resource: `${BASE_URL}`,
     authorization_servers: [BASE_URL],
     scopes_supported: ['read', 'write'],
   });

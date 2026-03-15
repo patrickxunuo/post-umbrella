@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/mcp",
+      "destination": "https://post-umbrella.onrender.com/"
+    },
+    {
       "source": "/mcp/(.*)",
       "destination": "https://post-umbrella.onrender.com/$1"
     },
