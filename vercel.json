@@ -5,15 +5,15 @@
       "destination": "https://post-umbrella.onrender.com/"
     },
     {
-      "source": "/mcp/(.*)",
-      "destination": "https://post-umbrella.onrender.com/$1"
+      "source": "/mcp/:path*",
+      "destination": "https://post-umbrella.onrender.com/:path*"
     },
     {
       "source": "/auth/callback",
       "destination": "/"
     },
     {
-      "source": "/(.*)",
+      "source": "/:path*",
       "destination": "/"
     }
   ]
