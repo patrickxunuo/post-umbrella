@@ -63,7 +63,7 @@ function extractToken(req: express.Request): string | null {
 }
 
 // MCP endpoint — Streamable HTTP transport
-app.post('/', async (req: express.Request, res: express.Response) => {
+app.post('/mcp', async (req: express.Request, res: express.Response) => {
   const token = extractToken(req);
 
   // No token → 401 with resource metadata pointer
@@ -119,7 +119,7 @@ app.post('/', async (req: express.Request, res: express.Response) => {
 });
 
 // SSE endpoint for server-initiated messages
-app.get('/', async (req: express.Request, res: express.Response) => {
+app.get('/mcp', async (req: express.Request, res: express.Response) => {
   const token = extractToken(req);
   if (!token) {
     res.status(401).set({
@@ -139,7 +139,7 @@ app.get('/', async (req: express.Request, res: express.Response) => {
 });
 
 // Session termination
-app.delete('/', async (req: express.Request, res: express.Response) => {
+app.delete('/mcp', async (req: express.Request, res: express.Response) => {
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (sessionId && mcpSessions.has(sessionId)) {
     const session = mcpSessions.get(sessionId)!;
@@ -152,5 +152,5 @@ app.delete('/', async (req: express.Request, res: express.Response) => {
 app.listen(PORT, () => {
   console.error(`Post Umbrella MCP server running on ${BASE_URL}`);
   console.error(`OAuth metadata: ${BASE_URL}/.well-known/oauth-authorization-server`);
-  console.error(`MCP endpoint: ${BASE_URL}`);
+  console.error(`MCP endpoint: ${BASE_URL}/mcp`);
 });

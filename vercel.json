@@ -1,19 +1,11 @@
 {
   "rewrites": [
     {
-      "source": "/mcp",
-      "destination": "https://post-umbrella.onrender.com/"
-    },
-    {
-      "source": "/mcp/:path*",
-      "destination": "https://post-umbrella.onrender.com/:path*"
-    },
-    {
       "source": "/auth/callback",
       "destination": "/"
     },
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "destination": "/"
     }
   ]
