@@ -79,5 +79,10 @@ temp
 e2e/.auth/
 e2e/screenshots
 
+# MCP server
+mcp-server/node_modules
+mcp-server/dist
+mcp-server/.env
+
 # Generated at build time
 public/version.json
