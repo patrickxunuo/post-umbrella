@@ -135,9 +135,21 @@ export const checkAuth = async () => {
     throw new Error('Failed to authenticate from deep link');
   }
 
-  const { data: { session }, error } = await supabase.auth.getSession();
+  let { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw new Error(error.message);
   if (!session) throw new Error('Not authenticated');
+
+  // If token is expired or about to expire, force a refresh
+  const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+  if (Date.now() > expiresAt - 60000) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session) {
+      // Refresh failed — session is truly dead, force logout
+      await supabase.auth.signOut();
+      throw new Error('Session expired. Please log in again.');
+    }
+    session = refreshData.session;
+  }
 
   currentUser = {
     id: session.user.id,
@@ -167,7 +179,7 @@ export const getDesktopDeepLink = async (uiState = {}) => {
 // Subscribe to auth state changes (for handling async hash token processing)
 export const onAuthStateChange = (callback) => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_IN' && session?.user) {
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
       currentUser = {
         id: session.user.id,
         email: session.user.email,

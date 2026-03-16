@@ -318,6 +318,11 @@ body {
   min-height: 36px;
 }
 
+.tauri-mac .app-header {
+  padding-left: 78px;
+  padding-right: 12px;
+}
+
 .tauri .app-logo {
   width: 18px;
   height: 18px;
@@ -3111,6 +3116,10 @@ body {
   right: 138px;
   height: 36px;
   z-index: 0;
+}
+
+.tauri-mac .login-drag-region {
+  right: 0;
 }
 
 .login-container::before {

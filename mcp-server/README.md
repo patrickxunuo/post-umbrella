@@ -29,6 +29,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 PORT=3100
 MCP_BASE_URL=http://localhost:3100
+WEBAPP_URL=http://localhost:5173
 ```
 
 Production variables:
@@ -37,6 +38,7 @@ Production variables:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 MCP_BASE_URL=https://your-public-mcp-domain.com
+WEBAPP_URL=https://your-webapp-domain.com
 PORT=3100
 ```
 
@@ -88,7 +90,6 @@ Current MCP tools are grouped like this:
   - `create_request`
   - `update_request`
   - `delete_request`
-  - `send_request`
   - `search_apis_by_name`
 - Examples
   - `list_examples`
@@ -99,25 +100,23 @@ Current MCP tools are grouped like this:
 - Environments
   - `list_workspace_environments`
 
-`send_request` optionally accepts either `environment_id` or `environment_name`. When provided, the server resolves `{{variable}}` placeholders using that environment before sending the request.
-
 `get_collection` returns the full recursive tree for a top-level collection, including nested folders and requests at every level. `get_folder` does the same starting from a nested folder.
 
 ## Supabase Auth Setup
 
-Add this redirect URL in Supabase Auth settings:
+The MCP server redirects `/authorize` to the webapp for authentication (cross-domain auth). Add the webapp's MCP callback URL in Supabase Auth settings:
 
 ```text
-http://localhost:3100/auth/callback
+http://localhost:5173/mcp-complete*
 ```
 
-For production, add your deployed callback too:
+For production:
 
 ```text
-https://your-public-mcp-domain.com/auth/callback
+https://your-webapp-domain.com/mcp-complete*
 ```
 
-If you use magic links with query params, allow the callback pattern that includes the session query string.
+The webapp hosts `mcp-authorize.html` (session check + confirm) and `mcp-complete.html` (magic link callback). These are static files in the webapp's `public/` directory, routed via Vercel rewrites at `/mcp-authorize` and `/mcp-complete`.
 
 ## Deploying
 
@@ -134,15 +133,21 @@ Suggested process:
 3. Start with `node dist/index.js`.
 4. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `MCP_BASE_URL` in your host.
 
-## Connecting From Codex
+## Connecting From AI Agents
 
-After deployment:
+Claude Code:
+
+```bash
+claude mcp add --transport http post-umbrella https://your-public-mcp-domain.com/mcp
+```
+
+Codex:
 
 ```bash
 codex mcp add postUmbrella --url https://your-public-mcp-domain.com/mcp
 ```
 
-Codex will detect OAuth support, open the browser, and complete the login flow through this server.
+The agent will detect OAuth support, open the browser, and complete the login flow. If you're already signed into the webapp, you'll see a one-click "Authorize" button instead of needing to re-authenticate.
 
 ## Notes
 

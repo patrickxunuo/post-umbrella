@@ -11,7 +11,7 @@ export function registerExampleTools(server: McpServer, getClient: () => Supabas
       const supabase = getClient();
       const { data, error } = await supabase
         .from('examples')
-        .select('id, name, request_id, created_at, updated_at')
+        .select('id, name, request_id, created_at')
         .eq('request_id', request_id)
         .order('created_at', { ascending: false });
       if (error) return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true };

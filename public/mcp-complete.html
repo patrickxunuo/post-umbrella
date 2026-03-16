@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authenticating - Post Umbrella</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --bg-primary: #fafafa;
+      --bg-secondary: #ffffff;
+      --border-primary: #e4e4e7;
+      --text-primary: #18181b;
+      --text-secondary: #52525b;
+      --accent-primary: #0ea5e9;
+      --accent-primary-subtle: rgba(14, 165, 233, 0.1);
+      --accent-danger: #ef4444;
+      --accent-danger-subtle: rgba(239, 68, 68, 0.12);
+      --accent-success: #22c55e;
+      --radius-md: 8px;
+      --radius-xl: 16px;
+      --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+      position: relative;
+    }
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, var(--accent-primary-subtle) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, var(--accent-primary-subtle) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    .container {
+      background: var(--bg-secondary);
+      padding: 40px;
+      border-radius: var(--radius-xl);
+      width: 380px;
+      box-shadow: var(--shadow-xl);
+      border: 1px solid var(--border-primary);
+      position: relative;
+      z-index: 1;
+      text-align: center;
+    }
+    .logo {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .logo img { width: 64px; height: 64px; }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+    p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2.5px solid var(--border-primary);
+      border-top-color: var(--accent-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error {
+      color: var(--accent-danger);
+      background: var(--accent-danger-subtle);
+      border: 1px solid var(--accent-danger);
+      border-radius: var(--radius-md);
+      padding: 12px 16px;
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    .success { color: var(--accent-success); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <img src="/umbrella.svg" alt="Post Umbrella" />
+    </div>
+    <div class="spinner" id="spinner"></div>
+    <h1 id="title">Authenticating...</h1>
+    <p id="subtitle">Completing sign in</p>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    (async () => {
+      const titleEl = document.getElementById('title');
+      const subtitleEl = document.getElementById('subtitle');
+      const spinnerEl = document.getElementById('spinner');
+
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+        const mcpBase = urlParams.get('mcp_base');
+
+        if (!sessionId || !mcpBase) throw new Error('Missing session parameters');
+
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        const expiresAt = hashParams.get('expires_at');
+
+        if (!accessToken || !refreshToken) {
+          throw new Error('No authentication tokens found. Please try clicking the magic link again.');
+        }
+
+        // Decode JWT to get user info
+        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+        const userId = payload.sub;
+        const email = payload.email;
+
+        const res = await fetch(mcpBase + '/auth/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_at: expiresAt ? parseInt(expiresAt) : Math.floor(Date.now() / 1000) + 3600,
+            user_id: userId,
+            email: email,
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to complete authentication');
+        }
+
+        const { code } = await res.json();
+
+        const infoRes = await fetch(mcpBase + '/auth/redirect-info?code=' + code);
+        const { redirect_uri, state } = await infoRes.json();
+
+        spinnerEl.style.display = 'none';
+        titleEl.textContent = 'Authenticated!';
+        titleEl.classList.add('success');
+        subtitleEl.textContent = 'Redirecting back to your AI agent...';
+
+        window.location.href = redirect_uri + '?code=' + code + '&state=' + state;
+
+      } catch (err) {
+        spinnerEl.style.display = 'none';
+        titleEl.textContent = 'Authentication Failed';
+        subtitleEl.innerHTML = '<div class="error">' + (err.message || 'Something went wrong') + '</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

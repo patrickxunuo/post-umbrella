@@ -67,7 +67,14 @@
       "Bash(grep -r \"invoke\\\\|tauri::\" D:/post-umbrella/src --include=\"*.js\" --include=\"*.jsx\" 2>/dev/null | head -20)",
       "Bash(find /d/post-umbrella/src-tauri -maxdepth 3 -name \"*.toml\" -o -name \"capabilities.json\" 2>/dev/null | head -20)",
       "Bash(find /d/post-umbrella/src-tauri -path \"*/permissions/http*\" -type f 2>/dev/null | head -20)",
-      "Bash(find /d/post-umbrella -path \"*/node_modules\" -prune -o -type f -name \"*.rs\" -print 2>/dev/null | xargs grep -l \"http.*scope\\\\|http.*permission\" 2>/dev/null | head -5)"
+      "Bash(find /d/post-umbrella -path \"*/node_modules\" -prune -o -type f -name \"*.rs\" -print 2>/dev/null | xargs grep -l \"http.*scope\\\\|http.*permission\" 2>/dev/null | head -5)",
+      "Bash(find /d/post-umbrella/node_modules/@tauri-apps -type f -name \"*.d.ts\" 2>/dev/null | head -20)",
+      "Bash(grep -l \"type.*=.*macos\\\\|darwin\\\\|platform\" /d/post-umbrella/node_modules/@tauri-apps/api/*.d.ts)",
+      "Bash(grep -r \"os\\(\\)\\\\|currentOS\\\\|platform\" /d/post-umbrella/node_modules/@tauri-apps -l 2>/dev/null | grep -E \"\\\\.d\\\\.ts$\" | head -10)",
+      "Bash(cd D:/post-umbrella/mcp-server && npx tsc --noEmit 2>&1)",
+      "Bash(cd D:/post-umbrella && mv public/mcp-auth.html public/mcp-auth-page.html && mv public/mcp-callback.html public/mcp-callback-page.html)",
+      "Bash(cd D:/post-umbrella && mv public/mcp-auth-page.html public/mcp-auth.html && mv public/mcp-callback-page.html public/mcp-callback.html)",
+      "Bash(cd D:/post-umbrella && mv public/mcp-auth.html public/mcp-authorize.html && mv public/mcp-callback.html public/mcp-complete.html)"
     ],
     "deny": [],
     "ask": []

@@ -29,9 +29,12 @@ if (window.location.hash.includes('_t=') || window.location.hash.includes('_ec='
   }
 }
 
-// Mark as desktop app for CSS scoping
+// Mark as desktop app + platform for CSS scoping
 if ('__TAURI_INTERNALS__' in window) {
   document.documentElement.classList.add('tauri');
+  if (/macintosh|mac os/i.test(navigator.userAgent)) {
+    document.documentElement.classList.add('tauri-mac');
+  }
 }
 
 import { StrictMode } from 'react'

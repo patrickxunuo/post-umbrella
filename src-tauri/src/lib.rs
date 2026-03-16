@@ -48,10 +48,18 @@ pub fn run() {
 
       log_to_file("Setup running");
 
-      // Force remove window decorations
+      // Windows: remove decorations (use custom HTML controls)
+      // macOS: keep decorations + overlay titlebar (native traffic lights)
       if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_decorations(false);
-        log_to_file("Decorations set to false");
+        #[cfg(target_os = "windows")]
+        {
+          let _ = window.set_decorations(false);
+          log_to_file("Windows: decorations set to false");
+        }
+        #[cfg(target_os = "macos")]
+        {
+          log_to_file("macOS: using native traffic lights (overlay titlebar)");
+        }
       }
 
       // Handle deep link URLs via event

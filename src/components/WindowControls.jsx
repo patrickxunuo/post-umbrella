@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { Minus, Square, Copy, X } from 'lucide-react';
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
+const isMac = () => /macintosh|mac os/i.test(navigator.userAgent);
 
 export function WindowControls({ className = '', compact = false }) {
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || isMac()) return;
 
     let unlisten;
     const setup = async () => {
@@ -22,7 +23,8 @@ export function WindowControls({ className = '', compact = false }) {
     return () => { unlisten?.(); };
   }, []);
 
-  if (!isTauri()) return null;
+  // Hide on non-Tauri (web) and on macOS (native traffic lights)
+  if (!isTauri() || isMac()) return null;
 
   const handleMinimize = async () => {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');

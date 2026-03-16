@@ -19,6 +19,22 @@ export function useAuthSession({ onAfterLogout } = {}) {
     verifyAuth();
   }, []);
 
+  // Listen for Supabase auth state changes (TOKEN_REFRESHED, SIGNED_OUT, etc.)
+  useEffect(() => {
+    if (!data.onAuthStateChange) return;
+
+    const subscription = data.onAuthStateChange((event, userData) => {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (userData) {
+        setUser((prev) => prev?.id === userData?.id ? prev : userData);
+      }
+    });
+
+    return () => subscription?.unsubscribe?.();
+  }, []);
+
+
   useEffect(() => {
     const handleAuthLogout = () => setUser(null);
     window.addEventListener('auth:logout', handleAuthLogout);

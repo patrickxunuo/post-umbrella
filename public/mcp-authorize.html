@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize - Post Umbrella</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --bg-primary: #fafafa;
+      --bg-secondary: #ffffff;
+      --bg-tertiary: #f4f4f5;
+      --bg-hover: #e4e4e7;
+      --bg-input: #ffffff;
+      --border-primary: #e4e4e7;
+      --border-secondary: #d4d4d8;
+      --border-focus: #0ea5e9;
+      --text-primary: #18181b;
+      --text-secondary: #52525b;
+      --text-tertiary: #a1a1aa;
+      --accent-primary: #0ea5e9;
+      --accent-primary-hover: #0284c7;
+      --accent-primary-subtle: rgba(14, 165, 233, 0.1);
+      --accent-danger: #ef4444;
+      --accent-danger-subtle: rgba(239, 68, 68, 0.12);
+      --accent-success: #22c55e;
+      --accent-success-subtle: rgba(34, 197, 94, 0.12);
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+    }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+      position: relative;
+    }
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, var(--accent-primary-subtle) 0%, transparent 50%),
+        radial-gradient(ellipse at 70% 80%, var(--accent-primary-subtle) 0%, transparent 50%);
+      pointer-events: none;
+    }
+    .container {
+      background: var(--bg-secondary);
+      padding: 40px;
+      border-radius: var(--radius-xl);
+      width: 380px;
+      box-shadow: var(--shadow-xl);
+      border: 1px solid var(--border-primary);
+      position: relative;
+      z-index: 1;
+    }
+    .logo {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .logo img { width: 64px; height: 64px; }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .subtitle {
+      color: var(--text-secondary);
+      text-align: center;
+      margin-bottom: 32px;
+      font-size: 13px;
+    }
+    .user-info {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-primary);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .user-info .email { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+    .user-info .label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 4px; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-primary);
+      color: var(--text-primary);
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      font-family: var(--font-sans);
+      outline: none;
+      transition: all 0.1s ease;
+    }
+    .form-group input::placeholder { color: var(--text-tertiary); }
+    .form-group input:hover { border-color: var(--border-secondary); }
+    .form-group input:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 2px var(--accent-primary-subtle);
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: var(--radius-md);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+    button:disabled { cursor: not-allowed; }
+    .btn-primary {
+      background: var(--accent-primary);
+      color: white;
+    }
+    .btn-primary:hover { background: var(--accent-primary-hover); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { background: var(--bg-hover); color: var(--text-tertiary); transform: none; }
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-primary);
+      margin-top: 10px;
+    }
+    .btn-secondary:hover { background: var(--bg-hover); }
+    .message {
+      text-align: center;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      margin-top: 16px;
+    }
+    .message.success {
+      background: var(--accent-success-subtle);
+      color: #166534;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+    .message.error {
+      background: var(--accent-danger-subtle);
+      border: 1px solid var(--accent-danger);
+      color: var(--accent-danger);
+    }
+    .hint {
+      color: var(--text-tertiary);
+      font-size: 12px;
+      text-align: center;
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+    .spinner {
+      width: 24px; height: 24px;
+      border: 2.5px solid var(--border-primary);
+      border-top-color: var(--accent-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none; }
+    .success-view { text-align: center; }
+    .success-view h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+    .success-view p {
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+    .success-view strong { color: var(--text-primary); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <img src="/umbrella.svg" alt="Post Umbrella" />
+    </div>
+    <h1>Post Umbrella</h1>
+
+    <!-- Loading state -->
+    <div id="loading-view">
+      <p class="subtitle">Checking session...</p>
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Confirm view (shown when already logged in) -->
+    <div id="confirm-view" class="hidden">
+      <p class="subtitle">Authorize AI agent access</p>
+      <div class="user-info">
+        <div class="label">Signed in as</div>
+        <div class="email" id="user-email"></div>
+      </div>
+      <button class="btn-primary" id="confirm-btn">Authorize</button>
+      <button class="btn-secondary" id="switch-btn">Use a different account</button>
+    </div>
+
+    <!-- Login view (shown when not logged in) -->
+    <div id="login-view" class="hidden">
+      <p class="subtitle">Sign in to authorize</p>
+      <form id="magic-link-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" required />
+        </div>
+        <button type="submit" class="btn-primary" id="magic-btn">Send Magic Link</button>
+      </form>
+      <div id="email-sent-view" class="success-view hidden">
+        <h2>Check your email</h2>
+        <p>We sent a magic link to <strong id="sent-email"></strong></p>
+        <p>Click the link in your email to sign in.</p>
+      </div>
+      <p class="hint" id="hint">We'll email you a magic link to finish signing in.</p>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const SESSION_ID = params.get('session_id');
+    const MCP_BASE = params.get('mcp_base');
+    const SB_URL = params.get('sb_url');
+    const SB_KEY = params.get('sb_key');
+
+    const loadingView = document.getElementById('loading-view');
+    const confirmView = document.getElementById('confirm-view');
+    const loginView = document.getElementById('login-view');
+    const userEmailEl = document.getElementById('user-email');
+    const confirmBtn = document.getElementById('confirm-btn');
+    const switchBtn = document.getElementById('switch-btn');
+    const formEl = document.getElementById('magic-link-form');
+    const emailInput = document.getElementById('email');
+    const magicBtn = document.getElementById('magic-btn');
+    const emailSentView = document.getElementById('email-sent-view');
+    const sentEmailEl = document.getElementById('sent-email');
+    const hintEl = document.getElementById('hint');
+    const msgEl = document.getElementById('message');
+
+    if (!SESSION_ID || !MCP_BASE || !SB_URL || !SB_KEY) {
+      showError('Missing required parameters. Please try authenticating again from your AI agent.');
+    }
+
+    function showError(text) {
+      loadingView.classList.add('hidden');
+      msgEl.textContent = text;
+      msgEl.className = 'message error';
+      msgEl.classList.remove('hidden');
+    }
+
+    function showMessage(text, type) {
+      msgEl.textContent = text;
+      msgEl.className = 'message ' + type;
+      msgEl.classList.remove('hidden');
+    }
+
+    function createSupabaseClient(opts) {
+      return window.supabase.createClient(SB_URL, SB_KEY, {
+        auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: false, ...opts }
+      });
+    }
+
+    async function completeAuth(session) {
+      const res = await fetch(MCP_BASE + '/auth/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: SESSION_ID,
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_at: session.expires_at,
+          user_id: session.user.id,
+          email: session.user.email,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to complete authentication');
+      }
+
+      const { code } = await res.json();
+      const infoRes = await fetch(MCP_BASE + '/auth/redirect-info?code=' + code);
+      const { redirect_uri, state } = await infoRes.json();
+      window.location.href = redirect_uri + '?code=' + code + '&state=' + state;
+    }
+
+    function showConfirmView(email) {
+      loadingView.classList.add('hidden');
+      loginView.classList.add('hidden');
+      confirmView.classList.remove('hidden');
+      userEmailEl.textContent = email;
+    }
+
+    function showLoginView() {
+      loadingView.classList.add('hidden');
+      confirmView.classList.add('hidden');
+      loginView.classList.remove('hidden');
+    }
+
+    async function checkEmailAllowed(supabase, email) {
+      const { data, error } = await supabase.rpc('check_email_allowed', { check_email: email });
+      if (error) {
+        console.warn('check_email_allowed RPC not available:', error.message);
+        return { allowed: true };
+      }
+      return data;
+    }
+
+    async function init() {
+      if (!SESSION_ID || !MCP_BASE || !SB_URL || !SB_KEY) return;
+
+      try {
+        const supabase = createSupabaseClient();
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (!error && session?.user) {
+          showConfirmView(session.user.email);
+
+          confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Authorizing...';
+            try {
+              await completeAuth(session);
+            } catch (err) {
+              showError(err.message);
+            }
+          });
+
+          switchBtn.addEventListener('click', () => {
+            showLoginView();
+          });
+        } else {
+          showLoginView();
+        }
+      } catch (err) {
+        console.warn('Session check failed:', err);
+        showLoginView();
+      }
+    }
+
+    // Magic link form
+    formEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailInput.value.trim();
+
+      try {
+        magicBtn.disabled = true;
+        magicBtn.textContent = 'Sending link...';
+
+        const supabase = createSupabaseClient();
+
+        const checkResult = await checkEmailAllowed(supabase, email);
+        if (!checkResult?.allowed) {
+          throw new Error(checkResult.message || 'This email is not registered.');
+        }
+
+        // Magic link redirects back to mcp-complete on same origin
+        const callbackUrl = window.location.origin + '/mcp-complete?session_id=' + SESSION_ID + '&mcp_base=' + encodeURIComponent(MCP_BASE);
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: callbackUrl }
+        });
+
+        if (error) throw error;
+
+        formEl.classList.add('hidden');
+        hintEl.classList.add('hidden');
+        msgEl.classList.add('hidden');
+        emailSentView.classList.remove('hidden');
+        sentEmailEl.textContent = email;
+      } catch (err) {
+        showMessage(err.message || 'Failed to send magic link', 'error');
+        magicBtn.disabled = false;
+        magicBtn.textContent = 'Send Magic Link';
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

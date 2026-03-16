@@ -86,3 +86,4 @@ mcp-server/.env
 
 # Generated at build time
 public/version.json
+.vercel
