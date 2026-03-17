@@ -176,6 +176,11 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.tauri-mac body {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
 /* Global Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -316,6 +321,12 @@ body {
   padding-right: 142px;
   height: 36px;
   min-height: 36px;
+  -webkit-app-region: drag;
+}
+
+.tauri .header-left,
+.tauri .header-right {
+  -webkit-app-region: no-drag;
 }
 
 .tauri-mac .app-header {
@@ -2576,7 +2587,7 @@ body {
   border-top-color: var(--accent-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
-  margin-bottom: var(--space-4);
+  margin: 0 auto var(--space-4);
 }
 
 .loading-spinner.small {
@@ -2648,7 +2659,8 @@ body {
 
 .response-meta .status {
   font-weight: 600;
-  padding: 2px var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-1);
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-family: var(--font-mono);
@@ -3116,6 +3128,7 @@ body {
   right: 138px;
   height: 36px;
   z-index: 0;
+  -webkit-app-region: drag;
 }
 
 .tauri-mac .login-drag-region {
@@ -3141,6 +3154,13 @@ body {
   border: 1px solid var(--border-primary);
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.login-box form {
+  width: 100%;
 }
 
 .login-logo {
@@ -4697,15 +4717,23 @@ body {
   border: 1px solid var(--border-primary);
   color: inherit;
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
+  padding: 1px 6px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
+  height: 22px;
 }
 
 .response-meta .status-input {
-  width: 60px;
+  width: 52px;
   margin-right: 6px;
+  -moz-appearance: textfield;
+}
+
+.response-meta .status-input::-webkit-outer-spin-button,
+.response-meta .status-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .response-meta .status-text-input {

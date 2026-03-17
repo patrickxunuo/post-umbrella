@@ -1,20 +1,17 @@
 # Active Task
-- Skill: /ef-implement
-- Skill file: .claude/skills/ef-implement/SKILL.md
-- Feature: magic-link-deep-link
-- Current step: Step 6: Final Verification
-- Waiting for: developer (Supabase dashboard config)
+- Skill: /ef-fix
+- Skill file: .claude/skills/ef-fix/SKILL.md
+- Bug: macOS Tauri: 1) traffic lights not showing, 2) app border radius is square instead of rounded
+- Current step: Step 4: Fix the Bug
+- Waiting for: nothing
 
 ## Completed
-- [x] Step 0: Branch isolation (skipped)
 - [x] Step 1: Context read
-- [x] Step 2: Acceptance spec (inline in plan)
-- [x] CHECKPOINT 1: Developer confirmed
-- [x] Step 4/5: Implementation complete
-- [x] Build verified
+- [x] Step 2: Investigate & reproduce
+- [x] Step 3: Regression test (skipped — visual/platform bug, no E2E on macOS)
+- [ ] Step 4: Fix the bug
+- [ ] Step 5: Full regression
+- [ ] Step 6: Update memory
 
 ## Key Artifacts
-- Auth callback page: public/auth/callback/index.html
-- Deep link handler: src-tauri/src/lib.rs
-- Redirect URL: src/data/supabase/index.js (line 64)
-- Jira ticket: N/A
+- Root cause: window-state plugin can restore decorations state overriding overlay titlebar; missing macOS corner radius CSS

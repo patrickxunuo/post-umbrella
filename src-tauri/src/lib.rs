@@ -1,8 +1,12 @@
+mod window;
+
+use window::WindowHandler;
 use tauri::{Listener, Manager};
+use tauri_plugin_window_state::StateFlags;
 use std::time::Duration;
 use std::fs;
 
-fn log_to_file(msg: &str) {
+pub fn log_to_file(msg: &str) {
   let path = "D:\\post-umbrella\\tauri-debug.log";
   let existing = fs::read_to_string(path).unwrap_or_default();
   let _ = fs::write(path, format!("{}{}\n", existing, msg));
@@ -16,18 +20,17 @@ fn extract_deep_link(argv: &[String]) -> Option<String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  // Log the command line args (deep link URL comes as an arg on Windows)
   let args: Vec<String> = std::env::args().collect();
   log_to_file(&format!("App started with args: {:?}", args));
+
+  let wh = window::handler();
 
   tauri::Builder::default()
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 
-      if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+      if let Some(win) = app.get_webview_window("main") {
+        window::handler().focus_window(&win);
       }
 
       if let Some(url) = extract_deep_link(&argv) {
@@ -35,9 +38,13 @@ pub fn run() {
       }
     }))
     .plugin(tauri_plugin_http::init())
-    .plugin(tauri_plugin_window_state::Builder::new().build())
+    .plugin(
+      tauri_plugin_window_state::Builder::new()
+        .with_state_flags(StateFlags::all() & !StateFlags::DECORATIONS)
+        .build(),
+    )
     .plugin(tauri_plugin_deep_link::init())
-    .setup(|app| {
+    .setup(move |app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -48,18 +55,8 @@ pub fn run() {
 
       log_to_file("Setup running");
 
-      // Windows: remove decorations (use custom HTML controls)
-      // macOS: keep decorations + overlay titlebar (native traffic lights)
       if let Some(window) = app.get_webview_window("main") {
-        #[cfg(target_os = "windows")]
-        {
-          let _ = window.set_decorations(false);
-          log_to_file("Windows: decorations set to false");
-        }
-        #[cfg(target_os = "macos")]
-        {
-          log_to_file("macOS: using native traffic lights (overlay titlebar)");
-        }
+        wh.setup_window(&window);
       }
 
       // Handle deep link URLs via event
@@ -99,7 +96,6 @@ pub fn run() {
 fn inject_tokens(handle: &tauri::AppHandle, url: &str) {
   log_to_file(&format!("inject_tokens called with: {}", url));
 
-  // Extract token string (after ? or #)
   let tokens = url.find('?')
     .map(|p| &url[p + 1..])
     .or_else(|| url.find('#').map(|p| &url[p + 1..]));

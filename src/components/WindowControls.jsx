@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Minus, Square, Copy, X } from 'lucide-react';
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
-const isMac = () => /macintosh|mac os/i.test(navigator.userAgent);
+const isMac = () => navigator.platform?.startsWith('Mac') || /macintosh|mac os/i.test(navigator.userAgent);
 
 export function WindowControls({ className = '', compact = false }) {
   const [maximized, setMaximized] = useState(false);
