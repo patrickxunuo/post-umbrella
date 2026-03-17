@@ -1012,6 +1012,11 @@ export const deleteEnvironment = async (id) => {
 
 // Proxy - send HTTP request via Edge Function
 export const sendRequest = async (data) => {
+  // In Tauri app, all requests go direct (Tauri HTTP plugin bypasses CORS at the system level)
+  if ('__TAURI_INTERNALS__' in window) {
+    return sendDirectRequest(data);
+  }
+
   // Check if URL points to a local/private address (should bypass remote proxy)
   const isLocal = (url) => {
     try {
@@ -1078,17 +1083,19 @@ export const sendRequest = async (data) => {
   return response.json();
 };
 
-// Get the appropriate fetch function (native in Tauri, browser otherwise)
-let _tauriFetch = null;
-const getNativeFetch = async () => {
-  if (!('__TAURI_INTERNALS__' in window)) return window.fetch.bind(window);
-  if (_tauriFetch) return _tauriFetch;
-  const { fetch: tFetch } = await import('@tauri-apps/plugin-http');
-  _tauriFetch = tFetch;
-  return _tauriFetch;
+// Send request via custom Tauri command (pure reqwest, no Origin header, no CORS)
+const sendTauriRequest = async (url, method, headersArr, bodyBytes, timeout) => {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke('http_request', {
+    method,
+    url,
+    headers: headersArr,
+    body: bodyBytes,
+    timeoutMs: timeout || 30000,
+  });
 };
 
-// Direct request for localhost (uses native fetch in Tauri to bypass macOS ATS)
+// Direct request (uses Tauri IPC in desktop app, browser fetch otherwise)
 const sendDirectRequest = async (data) => {
   const { method, headers, body, bodyType, formData, timeout } = data;
   let url = data.url;
@@ -1098,28 +1105,23 @@ const sendDirectRequest = async (data) => {
   const startTime = Date.now();
 
   try {
-    const fetchFn = await getNativeFetch();
-
-    const headersObj = {};
+    const headersArr = [];
     if (Array.isArray(headers)) {
       headers.forEach(h => {
         if (h.key && h.enabled !== false) {
-          headersObj[h.key] = h.value;
+          headersArr.push([h.key, String(h.value ?? '')]);
         }
       });
     }
 
-    const config = {
-      method: method || 'GET',
-      headers: headersObj,
-    };
-
+    let bodyBytes = null;
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method?.toUpperCase())) {
       if (bodyType === 'form-data' && Array.isArray(formData)) {
+        // Build multipart body via browser FormData + Request
         const form = new FormData();
         for (const field of formData) {
           if (!field.key || field.enabled === false) continue;
-          if (field.type === 'file' && field.fileData) {
+          if (field.type === 'file' && field.value) {
             const byteString = atob(field.value);
             const ab = new ArrayBuffer(byteString.length);
             const ia = new Uint8Array(ab);
@@ -1132,21 +1134,78 @@ const sendDirectRequest = async (data) => {
             form.append(field.key, field.value || '');
           }
         }
-        config.body = form;
+        const tmpReq = new Request('http://localhost', { method: 'POST', body: form });
+        const buf = await tmpReq.arrayBuffer();
+        bodyBytes = Array.from(new Uint8Array(buf));
+        // Get the multipart content-type with boundary
+        const ct = tmpReq.headers.get('content-type');
+        if (ct && !headersArr.some(([k]) => k.toLowerCase() === 'content-type')) {
+          headersArr.push(['Content-Type', ct]);
+        }
       } else if (body) {
-        config.body = body;
+        bodyBytes = Array.from(new TextEncoder().encode(body));
       }
+    }
+
+    // Use custom Tauri command in desktop app (pure reqwest, no Origin header)
+    if ('__TAURI_INTERNALS__' in window) {
+      const res = await sendTauriRequest(url, method || 'GET', headersArr, bodyBytes, timeout);
+      const endTime = Date.now();
+
+      const responseHeaders = (res.headers || []).map(([key, value]) => ({ key, value }));
+      const contentType = responseHeaders.find(h => h.key.toLowerCase() === 'content-type')?.value || '';
+
+      let responseBody;
+      if (contentType.includes('application/json')) {
+        try { responseBody = JSON.parse(res.body); } catch { responseBody = res.body; }
+      } else {
+        responseBody = res.body;
+      }
+
+      return {
+        status: res.status,
+        statusText: res.status_text,
+        headers: responseHeaders,
+        body: responseBody,
+        time: endTime - startTime,
+        size: res.body.length,
+      };
+    }
+
+    // Browser path
+    const headersObj = {};
+    headersArr.forEach(([k, v]) => { headersObj[k] = v; });
+    const config = { method: method || 'GET', headers: headersObj };
+    if (bodyBytes && bodyType !== 'form-data') {
+      config.body = body;
+    } else if (bodyType === 'form-data') {
+      // Rebuild FormData for browser
+      const form = new FormData();
+      for (const field of (formData || [])) {
+        if (!field.key || field.enabled === false) continue;
+        if (field.type === 'file' && field.value) {
+          const byteString = atob(field.value);
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+          const blob = new Blob([ab], { type: field.fileType || 'application/octet-stream' });
+          form.append(field.key, blob, field.fileName || 'file');
+        } else {
+          form.append(field.key, field.value || '');
+        }
+      }
+      config.body = form;
+      delete config.headers['Content-Type'];
     }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout || 30000);
     config.signal = controller.signal;
 
-    const response = await fetchFn(url, config);
+    const response = await window.fetch(url, config);
     clearTimeout(timeoutId);
 
     const endTime = Date.now();
-
     let responseBody;
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
@@ -1154,11 +1213,8 @@ const sendDirectRequest = async (data) => {
     } else {
       responseBody = await response.text();
     }
-
     const responseHeaders = [];
-    response.headers.forEach((value, key) => {
-      responseHeaders.push({ key, value });
-    });
+    response.headers.forEach((value, key) => { responseHeaders.push({ key, value }); });
 
     return {
       status: response.status,
@@ -1171,7 +1227,7 @@ const sendDirectRequest = async (data) => {
   } catch (error) {
     const endTime = Date.now();
 
-    if (error.name === 'AbortError') {
+    if (error?.name === 'AbortError') {
       return {
         status: 0,
         statusText: 'Timeout',
@@ -1187,7 +1243,7 @@ const sendDirectRequest = async (data) => {
       status: 0,
       statusText: 'Error',
       headers: [],
-      body: error.message,
+      body: error?.message || String(error) || 'Unknown error',
       time: endTime - startTime,
       size: 0,
       error: true,

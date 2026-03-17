@@ -14,10 +14,6 @@
     "core:window:allow-set-focus",
     "core:window:allow-start-dragging",
     "window-state:default",
-    "deep-link:default",
-    {
-      "identifier": "http:default",
-      "allow": [{ "url": "http://**" }, { "url": "https://**" }]
-    }
+    "deep-link:default"
   ]
 }

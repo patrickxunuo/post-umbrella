@@ -6,6 +6,57 @@ use tauri_plugin_window_state::StateFlags;
 use std::time::Duration;
 use std::fs;
 
+#[derive(serde::Serialize)]
+struct HttpResponse {
+  status: u16,
+  status_text: String,
+  headers: Vec<(String, String)>,
+  body: String,
+}
+
+#[tauri::command]
+async fn http_request(
+  method: String,
+  url: String,
+  headers: Vec<(String, String)>,
+  body: Option<Vec<u8>>,
+  timeout_ms: Option<u64>,
+) -> Result<HttpResponse, String> {
+  let client = reqwest::Client::builder()
+    .no_proxy()
+    .redirect(reqwest::redirect::Policy::limited(10))
+    .timeout(Duration::from_millis(timeout_ms.unwrap_or(30000)))
+    .build()
+    .map_err(|e| e.to_string())?;
+
+  let req_method: reqwest::Method = method.parse().map_err(|_| format!("Invalid method: {}", method))?;
+  let mut req = client.request(req_method, &url);
+
+  for (key, value) in &headers {
+    req = req.header(key.as_str(), value.as_str());
+  }
+
+  if let Some(data) = body {
+    req = req.body(data);
+  }
+
+  let res = req.send().await.map_err(|e| e.to_string())?;
+
+  let status = res.status().as_u16();
+  let status_text = res.status().canonical_reason().unwrap_or("").to_string();
+
+  let mut res_headers = Vec::new();
+  for (name, value) in res.headers().iter() {
+    if let Ok(v) = value.to_str() {
+      res_headers.push((name.as_str().to_string(), v.to_string()));
+    }
+  }
+
+  let body_text = res.text().await.map_err(|e| e.to_string())?;
+
+  Ok(HttpResponse { status, status_text: status_text, headers: res_headers, body: body_text })
+}
+
 pub fn log_to_file(msg: &str) {
   let path = "D:\\post-umbrella\\tauri-debug.log";
   let existing = fs::read_to_string(path).unwrap_or_default();
@@ -26,6 +77,7 @@ pub fn run() {
   let wh = window::handler();
 
   tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![http_request])
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 
@@ -37,7 +89,6 @@ pub fn run() {
         inject_tokens(app, &url);
       }
     }))
-    .plugin(tauri_plugin_http::init())
     .plugin(
       tauri_plugin_window_state::Builder::new()
         .with_state_flags(StateFlags::all() & !StateFlags::DECORATIONS)
