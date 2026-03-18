@@ -1,172 +1,172 @@
 # Post Umbrella
 
-A self-hosted, collaborative API testing tool with real-time sync. An open-source alternative to Postman.
+A self-hosted, real-time collaborative API testing workspace for teams. An open-source alternative to Postman.
 
 ## Features
 
-- **Request Builder** - Support for GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS methods with headers, body (JSON/raw/form-data), query params, and auth
-- **Response Viewer** - Status, headers, body with syntax highlighting and formatting
-- **Saved Examples** - Save request/response pairs for documentation and testing
-- **Environment Variables** - Variable substitution with `{{variable}}` syntax across URLs, headers, body, and auth
-- **Real-time Collaboration** - Changes sync instantly across all connected users via WebSocket
-- **Workspaces** - Organize collections and control access per team
-- **Import/Export** - Postman v2.1 collection format compatibility
-- **cURL Import** - Paste cURL commands to create requests
-- **Multi-tab Interface** - Work on multiple requests with dirty state tracking
-- **Dark/Light Theme** - Toggle between themes
+- **Request Builder** — GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS with headers, body (JSON/raw/form-data), query params, and auth
+- **Response Viewer** — Status, headers, body with syntax highlighting
+- **Saved Examples** — Save request/response pairs for documentation and testing
+- **Environment Variables** — `{{variable}}` substitution across URLs, headers, body, and auth
+- **Real-time Collaboration** — WebSocket-powered sync with live presence
+- **Workspaces** — Organize collections and control access per team
+- **Import/Export** — Postman v2.1 collection format, cURL import
+- **MCP Server** — AI agent integration via OAuth-protected [Model Context Protocol](mcp-server/)
+- **Desktop App** — Native Windows and macOS builds via [Tauri](src-tauri/)
+- **Dark/Light Theme** — Toggle between themes
 
 ## Tech Stack
 
-**Frontend:** React 18, Vite, Lucide React, CodeMirror, Axios
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, Vite, Lucide React, CodeMirror |
+| Backend | Supabase (PostgreSQL, Auth, Edge Functions, Realtime) |
+| Desktop | Tauri v2 (Rust) |
+| MCP | Node.js, OAuth 2.0 |
 
-**Backend:** Supabase (PostgreSQL, Auth, Edge Functions, Realtime)
+## Quick Start
 
-## Prerequisites
+### Prerequisites
 
-- Node.js 18+
+- [Node.js](https://nodejs.org) 18+
 - [Supabase CLI](https://supabase.com/docs/guides/cli)
-- Docker (for local Supabase)
+- [Docker](https://docker.com) (for local Supabase)
 
-## Getting Started
-
-### 1. Clone the repository
+### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-username/post-umbrella.git
+git clone https://github.com/patrickxunuo/post-umbrella.git
 cd post-umbrella
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
 ```
 
-### 3. Set up Supabase
+### 2. Start local Supabase
 
 ```bash
-# Start local Supabase (requires Docker)
 supabase start
-
-# This will output your local credentials:
-# API URL: http://127.0.0.1:54321
-# anon key: eyJ...
-# service_role key: eyJ...
 ```
 
-### 4. Configure environment variables
+This outputs your local credentials (API URL, anon key, service_role key).
 
-Create a `.env.local` file:
+### 3. Configure environment
+
+Create `.env.local` in the project root:
 
 ```env
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_ANON_KEY=your-anon-key-from-supabase-start
-VITE_EMAIL_DOMAIN=              # Optional: restrict signups to specific domain (e.g., @company.com)
+VITE_EMAIL_DOMAIN=              # Optional: restrict signups to a domain
 ```
 
-### 5. Run database migrations
+### 4. Push migrations and start
 
 ```bash
 supabase db push
-```
-
-### 6. Start development server
-
-```bash
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`
-
-### 7. Start Edge Functions (for proxy)
+In another terminal, start Edge Functions:
 
 ```bash
 supabase functions serve
 ```
 
-## Project Structure
-
-```
-post-umbrella/
-├── src/
-│   ├── main.jsx              # Entry point
-│   ├── App.jsx               # Main application component
-│   ├── App.css               # Styles and design system
-│   ├── components/           # React components
-│   │   ├── RequestEditor.jsx
-│   │   ├── ResponseViewer.jsx
-│   │   ├── Sidebar.jsx
-│   │   ├── JsonEditor.jsx
-│   │   ├── EnvironmentEditor.jsx
-│   │   └── ...
-│   └── data/
-│       └── supabase/         # Supabase client and data layer
-├── supabase/
-│   ├── functions/            # Edge Functions
-│   │   └── proxy/            # HTTP proxy for CORS bypass
-│   ├── migrations/           # Database migrations
-│   └── config.toml           # Supabase configuration
-└── package.json
-```
+The app will be available at `http://localhost:5173`.
 
 ## Deployment
 
-### Deploy to Supabase (Production)
+### Supabase
 
 1. Create a project at [supabase.com](https://supabase.com)
-
-2. Link your local project:
+2. Link and push:
    ```bash
    supabase link --project-ref your-project-ref
-   ```
-
-3. Push database schema:
-   ```bash
    supabase db push
-   ```
-
-4. Deploy Edge Functions:
-   ```bash
    supabase functions deploy
    ```
-
-5. Update your `.env.production` with production Supabase credentials
-
-6. Build and deploy the frontend to your preferred hosting (Vercel, Netlify, etc.):
-   ```bash
-   npm run build
+3. Add auth redirect URLs in **Authentication → URL Configuration**:
+   ```
+   https://your-domain.com/*
+   https://your-domain.com/mcp-complete*
    ```
 
-## Configuration
+### Frontend
 
-### Environment Variables
+The frontend is a standard Vite build. Deploy to any static host — Vercel, Netlify, Cloudflare Pages, etc.
+
+```bash
+npm run build
+# Deploy the dist/ folder
+```
+
+Set these environment variables on your hosting platform:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `VITE_SUPABASE_URL` | Supabase project URL | Yes |
 | `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
-| `VITE_EMAIL_DOMAIN` | Restrict signups to email domain (e.g., `@company.com`) | No |
+| `VITE_EMAIL_DOMAIN` | Restrict signups to email domain (e.g. `@company.com`) | No |
 | `VITE_SUPABASE_PROXY_URL` | Custom proxy function URL | No |
 
-### User Roles
+### MCP Server
 
-- **Admin** - Full access, can manage users and workspaces
-- **Developer** - Can create, edit, and delete requests/collections
-- **Reader** - View-only access
+See [mcp-server/README.md](mcp-server/README.md) for full setup. Quick version:
+
+```bash
+cd mcp-server
+npm install && npm run build
+node dist/index.js
+```
+
+Deploy to any Node.js host (Render, Fly.io, Railway, VPS). See the [MCP README](mcp-server/README.md) for environment variables and AI agent connection instructions.
+
+### Desktop App (Tauri)
+
+Requires [Rust](https://www.rust-lang.org/tools/install) and [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+```bash
+npm run tauri build
+```
+
+- **Windows** — produces `.msi` and `.exe` in `src-tauri/target/release/bundle/`
+- **macOS** — produces `.dmg` and `.app` in `src-tauri/target/release/bundle/`
+
+> Cross-compilation is not supported. Build on the target platform, or use GitHub Actions with platform-specific runners.
+
+## Project Structure
+
+```
+post-umbrella/
+├── src/                        # Frontend (React)
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── App.css
+│   ├── components/
+│   └── data/supabase/          # Supabase client and data layer
+├── supabase/
+│   ├── functions/proxy/        # Edge Function (CORS bypass)
+│   └── migrations/             # Database migrations
+├── src-tauri/                  # Desktop app (Tauri/Rust)
+├── mcp-server/                 # MCP server (Node.js)
+└── website/                    # Landing page
+```
+
+## User Roles
+
+- **Admin** — Full access, manage users and workspaces
+- **Developer** — Create, edit, and delete requests/collections
+- **Reader** — View-only access
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+3. Commit your changes
+4. Push and open a Pull Request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 

@@ -1,28 +1,32 @@
 # Post Umbrella MCP Server
 
-OAuth-protected MCP server for Post Umbrella. It authenticates users through Supabase, issues MCP bearer tokens, and exposes workspace, collection, folder, request, example, environment lookup, and search tools over streamable HTTP.
+OAuth-protected [Model Context Protocol](https://modelcontextprotocol.io/) server for Post Umbrella. Authenticates users through Supabase and exposes workspace, collection, request, example, and environment tools over streamable HTTP.
 
-## What It Provides
+## Quick Start
 
-- OAuth metadata and authorization endpoints for MCP clients
-- Supabase-backed user authentication with magic links
-- MCP tools for:
-  - workspaces
-  - collections and folders
-  - requests
-  - examples
-  - workspace environment lookup
-  - API search by name
-
-## Requirements
+### Prerequisites
 
 - Node.js 22+
-- A Supabase project with this repo's schema/migrations applied
-- Supabase Auth redirect URL for this server's callback
+- A Supabase project with the main repo's migrations applied
+- Auth redirect URLs configured (see [Auth Setup](#supabase-auth-setup))
+
+### Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+### Build and Run
+
+```bash
+npm run build
+node dist/index.js
+```
 
 ## Environment Variables
 
-Create `mcp-server/.env.local` for local development:
+Create `.env.local` for local development:
 
 ```env
 SUPABASE_URL=https://your-project.supabase.co
@@ -32,129 +36,77 @@ MCP_BASE_URL=http://localhost:3100
 WEBAPP_URL=http://localhost:5173
 ```
 
-Production variables:
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SUPABASE_URL` | Supabase project URL | Yes |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key | Yes |
+| `MCP_BASE_URL` | Public URL of this MCP server | Yes |
+| `WEBAPP_URL` | Public URL of the Post Umbrella frontend | Yes |
+| `PORT` | Server port (default: 3100) | No |
 
-```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-MCP_BASE_URL=https://your-public-mcp-domain.com
-WEBAPP_URL=https://your-webapp-domain.com
-PORT=3100
-```
+## Deployment
 
-## Local Development
+Deploy to any Node.js host — Render, Fly.io, Railway, a VPS, etc.
 
-Install dependencies:
+**Example with Render:**
 
-```bash
-npm install
-```
+1. Create a new **Web Service** pointing to the `mcp-server` directory
+2. **Build command:** `npm install && npm run build`
+3. **Start command:** `node dist/index.js`
+4. Set the environment variables above
 
-Start the dev server:
+> **Important:** This server keeps OAuth/session state in memory. Run a single instance and avoid scale-to-zero for reliable behavior.
 
-```bash
-npm run dev
-```
+## Connecting AI Agents
 
-Build for production:
+Once deployed, connect from your AI tools:
 
-```bash
-npm run build
-```
-
-Run the built server:
+**Claude Code:**
 
 ```bash
-node dist/index.js
+claude mcp add --transport http post-umbrella https://your-mcp-domain.com/mcp
 ```
 
-## Tool Overview
+**Codex:**
 
-Current MCP tools are grouped like this:
+```bash
+codex mcp add postUmbrella --url https://your-mcp-domain.com/mcp
+```
 
-- Workspaces
-  - `list_workspaces`
-  - `get_workspace`
-- Collections
-  - `list_collections`
-  - `get_collection`
-  - `create_collection`
-  - `rename_collection`
-- Folders
-  - `get_folder`
-  - `add_folder`
-  - `rename_folder`
-- Requests / APIs
-  - `list_requests`
-  - `get_request`
-  - `create_request`
-  - `update_request`
-  - `delete_request`
-  - `search_apis_by_name`
-- Examples
-  - `list_examples`
-  - `get_example`
-  - `create_example`
-  - `update_example`
-  - `delete_example`
-- Environments
-  - `list_workspace_environments`
-
-`get_collection` returns the full recursive tree for a top-level collection, including nested folders and requests at every level. `get_folder` does the same starting from a nested folder.
+The agent will detect OAuth support, open the browser, and complete the login flow. If you're already signed into the webapp, you'll see a one-click "Authorize" button.
 
 ## Supabase Auth Setup
 
-The MCP server redirects `/authorize` to the webapp for authentication (cross-domain auth). Add the webapp's MCP callback URL in Supabase Auth settings:
+The MCP server redirects `/authorize` to the webapp for authentication. Add these redirect URLs in your Supabase dashboard under **Authentication → URL Configuration**:
 
-```text
-http://localhost:5173/mcp-complete*
 ```
+# Local development
+http://localhost:5173/mcp-complete*
 
-For production:
-
-```text
+# Production
 https://your-webapp-domain.com/mcp-complete*
 ```
 
-The webapp hosts `mcp-authorize.html` (session check + confirm) and `mcp-complete.html` (magic link callback). These are static files in the webapp's `public/` directory, routed via Vercel rewrites at `/mcp-authorize` and `/mcp-complete`.
+The webapp hosts `mcp-authorize.html` (session check + confirm) and `mcp-complete.html` (magic link callback) as static files in `public/`.
 
-## Deploying
+## Available Tools
 
-This server keeps some OAuth/session state in memory. For reliable behavior:
+| Group | Tools |
+|-------|-------|
+| Workspaces | `list_workspaces`, `get_workspace` |
+| Collections | `list_collections`, `get_collection`, `create_collection`, `rename_collection` |
+| Folders | `get_folder`, `add_folder`, `rename_folder` |
+| Requests | `list_requests`, `get_request`, `create_request`, `update_request`, `delete_request`, `search_apis_by_name` |
+| Examples | `list_examples`, `get_example`, `create_example`, `update_example`, `delete_example` |
+| Environments | `list_workspace_environments` |
 
-- run a single instance
-- avoid scale-to-zero for production usage
-- keep `MCP_BASE_URL` set to the exact public base URL
-
-Suggested process:
-
-1. Install dependencies including dev dependencies during build.
-2. Run `npm run build`.
-3. Start with `node dist/index.js`.
-4. Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `MCP_BASE_URL` in your host.
-
-## Connecting From AI Agents
-
-Claude Code:
-
-```bash
-claude mcp add --transport http post-umbrella https://your-public-mcp-domain.com/mcp
-```
-
-Codex:
-
-```bash
-codex mcp add postUmbrella --url https://your-public-mcp-domain.com/mcp
-```
-
-The agent will detect OAuth support, open the browser, and complete the login flow. If you're already signed into the webapp, you'll see a one-click "Authorize" button instead of needing to re-authenticate.
+`get_collection` and `get_folder` return recursive trees — nested folders and requests at every level.
 
 ## Notes
 
-- Collections are top-level rows with `workspace_id` set and `parent_id = null`.
-- Folders are nested rows in the same `collections` table with `parent_id` set and `workspace_id = null`.
-- Collection and folder reads are recursive, so they can be used to inspect deep request trees from a single entry point.
-- Search results are filtered by Supabase row-level security, so only viewable APIs are returned.
-- Environment listing is read-only and includes merged current user values over shared initial values.
-- Dynamic client registration is supported for OAuth public clients like Codex.
-- Destructive tools are intentionally limited to requests and examples only.
+- Collections are top-level rows with `workspace_id` set and `parent_id = null`
+- Folders are nested rows in the same `collections` table with `parent_id` set and `workspace_id = null`
+- Search results are filtered by Supabase RLS — only viewable APIs are returned
+- Environment listing is read-only with merged current user values over shared initial values
+- Dynamic client registration is supported for OAuth public clients (e.g. Codex)
+- Destructive tools are limited to requests and examples only

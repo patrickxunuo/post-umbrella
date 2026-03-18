@@ -3,9 +3,8 @@ import { useInView } from '../App'
 const tech = [
   { name: 'React 18', color: '#61dafb' },
   { name: 'Vite', color: '#a78bfa' },
+  { name: 'Supabase', color: '#3ecf8e' },
   { name: 'Node.js', color: '#22c55e' },
-  { name: 'Express', color: '#f59e0b' },
-  { name: 'MySQL', color: '#0ea5e9' },
   { name: 'WebSocket', color: '#f43f5e' },
   { name: 'Tauri', color: '#fbbf24' },
 ]
@@ -36,12 +35,17 @@ export default function TechStack() {
 
         <div className="tech-cta">
           <p>One command to get started. Your data stays on your servers.</p>
-          <button className="btn-primary">
-            View Documentation
+          <a
+            className="btn-primary"
+            href="https://github.com/patrickxunuo/post-umbrella"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on GitHub
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-          </button>
+          </a>
         </div>
       </div>
     </section>
