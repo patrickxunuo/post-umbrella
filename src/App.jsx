@@ -296,7 +296,8 @@ function AppContent() {
   }, []);
 
   const handleCopyLink = useCallback(async (type, id) => {
-    const url = `${window.location.origin}/?type=${type}&id=${id}`;
+    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+    const url = `${baseUrl}/?type=${type}&id=${id}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success('Link copied to clipboard.');

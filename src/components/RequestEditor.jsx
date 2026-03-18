@@ -861,11 +861,13 @@ export function RequestEditor({
                             placeholder="Key"
                             value={field.key}
                             onChange={(e) => {
-                              updateFormDataField(index, 'key', e.target.value);
+                              const newFormData = [...formData];
+                              newFormData[index] = { ...newFormData[index], key: e.target.value };
                               // Add empty row if editing last row
                               if (index === formData.length - 1 && e.target.value) {
-                                addFormDataField();
+                                newFormData.push({ key: '', value: '', type: 'text', enabled: true });
                               }
+                              handleFormDataChange(newFormData);
                             }}
                           />
                         </td>

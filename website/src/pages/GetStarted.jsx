@@ -334,6 +334,11 @@ PORT=3100`}</CodeBlock>
                     <td>Custom proxy function URL</td>
                     <td>No</td>
                   </tr>
+                  <tr>
+                    <td><Code>VITE_APP_URL</Code></td>
+                    <td>Canonical web URL for shareable links (required for desktop app)</td>
+                    <td>No</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

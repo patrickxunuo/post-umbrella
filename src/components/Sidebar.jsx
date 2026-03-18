@@ -73,6 +73,22 @@ export function Sidebar({
   const exampleMenuRef = useRef(null);
   const collectionsRef = useRef(collections);
 
+  // Reposition menus that overflow the viewport
+  useEffect(() => {
+    const refs = [menuRef, collectionMenuRef, exampleMenuRef];
+    for (const ref of refs) {
+      const el = ref.current;
+      if (!el) continue;
+      el.style.top = '';
+      el.style.bottom = '';
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom > window.innerHeight - 8) {
+        el.style.top = 'auto';
+        el.style.bottom = 'calc(100% + 3px)';
+      }
+    }
+  }, [menuOpen, collectionMenuOpen, exampleMenuOpen]);
+
   // Save expanded state to localStorage
   useEffect(() => {
     localStorage.setItem('expandedCollections', JSON.stringify([...expandedCollections]));
