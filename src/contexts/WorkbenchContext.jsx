@@ -72,6 +72,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   const [pendingExampleListRequestIds, setPendingExampleListRequestIds] = useState(new Set());
   const [pendingCollectionIds, setPendingCollectionIds] = useState(new Set());
   const [revealRequestId, setRevealRequestId] = useState(null);
+  const [revealCollectionId, setRevealCollectionId] = useState(null);
   const recentlyModifiedRef = useRef(new Map());
   const previousWorkspaceIdRef = useRef(null);
   const originalRequestsRef = useRef({});
@@ -305,6 +306,18 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     }
 
     try {
+      if (pendingSharedLink.type === 'collection' || pendingSharedLink.type === 'folder') {
+        const found = nextCollections.some((c) => c.id === pendingSharedLink.id);
+        if (!found) {
+          toast.info('This shared item belongs to a different workspace.');
+          consumePendingSharedLink();
+          return;
+        }
+        setRevealCollectionId(pendingSharedLink.id);
+        consumePendingSharedLink();
+        return;
+      }
+
       if (pendingSharedLink.type === 'request') {
         const request = await data.getRequest(pendingSharedLink.id);
         const inLoadedWorkspace = nextCollections.some((item) => item.id === request.collection_id);
@@ -443,9 +456,9 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     saveStateRef.current = { activeTab, selectedRequest, selectedExample };
   }, [activeTab, selectedExample, selectedRequest]);
 
-  const saveFunctionsRef = useRef({ handleSaveRequest: null, handleSaveExample: null });
+  const saveFunctionsRef = useRef({ handleSaveRequest: null, handleSaveExample: null, handleSaveTempRequest: null });
   useEffect(() => {
-    saveFunctionsRef.current = { handleSaveRequest, handleSaveExample };
+    saveFunctionsRef.current = { handleSaveRequest, handleSaveExample, handleSaveTempRequest: saveFunctionsRef.current.handleSaveTempRequest };
   }, [handleSaveExample, handleSaveRequest]);
 
   const canEditRef = useRef(false);
@@ -463,6 +476,12 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
 
       const currentSaveState = saveStateRef.current;
       const currentSaveFunctions = saveFunctionsRef.current;
+
+      // Temporary tabs can always be saved (triggers folder picker)
+      if (currentSaveState.activeTab?.isTemporary && currentSaveFunctions.handleSaveTempRequest) {
+        currentSaveFunctions.handleSaveTempRequest(currentSaveState.activeTab);
+        return;
+      }
 
       if (!currentSaveState.activeTab?.dirty) return;
 
@@ -512,6 +531,8 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     pendingCollectionIds,
     revealRequestId,
     setRevealRequestId,
+    revealCollectionId,
+    setRevealCollectionId,
     activeTab,
     selectedRequest,
     selectedExample,
@@ -532,6 +553,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     loading,
     openRequestInTab,
     openExampleInTab,
+    saveFunctionsRef,
     closeTab,
     handleCreateCollection,
     handleCreateSubCollection,

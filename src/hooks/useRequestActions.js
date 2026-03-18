@@ -190,11 +190,11 @@ export function useRequestActions({
     setPreviewTabId(tabId);
   }, [openTabs, originalRequestsRef, previewTabId, setActiveTabId, setOpenTabs, setPreviewTabId]);
 
-  const closeTab = useCallback(async (id, e) => {
+  const closeTab = useCallback(async (id, e, { force = false } = {}) => {
     if (e) e.stopPropagation();
 
     const tab = openTabs.find((item) => item.id === id);
-    if (tab?.dirty) {
+    if (!force && tab?.dirty) {
       const confirmed = await confirm({
         title: 'Unsaved Changes',
         message: 'You have unsaved changes. Are you sure you want to close this tab?',

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Copy, ExternalLink, Upload, X, ChevronDown, Play, Code } from 'lucide-react';
+import { Checkbox } from './Checkbox';
 import { EnvVariableInput } from './EnvVariableInput';
 import { MethodSelector } from './MethodSelector';
 import { TypeSelector } from './TypeSelector';
@@ -501,8 +502,7 @@ export function RequestEditor({
             <button
               className={`btn-save ${dirty ? 'dirty' : ''}`}
               onClick={handleSave}
-              disabled={isTemporary && !isExample}
-              title={isExample ? 'Save example' : (isTemporary ? 'Temporary requests cannot be saved' : 'Save request')}
+              title={isExample ? 'Save example' : (isTemporary ? 'Save to collection' : 'Save request')}
             >
               Save{dirty ? ' *' : ''}
             </button>
@@ -632,8 +632,7 @@ export function RequestEditor({
                 {params.map((param, index) => (
                   <tr key={index}>
                     <td>
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={param.enabled !== false}
                         onChange={(e) => {
                           const newParams = [...params];
@@ -754,8 +753,7 @@ export function RequestEditor({
                 {headers.map((header, index) => (
                   <tr key={index}>
                     <td>
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={header.enabled !== false}
                         onChange={(e) => updateHeader(index, 'enabled', e.target.checked)}
                       />
@@ -852,8 +850,7 @@ export function RequestEditor({
                     {formData.map((field, index) => (
                       <tr key={index}>
                         <td>
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={field.enabled !== false}
                             onChange={(e) => updateFormDataField(index, 'enabled', e.target.checked)}
                           />

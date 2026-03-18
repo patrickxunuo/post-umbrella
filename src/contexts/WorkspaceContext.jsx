@@ -13,6 +13,11 @@ export function WorkspaceProvider({
   const [activeWorkspace, setActiveWorkspace] = useState(null);
   const [pendingSharedLink, setPendingSharedLink] = useState(() => {
     const params = new URLSearchParams(window.location.search);
+    // New unified format: ?type=request&id=xxx
+    const type = params.get('type');
+    const id = params.get('id');
+    if (type && id) return { type, id };
+    // Backwards compat: ?request_id=xxx or ?example_id=xxx
     const requestId = params.get('request_id');
     const exampleId = params.get('example_id');
     if (requestId) return { type: 'request', id: requestId };
@@ -30,6 +35,8 @@ export function WorkspaceProvider({
 
   const consumePendingSharedLink = useCallback(() => {
     const url = new URL(window.location.href);
+    url.searchParams.delete('type');
+    url.searchParams.delete('id');
     url.searchParams.delete('request_id');
     url.searchParams.delete('example_id');
     const search = url.searchParams.toString();

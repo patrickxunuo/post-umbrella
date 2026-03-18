@@ -400,32 +400,6 @@
   background: var(--bg-hover);
 }
 
-.workspace-checkbox input {
-  display: none;
-}
-
-.workspace-checkbox .checkbox-mark {
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--border-secondary);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-input);
-  transition: all var(--transition-fast);
-  flex-shrink: 0;
-}
-
-.workspace-checkbox:hover .checkbox-mark {
-  border-color: var(--text-tertiary);
-}
-
-.workspace-checkbox input:checked + .checkbox-mark {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-  color: white;
-}
 
 .workspace-checkbox .workspace-name {
   font-size: 12px;

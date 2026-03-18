@@ -99,6 +99,7 @@ The webapp hosts `mcp-authorize.html` (session check + confirm) and `mcp-complet
 | Requests | `list_requests`, `get_request`, `create_request`, `update_request`, `delete_request`, `search_apis_by_name` |
 | Examples | `list_examples`, `get_example`, `create_example`, `update_example`, `delete_example` |
 | Environments | `list_workspace_environments` |
+| Links | `resolve_link` |
 
 `get_collection` and `get_folder` return recursive trees — nested folders and requests at every level.
 
@@ -110,3 +111,4 @@ The webapp hosts `mcp-authorize.html` (session check + confirm) and `mcp-complet
 - Environment listing is read-only with merged current user values over shared initial values
 - Dynamic client registration is supported for OAuth public clients (e.g. Codex)
 - Destructive tools are limited to requests and examples only
+- `resolve_link` resolves resource links copied from the webapp's "Copy to MCP" context menu action (type + UUID)

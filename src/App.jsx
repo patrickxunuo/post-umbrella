@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor } from 'lucide-react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings } from 'lucide-react';
 import { WindowControls } from './components/WindowControls';
 import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
@@ -16,6 +16,9 @@ import { UserManagement } from './components/UserManagement';
 import { InviteUserModal } from './components/InviteUserModal';
 import { ImportCurlModal } from './components/ImportCurlModal';
 import { ThemeToggle } from './components/ThemeToggle';
+import { FolderPickerModal } from './components/FolderPicker';
+import { UnsavedChangesModal } from './components/UnsavedChangesModal';
+import { SettingsModal } from './components/SettingsModal';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -146,6 +149,11 @@ function AppContent() {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
+  const [draftSavePending, setDraftSavePending] = useState(null);
+  const [tempCloseTabId, setTempCloseTabId] = useState(null);
+  const [dirtyCloseTabId, setDirtyCloseTabId] = useState(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [userConfig, setUserConfig] = useState({});
   const toast = useToast();
   const { updateAvailable } = useVersionCheck();
 
@@ -165,6 +173,17 @@ function AppContent() {
     handleLogin,
     handleLogout,
   } = useAuth();
+
+  // Load user config (theme, preferences) after auth
+  useEffect(() => {
+    if (!user) return;
+    data.getUserConfig().then((config) => {
+      setUserConfig(config);
+      if (config.theme) {
+        handleThemeChange(config.theme);
+      }
+    }).catch(() => {});
+  }, [user, handleThemeChange]);
 
   const {
     activeWorkspace,
@@ -205,6 +224,8 @@ function AppContent() {
     pendingCollectionIds,
     revealRequestId,
     setRevealRequestId,
+    revealCollectionId,
+    setRevealCollectionId,
     activeTab,
     selectedRequest,
     selectedExample,
@@ -252,7 +273,19 @@ function AppContent() {
     updateTabExample,
     updateActiveDetailTab,
     wasRecentlyModified,
+    openRequestInTab,
+    saveFunctionsRef,
   } = useWorkbench();
+
+  const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
+
+  // Register temp request save handler for Ctrl+S
+  useEffect(() => {
+    saveFunctionsRef.current.handleSaveTempRequest = (tab) => {
+      setDraftSavePending({ tabId: tab.id, requestData: tab.request || {} });
+    };
+    return () => { saveFunctionsRef.current.handleSaveTempRequest = null; };
+  }, [saveFunctionsRef]);
 
   const handleTabsWheel = useCallback((event) => {
     const tabBar = event.currentTarget;
@@ -262,23 +295,13 @@ function AppContent() {
     tabBar.scrollLeft += delta;
   }, []);
 
-  const handleShareRequest = useCallback(async (requestId) => {
-    const shareUrl = `${window.location.origin}/?request_id=${requestId}`;
+  const handleCopyLink = useCallback(async (type, id) => {
+    const url = `${window.location.origin}/?type=${type}&id=${id}`;
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success('Request link copied to clipboard.');
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied to clipboard.');
     } catch (error) {
-      toast.error('Failed to copy request link.');
-    }
-  }, [toast]);
-
-  const handleShareExample = useCallback(async (exampleId) => {
-    const shareUrl = `${window.location.origin}/?example_id=${exampleId}`;
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success('Example link copied to clipboard.');
-    } catch (error) {
-      toast.error('Failed to copy example link.');
+      toast.error('Failed to copy link.');
     }
   }, [toast]);
 
@@ -649,7 +672,14 @@ function AppContent() {
           />
         </div>
         <div className="header-right">
-          <ThemeToggle theme={theme} onToggle={handleThemeChange} />
+          <ThemeToggle theme={theme} onToggle={(t) => {
+            handleThemeChange(t);
+            if (user) {
+              const next = { ...userConfig, theme: t };
+              setUserConfig(next);
+              data.updateUserConfig({ theme: t }).catch(() => {});
+            }
+          }} />
           <EnvironmentSelector
             environments={environments}
             activeEnvironment={activeEnvironment}
@@ -657,7 +687,7 @@ function AppContent() {
             onOpenEditor={() => setShowEnvEditor(true)}
             workspaceId={activeWorkspace?.id}
           />
-          {['system', 'admin', 'developer'].includes(userProfile?.role) && (
+          {canEdit && (
             <ImportDropdown
               onImportCurl={() => setShowImportCurl(true)}
               onImportFile={handleImport}
@@ -665,7 +695,7 @@ function AppContent() {
             />
           )}
           <div className="header-presence-group">
-            {['system', 'admin', 'developer'].includes(userProfile?.role) && (
+            {canEdit && (
               <button
                 className="btn-admin"
                 onClick={() => setShowUserManagement(true)}
@@ -718,6 +748,10 @@ function AppContent() {
                       Open in Desktop App
                     </button>
                   )}
+                  <button className="user-dropdown-item" onClick={() => { setShowUserDropdown(false); setShowSettings(true); }}>
+                    <Settings size={14} />
+                    Settings
+                  </button>
                   <div className="user-dropdown-divider" />
                   <button className="user-dropdown-item danger" onClick={() => { setShowUserDropdown(false); handleLogout(); }}>
                     <LogOut size={14} />
@@ -752,17 +786,18 @@ function AppContent() {
           onDeleteExample={handleSidebarDeleteExample}
           onDuplicateExample={handleDuplicateExample}
           onRenameExample={handleRenameExample}
-          onShareRequest={handleShareRequest}
-          onShareExample={handleShareExample}
+          onCopyLink={handleCopyLink}
           pendingRequestIds={pendingRequestIds}
           pendingExampleIds={pendingExampleIds}
           pendingExampleListRequestIds={pendingExampleListRequestIds}
           pendingCollectionIds={pendingCollectionIds}
           canAddCollection={!!activeWorkspace}
-          canEdit={['system', 'admin', 'developer'].includes(userProfile?.role)}
+          canEdit={canEdit}
+          selectedExample={selectedExample}
           loading={collectionsLoading}
           revealRequestId={revealRequestId}
-          onRevealComplete={() => setRevealRequestId(null)}
+          revealCollectionId={revealCollectionId}
+          onRevealComplete={() => { setRevealRequestId(null); setRevealCollectionId(null); }}
         />
         <div
           className="sidebar-resize-handle"
@@ -816,13 +851,68 @@ function AppContent() {
                   {tab.dirty && <span className="tab-dirty" title="Unsaved changes (Ctrl+S to save)" />}
                   <span
                     className="tab-close"
-                    onClick={(e) => closeTab(tab.id, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (userConfig.skipCloseConfirm) {
+                        closeTab(tab.id, e, { force: true });
+                      } else if (tab.isTemporary) {
+                        const r = tab.request || {};
+                        const isEmpty = !r.url && !r.body && (!r.headers || r.headers.length === 0) && (!r.params || r.params.length === 0) && (!r.form_data || r.form_data.length === 0) && (!r.auth_token);
+                        if (isEmpty) {
+                          closeTab(tab.id, e);
+                        } else {
+                          setTempCloseTabId(tab.id);
+                        }
+                      } else if (tab.dirty) {
+                        setDirtyCloseTabId(tab.id);
+                      } else {
+                        closeTab(tab.id, e);
+                      }
+                    }}
                     title="Close"
                   >
                     ×
                   </span>
                 </div>
               );})
+            )}
+            {canEdit && (
+              <button
+                className="tab-add-btn"
+                onClick={() => {
+                  const tempId = `temp-${Date.now()}`;
+                  const tempRequest = {
+                    id: tempId,
+                    name: 'New Request',
+                    method: 'GET',
+                    url: '',
+                    headers: [],
+                    body: '',
+                    body_type: 'none',
+                    form_data: [],
+                    params: [],
+                    auth_type: 'none',
+                    auth_token: '',
+                    pre_script: '',
+                    post_script: '',
+                    isTemporary: true,
+                  };
+                  setOpenTabs(prev => [...prev, {
+                    id: tempId,
+                    type: 'request',
+                    request: tempRequest,
+                    dirty: false,
+                    response: null,
+                    isTemporary: true,
+                    activeDetailTab: 'params',
+                  }]);
+                  setActiveTabId(tempId);
+                }}
+                title="New Request"
+                disabled={!activeWorkspace}
+              >
+                <Plus size={14} />
+              </button>
             )}
           </div>
 
@@ -831,7 +921,9 @@ function AppContent() {
             example={selectedExample}
             isExample={activeTab?.type === 'example'}
             onSend={handleSendRequest}
-            onSave={activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest}
+            onSave={activeTab?.isTemporary
+              ? (requestData) => setDraftSavePending({ tabId: activeTabId, requestData: { ...activeTab.request, ...requestData } })
+              : (activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest)}
             onSaveAsExample={handleSaveAsExample}
             onTry={handleTryExample}
             onRequestChange={activeTab?.type === 'example' ? updateTabExample : updateTabRequest}
@@ -844,7 +936,7 @@ function AppContent() {
             height={requestEditorHeight}
             activeDetailTab={activeTab?.activeDetailTab || 'params'}
             onActiveDetailTabChange={updateActiveDetailTab}
-            canEdit={['system', 'admin', 'developer'].includes(userProfile?.role)}
+            canEdit={canEdit}
           />
           <div
             className="vertical-resize-handle"
@@ -872,7 +964,7 @@ function AppContent() {
           }}
           workspaceId={activeWorkspace?.id}
           workspaceName={activeWorkspace?.name}
-          canEdit={['system', 'admin', 'developer'].includes(userProfile?.role)}
+          canEdit={canEdit}
         />
       )}
 
@@ -912,10 +1004,129 @@ function AppContent() {
         />
       )}
 
+      {showSettings && (
+        <SettingsModal
+          config={userConfig}
+          onClose={() => setShowSettings(false)}
+          onSave={async (patch) => {
+            const updated = await data.updateUserConfig(patch);
+            setUserConfig(updated);
+            if (patch.theme) {
+              handleThemeChange(patch.theme);
+            }
+            toast.success('Settings saved');
+          }}
+        />
+      )}
+
       {showImportCurl && (
         <ImportCurlModal
           onImport={handleImportCurl}
           onClose={() => setShowImportCurl(false)}
+        />
+      )}
+
+      {draftSavePending && (
+        <FolderPickerModal
+          title="Save Request to..."
+          collections={collections}
+          onConfirm={async (folderId) => {
+            const { tabId, requestData } = draftSavePending;
+            try {
+              const requestPayload = {
+                collection_id: folderId,
+                name: requestData.name || 'New Request',
+                method: requestData.method || 'GET',
+                url: requestData.url || '',
+                headers: requestData.headers || [],
+                body: requestData.body || '',
+                body_type: requestData.body_type || 'none',
+                form_data: requestData.form_data || [],
+                params: requestData.params || [],
+                auth_type: requestData.auth_type || 'none',
+                auth_token: requestData.auth_token || '',
+                pre_script: requestData.pre_script || '',
+                post_script: requestData.post_script || '',
+              };
+              const created = await data.createRequest(requestPayload);
+              setCollections((prev) => prev.map((c) => (
+                c.id === folderId
+                  ? { ...c, requests: [...(c.requests || []), { ...created, example_count: 0 }] }
+                  : c
+              )));
+              // Remove the temp tab and open the real one
+              setOpenTabs(prev => prev.filter(t => t.id !== tabId));
+              openRequestInTab(created);
+            } catch (err) {
+              toast.error(err.message || 'Failed to create request');
+            }
+            setDraftSavePending(null);
+          }}
+          onCancel={() => setDraftSavePending(null)}
+          confirmText="Save"
+        />
+      )}
+
+      {tempCloseTabId && (
+        <UnsavedChangesModal
+          showRemember
+          onCancel={() => setTempCloseTabId(null)}
+          onSave={() => {
+            const tab = openTabs.find(t => t.id === tempCloseTabId);
+            if (tab) {
+              setDraftSavePending({
+                tabId: tempCloseTabId,
+                requestData: tab.request || {},
+              });
+            }
+            setTempCloseTabId(null);
+          }}
+          onDontSave={(remember) => {
+            if (remember) {
+              const next = { ...userConfig, skipCloseConfirm: true };
+              setUserConfig(next);
+              data.updateUserConfig({ skipCloseConfirm: true }).catch(() => {});
+            }
+            const tabId = tempCloseTabId;
+            setOpenTabs(prev => {
+              const newTabs = prev.filter(t => t.id !== tabId);
+              if (activeTabId === tabId && newTabs.length > 0) {
+                setActiveTabId(newTabs[newTabs.length - 1].id);
+              } else if (newTabs.length === 0) {
+                setActiveTabId(null);
+              }
+              return newTabs;
+            });
+            setTempCloseTabId(null);
+          }}
+        />
+      )}
+
+      {dirtyCloseTabId && (
+        <UnsavedChangesModal
+          showRemember
+          onCancel={() => setDirtyCloseTabId(null)}
+          onSave={() => {
+            const tab = openTabs.find(t => t.id === dirtyCloseTabId);
+            if (tab) {
+              const saveData = tab.type === 'example'
+                ? { name: tab.example?.name, request_data: tab.example?.request_data, response_data: tab.example?.response_data }
+                : { method: tab.request?.method, url: tab.request?.url, headers: tab.request?.headers, body: tab.request?.body, body_type: tab.request?.body_type, auth_type: tab.request?.auth_type, auth_token: tab.request?.auth_token, params: tab.request?.params, pre_script: tab.request?.pre_script, post_script: tab.request?.post_script };
+              const saveFn = tab.type === 'example' ? handleSaveExample : handleSaveRequest;
+              saveFn(saveData);
+            }
+            closeTab(dirtyCloseTabId, null, { force: true });
+            setDirtyCloseTabId(null);
+          }}
+          onDontSave={(remember) => {
+            if (remember) {
+              const next = { ...userConfig, skipCloseConfirm: true };
+              setUserConfig(next);
+              data.updateUserConfig({ skipCloseConfirm: true }).catch(() => {});
+            }
+            closeTab(dirtyCloseTabId, null, { force: true });
+            setDirtyCloseTabId(null);
+          }}
         />
       )}
 

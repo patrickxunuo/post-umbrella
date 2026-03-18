@@ -12,6 +12,7 @@ import { registerRequestTools } from './tools/requests.js';
 import { registerExampleTools } from './tools/examples.js';
 import { registerSearchTools } from './tools/search.js';
 import { registerEnvironmentLookupTools } from './tools/environmentLookup.js';
+import { registerResolveTools } from './tools/resolve.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const PORT = parseInt(process.env.PORT || '3100');
@@ -51,6 +52,7 @@ function createMcpServer(client: SupabaseClient): McpServer {
   registerExampleTools(server, getClient);
   registerSearchTools(server, getClient);
   registerEnvironmentLookupTools(server, getClient);
+  registerResolveTools(server, getClient);
 
   return server;
 }

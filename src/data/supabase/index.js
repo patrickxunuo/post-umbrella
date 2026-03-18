@@ -2025,6 +2025,45 @@ export const leaveWorkspacePresence = async () => {
 // Get current presence channel (for subscribing to events)
 export const getPresenceChannel = () => presenceChannel;
 
+// ==================== User Config ====================
+
+export const getUserConfig = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return {};
+
+  const { data, error } = await supabase
+    .from('user_config')
+    .select('config')
+    .eq('user_id', user.id)
+    .single();
+
+  if (error && error.code === 'PGRST116') return {}; // No row yet
+  if (error) throw new Error(error.message);
+  return data.config || {};
+};
+
+export const updateUserConfig = async (patch) => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Read current config first
+  const current = await getUserConfig();
+  const merged = { ...current, ...patch };
+
+  const { data, error } = await supabase
+    .from('user_config')
+    .upsert({
+      user_id: user.id,
+      config: merged,
+      updated_at: Math.floor(Date.now() / 1000),
+    }, { onConflict: 'user_id' })
+    .select('config')
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data.config;
+};
+
 // Provider info
 export const providerName = 'supabase';
 export const supportsRealtime = true;

@@ -21,6 +21,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
+import { Checkbox } from './Checkbox';
 import { useConfirm } from './ConfirmModal';
 import { useToast } from './Toast';
 import { EditUserModal } from './EditUserModal';
@@ -436,14 +437,10 @@ export function UserManagement({
                             .filter(ws => ws.id !== '00000000-0000-0000-0000-000000000001')
                             .map(ws => (
                               <label key={ws.id} className="workspace-checkbox">
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={inviteWorkspaces.includes(ws.id)}
                                   onChange={() => toggleInviteWorkspace(ws.id)}
                                 />
-                                <span className="checkbox-mark">
-                                  {inviteWorkspaces.includes(ws.id) && <Check size={10} />}
-                                </span>
                                 <span className="workspace-name">{ws.name}</span>
                               </label>
                             ))

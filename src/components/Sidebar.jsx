@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, FolderInput, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Share2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, FolderInput, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Link } from 'lucide-react';
 import * as data from '../data/index.js';
 import { useConfirm } from './ConfirmModal';
 import { DropdownMenu } from './DropdownMenu';
+import { FolderPickerModal } from './FolderPicker';
 
 const METHOD_COLORS = {
   GET: '#61affe',
@@ -34,16 +35,17 @@ export function Sidebar({
   onDeleteExample,
   onDuplicateExample,
   onRenameExample,
-  onShareRequest,
-  onShareExample,
+  onCopyLink,
   pendingRequestIds = new Set(),
   pendingExampleIds = new Set(),
   pendingExampleListRequestIds = new Set(),
   pendingCollectionIds = new Set(),
   canAddCollection = true,
+  selectedExample = null,
   canEdit = true,
   loading = false,
   revealRequestId = null,
+  revealCollectionId = null,
   onRevealComplete,
 }) {
   const confirm = useConfirm();
@@ -66,7 +68,6 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState('');
   const [exampleMenuOpen, setExampleMenuOpen] = useState(null);
   const [moveModalRequest, setMoveModalRequest] = useState(null);
-  const [selectedMoveFolder, setSelectedMoveFolder] = useState(null);
   const menuRef = useRef(null);
   const collectionMenuRef = useRef(null);
   const exampleMenuRef = useRef(null);
@@ -204,9 +205,16 @@ export function Sidebar({
     ) || [];
   };
 
-  // Check if collection or its children have matching requests
+  // Check if collection name matches search
+  const collectionMatchesSearch = (collection) => {
+    if (!searchQuery.trim()) return false;
+    return collection.name.toLowerCase().includes(searchQuery.toLowerCase());
+  };
+
+  // Check if collection or its children have matching requests or matching name
   const hasMatchingRequests = (collection) => {
     if (!searchQuery.trim()) return true;
+    if (collectionMatchesSearch(collection)) return true;
     const filteredReqs = filterRequests(collection.requests);
     if (filteredReqs.length > 0) return true;
     const children = getChildCollections(collection.id);
@@ -356,6 +364,9 @@ export function Sidebar({
       case 'export':
         onExportCollection?.(collection);
         break;
+      case 'copy-link':
+        onCopyLink?.(collection.parent_id ? 'folder' : 'collection', collection.id);
+        break;
       case 'delete':
         const confirmed = await confirm({
           title: 'Delete Folder',
@@ -395,8 +406,8 @@ export function Sidebar({
         }
         setExpandedRequests((prev) => new Set([...prev, request.id]));
         break;
-      case 'share':
-        await onShareRequest?.(request.id);
+      case 'copy-link':
+        onCopyLink?.('request', request.id);
         break;
       case 'delete':
         const confirmed = await confirm({
@@ -433,8 +444,8 @@ export function Sidebar({
           }
         }
         break;
-      case 'share':
-        await onShareExample?.(example.id);
+      case 'copy-link':
+        onCopyLink?.('example', example.id);
         break;
       case 'delete':
         const confirmed = await confirm({
@@ -523,27 +534,10 @@ export function Sidebar({
     e.stopPropagation();
     setMenuOpen(null);
     setMoveModalRequest(request);
-    setSelectedMoveFolder(null);
-  };
-
-  const handleSelectMoveFolder = (collectionId) => {
-    setSelectedMoveFolder(collectionId);
-  };
-
-  const handleConfirmMove = async () => {
-    if (!moveModalRequest || !selectedMoveFolder) return;
-    try {
-      await onMoveRequest?.(moveModalRequest.id, selectedMoveFolder);
-      setMoveModalRequest(null);
-      setSelectedMoveFolder(null);
-    } catch (err) {
-      console.error('Failed to move request:', err);
-    }
   };
 
   const handleCancelMove = () => {
     setMoveModalRequest(null);
-    setSelectedMoveFolder(null);
   };
 
   // Expand all folders
@@ -557,50 +551,46 @@ export function Sidebar({
     setExpandedCollections(new Set());
   };
 
-  // Scroll to active request (reveal in sidebar)
+  // Scroll to active item (request or example) in sidebar
   const handleScrollToActive = () => {
-    if (!selectedRequest) return;
+    const isExample = !!selectedExample;
+    const targetRequestId = isExample ? selectedExample.request_id : selectedRequest?.id;
+    if (!targetRequestId) return;
 
     // Find the collection containing this request and expand it + all parents
-    const findAndExpandPath = (targetRequest) => {
-      const collectionsToExpand = new Set();
+    const collectionsToExpand = new Set();
+    const requestsToExpand = new Set();
 
-      // Find collection containing this request
-      const findCollection = (collectionId) => {
-        const collection = collections.find(c => c.id === collectionId);
-        if (!collection) return null;
-
-        // Check if request is in this collection
-        if (collection.requests?.some(r => r.id === targetRequest.id)) {
-          collectionsToExpand.add(collection.id);
-          // Also expand all parent collections
-          let parent = collections.find(c => c.id === collection.parent_id);
-          while (parent) {
-            collectionsToExpand.add(parent.id);
-            parent = collections.find(c => c.id === parent.parent_id);
-          }
-          return true;
+    for (const collection of collections) {
+      if (collection.requests?.some(r => r.id === targetRequestId)) {
+        collectionsToExpand.add(collection.id);
+        let parent = collections.find(c => c.id === collection.parent_id);
+        while (parent) {
+          collectionsToExpand.add(parent.id);
+          parent = collections.find(c => c.id === parent.parent_id);
         }
-
-        return false;
-      };
-
-      // Search through all collections
-      for (const collection of collections) {
-        if (findCollection(collection.id)) break;
+        break;
       }
+    }
 
-      return collectionsToExpand;
-    };
+    // If scrolling to an example, also expand the parent request
+    if (isExample) {
+      requestsToExpand.add(targetRequestId);
+    }
 
-    const collectionsToExpand = findAndExpandPath(selectedRequest);
     setExpandedCollections(prev => new Set([...prev, ...collectionsToExpand]));
+    if (requestsToExpand.size > 0) {
+      setExpandedRequests(prev => new Set([...prev, ...requestsToExpand]));
+    }
 
-    // Scroll to the request element after a short delay to allow expansion
+    // Scroll to the element after a short delay to allow expansion
     setTimeout(() => {
-      const requestElement = document.querySelector(`.request-item.selected`);
-      if (requestElement) {
-        requestElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const selector = isExample
+        ? `.example-item-sidebar.selected`
+        : `.request-item.selected`;
+      const element = document.querySelector(selector);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     }, 100);
   };
@@ -645,15 +635,45 @@ export function Sidebar({
     }, 100);
   }, [revealRequestId, collections, onRevealComplete]);
 
+  // Auto-reveal collection/folder when revealCollectionId is set (e.g., from shared link)
+  useEffect(() => {
+    if (!revealCollectionId || collections.length === 0) return;
+
+    // Expand all parent collections + the target itself
+    const collectionsToExpand = new Set();
+    let currentId = revealCollectionId;
+    while (currentId) {
+      collectionsToExpand.add(currentId);
+      const col = collections.find((c) => c.id === currentId);
+      currentId = col?.parent_id;
+    }
+
+    setExpandedCollections((prev) => new Set([...prev, ...collectionsToExpand]));
+
+    setTimeout(() => {
+      const el = document.querySelector(`[data-collection-id="${revealCollectionId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      onRevealComplete?.();
+    }, 100);
+  }, [revealCollectionId, collections, onRevealComplete]);
+
   // Recursive collection renderer
-  const renderCollection = (collection, depth = 0) => {
-    // Skip collections with no matching requests when searching
-    if (searchQuery.trim() && !hasMatchingRequests(collection)) {
+  const renderCollection = (collection, depth = 0, parentMatched = false) => {
+    const thisMatches = collectionMatchesSearch(collection);
+    const showAll = parentMatched || thisMatches;
+
+    // Skip collections with no matching content when searching (unless a parent matched)
+    if (searchQuery.trim() && !showAll && !hasMatchingRequests(collection)) {
       return null;
     }
 
     const childCollections = getChildCollections(collection.id);
-    const filteredReqs = filterRequests(collection.requests);
+    // If this collection or a parent matches, show all requests; otherwise filter
+    const filteredReqs = (searchQuery.trim() && showAll)
+      ? (collection.requests || [])
+      : filterRequests(collection.requests);
     // Auto-expand when searching
     const isExpanded = searchQuery.trim() ? true : expandedCollections.has(collection.id);
     const hasChildren = childCollections.length > 0 || (collection.requests?.length > 0);
@@ -662,8 +682,10 @@ export function Sidebar({
       <div key={collection.id} className="collection">
         <div
           className="collection-header"
+          data-collection-id={collection.id}
           style={{ paddingLeft: `${12 + depth * 16}px` }}
           onClick={() => toggleCollection(collection.id)}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleCollectionMenu(collection.id, e); }}
         >
           <span className="collection-arrow">
             {hasChildren ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
@@ -735,6 +757,13 @@ export function Sidebar({
                     Export
                   </button>
                 )}
+                <button
+                  className="request-menu-item"
+                  onClick={(e) => handleCollectionMenuAction('copy-link', collection, e)}
+                >
+                  <Link size={14} />
+                  Copy Link
+                </button>
                 {canEdit && (
                   <>
                     <div className="request-menu-divider" />
@@ -755,7 +784,7 @@ export function Sidebar({
         {isExpanded && (
           <div className="collection-children">
             {/* Render child collections first */}
-            {childCollections.map(child => renderCollection(child, depth + 1))}
+            {childCollections.map(child => renderCollection(child, depth + 1, showAll))}
 
             {/* Render requests */}
             {filteredReqs?.length > 0 ? (
@@ -773,6 +802,7 @@ export function Sidebar({
                         className={`request-item ${isSelected ? 'selected' : ''} ${draggedRequest?.id === request.id ? 'dragging' : ''} ${dragOverRequest === request.id ? 'drag-over' : ''}`}
                         data-request-id={request.id}
                         onClick={() => onSelectRequest(request)}
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(request.id, e); }}
                         draggable={canEdit}
                         onDragStart={canEdit ? (e) => handleDragStart(e, request, collection.id) : undefined}
                         onDragEnd={canEdit ? handleDragEnd : undefined}
@@ -862,10 +892,10 @@ export function Sidebar({
                               )}
                               <button
                                 className="request-menu-item"
-                                onClick={(e) => handleMenuAction('share', request, e)}
+                                onClick={(e) => handleMenuAction('copy-link', request, e)}
                               >
-                                <Share2 size={14} />
-                                Share
+                                <Link size={14} />
+                                Copy Link
                               </button>
                               {canEdit && (
                                 <>
@@ -902,8 +932,10 @@ export function Sidebar({
                           {examples.map((example) => (
                             <div
                               key={example.id}
-                              className="example-item-sidebar"
+                              className={`example-item-sidebar ${selectedExample?.id === example.id ? 'selected' : ''}`}
+                              data-example-id={example.id}
                               onClick={() => onOpenExample?.(example, request)}
+                              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleExampleMenu(example.id, e); }}
                             >
                               <FileText size={12} className="example-icon" />
                               {editingId === `example-${example.id}` ? (
@@ -961,10 +993,10 @@ export function Sidebar({
                                     )}
                                     <button
                                       className="request-menu-item"
-                                      onClick={(e) => handleExampleMenuAction('share', example, request, e)}
+                                      onClick={(e) => handleExampleMenuAction('copy-link', example, request, e)}
                                     >
-                                      <Share2 size={14} />
-                                      Share
+                                      <Link size={14} />
+                                      Copy Link
                                     </button>
                                     {canEdit && (
                                       <>
@@ -1010,8 +1042,8 @@ export function Sidebar({
           <button
             onClick={handleScrollToActive}
             className="btn-icon small"
-            title="Scroll to active request"
-            disabled={!selectedRequest}
+            title="Scroll to active item"
+            disabled={!selectedRequest && !selectedExample}
           >
             <Crosshair size={14} />
           </button>
@@ -1071,88 +1103,23 @@ export function Sidebar({
 
       {/* Move To Modal */}
       {moveModalRequest && (
-        <div className="modal-overlay" onClick={handleCancelMove}>
-          <div className="modal move-to-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Move "{moveModalRequest.name}" to...</h2>
-              <button className="modal-close" onClick={handleCancelMove}>
-                <X size={18} />
-              </button>
-            </div>
-            <div className="modal-body move-to-body">
-              <div className="move-to-tree">
-                {rootCollections.map((collection) => (
-                  <MoveToFolderItem
-                    key={collection.id}
-                    collection={collection}
-                    allCollections={collections}
-                    currentCollectionId={moveModalRequest.collection_id}
-                    selectedId={selectedMoveFolder}
-                    onSelect={handleSelectMoveFolder}
-                    depth={0}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={handleCancelMove}>
-                Cancel
-              </button>
-              <button
-                className="btn-primary"
-                onClick={handleConfirmMove}
-                disabled={!selectedMoveFolder}
-              >
-                Move
-              </button>
-            </div>
-          </div>
-        </div>
+        <FolderPickerModal
+          title={`Move "${moveModalRequest.name}" to...`}
+          collections={collections}
+          disabledId={moveModalRequest.collection_id}
+          onConfirm={async (folderId) => {
+            try {
+              await onMoveRequest?.(moveModalRequest.id, folderId);
+            } catch (err) {
+              console.error('Failed to move request:', err);
+            }
+            setMoveModalRequest(null);
+          }}
+          onCancel={handleCancelMove}
+          confirmText="Move"
+        />
       )}
     </div>
   );
 }
 
-// Move To Folder Item component
-function MoveToFolderItem({ collection, allCollections, currentCollectionId, selectedId, onSelect, depth }) {
-  const [expanded, setExpanded] = useState(true);
-  const childCollections = allCollections.filter(c => c.parent_id === collection.id);
-  const isCurrentFolder = collection.id === currentCollectionId;
-  const isSelected = collection.id === selectedId;
-
-  return (
-    <div className="move-to-folder">
-      <div
-        className={`move-to-folder-item ${isCurrentFolder ? 'current' : ''} ${isSelected ? 'selected' : ''}`}
-        style={{ paddingLeft: `${12 + depth * 20}px` }}
-        onClick={() => !isCurrentFolder && onSelect(collection.id)}
-      >
-        {childCollections.length > 0 ? (
-          <span className="move-to-expand" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}>
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </span>
-        ) : (
-          <span className="move-to-expand-placeholder" />
-        )}
-        <Folder size={16} className="move-to-folder-icon" />
-        <span className="move-to-folder-name">{collection.name}</span>
-        {isCurrentFolder && <span className="move-to-current-badge">Current</span>}
-      </div>
-      {expanded && childCollections.length > 0 && (
-        <div className="move-to-children">
-          {childCollections.map((child) => (
-            <MoveToFolderItem
-              key={child.id}
-              collection={child}
-              allCollections={allCollections}
-              currentCollectionId={currentCollectionId}
-              selectedId={selectedId}
-              onSelect={onSelect}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
