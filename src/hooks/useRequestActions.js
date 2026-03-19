@@ -581,8 +581,11 @@ export function useRequestActions({
     }
   }, [toast]);
 
-  const handleImportCurl = useCallback((parsed) => {
+  const handleImportCurl = useCallback(async (parsed) => {
     const tempId = `temp-${Date.now()}`;
+
+    const formData = parsed.formData?.length > 0 ? parsed.formData : [{ key: '', value: '', type: 'text', enabled: true }];
+
     const tempRequest = {
       id: tempId,
       name: 'Imported cURL',
@@ -591,6 +594,7 @@ export function useRequestActions({
       headers: parsed.headers,
       body: parsed.body,
       body_type: parsed.bodyType,
+      form_data: formData,
       isTemporary: true,
     };
 

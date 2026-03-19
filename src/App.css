@@ -1842,6 +1842,73 @@ body {
   color: var(--text-primary);
 }
 
+.btn-copy-curl.active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* cURL Preview Panel (app-level right section) */
+.curl-resize-handle {
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s ease;
+  flex-shrink: 0;
+}
+
+.curl-resize-handle:hover,
+.curl-resize-handle:active {
+  background: var(--accent-primary);
+}
+
+.curl-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border-left: 1px solid var(--border-primary);
+  overflow: hidden;
+}
+
+.curl-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.curl-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.curl-panel-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.curl-panel-code {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.curl-panel-code .cm-editor {
+  height: 100%;
+}
+
+.curl-panel-code .cm-scroller {
+  overflow: auto;
+}
+
 /* Request Tabs */
 .request-tabs {
   display: flex;
@@ -1861,6 +1928,9 @@ body {
   font-size: 12px;
   font-weight: 500;
   transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .request-tabs button:hover {
@@ -1895,19 +1965,12 @@ body {
   min-height: 0;
 }
 
-/* Script Tabs */
-.request-tabs button.script-tab {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.request-tabs button.script-tab.has-content::after {
+.request-tabs button.has-content::after {
   content: '';
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent-primary);
+  background: var(--accent-success);
   margin-left: 4px;
 }
 
@@ -2135,7 +2198,7 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 6px 14px;
+  padding: 2px 16px;
   background: transparent;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);

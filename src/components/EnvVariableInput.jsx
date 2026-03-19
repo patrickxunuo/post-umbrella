@@ -6,6 +6,7 @@ export function EnvVariableInput({
   value,
   onChange,
   onKeyDown,
+  onPaste,
   placeholder,
   className,
   activeEnvironment,
@@ -426,6 +427,7 @@ export function EnvVariableInput({
         value={value}
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
+        onPaste={onPaste}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         disabled={disabled}

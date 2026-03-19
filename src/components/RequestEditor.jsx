@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Copy, ExternalLink, Upload, X, ChevronDown, Play, Code } from 'lucide-react';
+import { ExternalLink, Upload, X, ChevronDown, Play, Code } from 'lucide-react';
 import { Checkbox } from './Checkbox';
 import { EnvVariableInput } from './EnvVariableInput';
 import { MethodSelector } from './MethodSelector';
 import { TypeSelector } from './TypeSelector';
 import { JsonEditor } from './JsonEditor';
 import { ScriptEditor } from './ScriptEditor';
+import { parseCurl } from './ImportCurlModal';
 import { useToast } from './Toast';
 
 // Parse URL query string to params array
@@ -50,7 +51,7 @@ function escapeShellArg(str) {
 }
 
 // Generate cURL command from request
-function generateCurl(method, url, headers, body, bodyType, formData, authType, authToken) {
+export function generateCurl(method, url, headers, body, bodyType, formData, authType, authToken) {
   const parts = ['curl'];
 
   // Add method
@@ -61,9 +62,10 @@ function generateCurl(method, url, headers, body, bodyType, formData, authType, 
   // Add URL (quote it)
   parts.push(`'${escapeShellArg(url)}'`);
 
-  // Add headers
+  // Add headers (exclude Authorization if bearer auth is set, to avoid duplicates)
   const enabledHeaders = headers.filter(h => h.enabled !== false && h.key);
   for (const header of enabledHeaders) {
+    if (authType === 'bearer' && authToken && header.key.toLowerCase() === 'authorization') continue;
     parts.push(`-H '${escapeShellArg(header.key)}: ${escapeShellArg(header.value)}'`);
   }
 
@@ -77,11 +79,10 @@ function generateCurl(method, url, headers, body, bodyType, formData, authType, 
     const enabledFields = formData.filter(f => f.enabled !== false && f.key);
     for (const field of enabledFields) {
       if (field.type === 'file') {
-        // For files, use @filename syntax (user will need to adjust path)
-        const fileName = field.fileName || 'file';
-        parts.push(`-F '${escapeShellArg(field.key)}=@${escapeShellArg(fileName)}'`);
+        const filePath = field.filePath || field.fileName || 'file';
+        parts.push(`--form '${escapeShellArg(field.key)}=@"${escapeShellArg(filePath)}"'`);
       } else {
-        parts.push(`-F '${escapeShellArg(field.key)}=${escapeShellArg(field.value || '')}'`);
+        parts.push(`--form '${escapeShellArg(field.key)}=${escapeShellArg(field.value || '')}'`);
       }
     }
   } else if (bodyType !== 'none' && body) {
@@ -112,6 +113,8 @@ export function RequestEditor({
   activeDetailTab = 'params',
   onActiveDetailTabChange,
   canEdit = true,
+  showCurlPanel,
+  onToggleCurlPanel,
 }) {
   const toast = useToast();
   const [method, setMethod] = useState('GET');
@@ -166,11 +169,11 @@ export function RequestEditor({
       const reqData = example.request_data || {};
       setMethod(reqData.method || 'GET');
       setUrl(reqData.url || '');
-      setHeaders(
-        reqData.headers?.length > 0
-          ? reqData.headers
-          : [{ key: '', value: '', enabled: true }]
-      );
+      const exHeaders = reqData.headers?.length > 0 ? [...reqData.headers] : [];
+      if (exHeaders.length === 0 || exHeaders[exHeaders.length - 1].key !== '') {
+        exHeaders.push({ key: '', value: '', enabled: true });
+      }
+      setHeaders(exHeaders);
       setBody(reqData.body || '');
       setBodyType(reqData.body_type || 'none');
       setFormData(
@@ -185,11 +188,11 @@ export function RequestEditor({
     } else if (request) {
       setMethod(request.method || 'GET');
       setUrl(request.url || '');
-      setHeaders(
-        request.headers?.length > 0
-          ? request.headers
-          : [{ key: '', value: '', enabled: true }]
-      );
+      const reqHeaders = request.headers?.length > 0 ? [...request.headers] : [];
+      if (reqHeaders.length === 0 || reqHeaders[reqHeaders.length - 1].key !== '') {
+        reqHeaders.push({ key: '', value: '', enabled: true });
+      }
+      setHeaders(reqHeaders);
       setBody(request.body || '');
       setBodyType(request.body_type || 'none');
       setFormData(
@@ -248,6 +251,54 @@ export function RequestEditor({
     notifyChange({ url: newUrl, params: mergedParams });
   };
 
+  const handleUrlPaste = async (e) => {
+    const text = e.clipboardData?.getData('text')?.trim();
+    if (!text || !text.match(/^curl\s/i)) return;
+    e.preventDefault();
+    try {
+      const parsed = parseCurl(text);
+      if (!parsed.url) return;
+      setMethod(parsed.method);
+      setUrl(parsed.url);
+      setHeaders(parsed.headers);
+      setParams(parseUrlParams(parsed.url).concat([{ key: '', value: '', enabled: true }]));
+      lastUrlRef.current = parsed.url;
+      if (parsed.bodyType === 'form-data' && parsed.formData?.length > 0) {
+        setBodyType('form-data');
+        setBody('');
+        setFormData(parsed.formData);
+        notifyChange({
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          body: '',
+          body_type: 'form-data',
+          form_data: parsed.formData,
+        });
+      } else {
+        setBodyType(parsed.bodyType);
+        setBody(parsed.body);
+        notifyChange({
+          method: parsed.method,
+          url: parsed.url,
+          headers: parsed.headers,
+          body: parsed.body,
+          body_type: parsed.bodyType,
+        });
+      }
+      // Extract auth from parsed headers
+      const authHeader = parsed.headers.find(h => h.key.toLowerCase() === 'authorization');
+      if (authHeader && authHeader.value.toLowerCase().startsWith('bearer ')) {
+        setAuthType('bearer');
+        setAuthToken(authHeader.value.slice(7));
+        setHeaders(prev => prev.filter(h => h.key.toLowerCase() !== 'authorization'));
+      }
+      toast.success('cURL command parsed successfully');
+    } catch {
+      // Not a valid curl — let normal paste happen
+    }
+  };
+
   const handleHeadersChange = (newHeaders) => {
     setHeaders(newHeaders);
     notifyChange({ headers: newHeaders });
@@ -275,12 +326,35 @@ export function RequestEditor({
   };
 
   const handleFileSelect = async (index, file) => {
-    if (!file) return;
+    // In Tauri, use native dialog to get full file path
+    if ('__TAURI_INTERNALS__' in window) {
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const { invoke } = await import('@tauri-apps/api/core');
+        const selected = await open({ multiple: false });
+        if (!selected) return;
+        const filePath = typeof selected === 'string' ? selected : selected.path;
+        const info = await invoke('read_file_at_path', { path: filePath });
+        const newFormData = [...formData];
+        newFormData[index] = {
+          ...newFormData[index],
+          value: info.base64,
+          fileName: info.name,
+          filePath,
+          fileType: info.mime_type,
+          fileSize: info.size,
+        };
+        handleFormDataChange(newFormData);
+        return;
+      } catch {
+        // Fall through to browser file input
+      }
+    }
 
-    // Read file as base64
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const base64 = reader.result.split(',')[1]; // Remove data:...;base64, prefix
+      const base64 = reader.result.split(',')[1];
       const newFormData = [...formData];
       newFormData[index] = {
         ...newFormData[index],
@@ -431,11 +505,6 @@ export function RequestEditor({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSaveDropdown]);
 
-  const addHeader = () => {
-    const newHeaders = [...headers, { key: '', value: '', enabled: true }];
-    handleHeadersChange(newHeaders);
-  };
-
   const updateHeader = (index, field, value) => {
     const newHeaders = [...headers];
     newHeaders[index] = { ...newHeaders[index], [field]: value };
@@ -443,7 +512,11 @@ export function RequestEditor({
   };
 
   const removeHeader = (index) => {
-    handleHeadersChange(headers.filter((_, i) => i !== index));
+    const newHeaders = headers.filter((_, i) => i !== index);
+    if (newHeaders.length === 0) {
+      newHeaders.push({ key: '', value: '', enabled: true });
+    }
+    handleHeadersChange(newHeaders);
   };
 
   if (!request && !example) {
@@ -464,10 +537,11 @@ export function RequestEditor({
         />
         <EnvVariableInput
           className="url-input"
-          placeholder="Enter request URL"
+          placeholder="Enter request URL or paste cURL"
           value={url}
           onChange={(e) => handleUrlChange(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !isExample && handleSend()}
+          onPaste={canEdit ? handleUrlPaste : undefined}
           activeEnvironment={activeEnvironment}
           onEnvironmentUpdate={onEnvironmentUpdate}
           disabled={!canEdit}
@@ -531,67 +605,35 @@ export function RequestEditor({
           </div>
         )}
         <button
-          className="btn-copy-curl"
-          onClick={async () => {
-            // Substitute environment variables before generating cURL
-            const resolvedUrl = substituteVariables(url);
-            const resolvedHeaders = headers.map(h => ({
-              ...h,
-              key: substituteVariables(h.key),
-              value: substituteVariables(h.value),
-            }));
-            const resolvedBody = substituteVariables(body);
-            const resolvedAuthToken = substituteVariables(authToken);
-            const resolvedFormData = formData?.map(f => ({
-              ...f,
-              key: substituteVariables(f.key),
-              value: f.type === 'file' ? f.value : substituteVariables(f.value),
-            }));
-
-            const curl = generateCurl(method, resolvedUrl, resolvedHeaders, resolvedBody, bodyType, resolvedFormData, authType, resolvedAuthToken);
-            try {
-              await navigator.clipboard.writeText(curl);
-              toast.success('cURL copied to clipboard');
-            } catch (err) {
-              // Fallback for older browsers or when clipboard API fails
-              const textArea = document.createElement('textarea');
-              textArea.value = curl;
-              textArea.style.position = 'fixed';
-              textArea.style.left = '-9999px';
-              document.body.appendChild(textArea);
-              textArea.select();
-              document.execCommand('copy');
-              document.body.removeChild(textArea);
-              toast.success('cURL copied to clipboard');
-            }
-          }}
-          title="Copy as cURL"
+          className={`btn-copy-curl${showCurlPanel ? ' active' : ''}`}
+          onClick={() => onToggleCurlPanel?.()}
+          title="cURL preview"
         >
-          <Copy size={14} />
+          <Code size={14} />
         </button>
       </div>
 
       <div className="request-tabs">
         <button
-          className={activeDetailTab === 'params' ? 'active' : ''}
+          className={`${activeDetailTab === 'params' ? 'active' : ''} ${params.some(p => p.key) ? 'has-content' : ''}`}
           onClick={() => onActiveDetailTabChange?.('params')}
         >
           Params
         </button>
         <button
-          className={activeDetailTab === 'auth' ? 'active' : ''}
+          className={`${activeDetailTab === 'auth' ? 'active' : ''} ${authType !== 'none' ? 'has-content' : ''}`}
           onClick={() => onActiveDetailTabChange?.('auth')}
         >
           Auth
         </button>
         <button
-          className={activeDetailTab === 'headers' ? 'active' : ''}
+          className={`${activeDetailTab === 'headers' ? 'active' : ''} ${headers.some(h => h.key) ? 'has-content' : ''}`}
           onClick={() => onActiveDetailTabChange?.('headers')}
         >
           Headers
         </button>
         <button
-          className={activeDetailTab === 'body' ? 'active' : ''}
+          className={`${activeDetailTab === 'body' ? 'active' : ''} ${bodyType !== 'none' ? 'has-content' : ''}`}
           onClick={() => onActiveDetailTabChange?.('body')}
         >
           Body
@@ -763,7 +805,14 @@ export function RequestEditor({
                         type="text"
                         placeholder="Header name"
                         value={header.key}
-                        onChange={(e) => updateHeader(index, 'key', e.target.value)}
+                        onChange={(e) => {
+                          const newHeaders = [...headers];
+                          newHeaders[index] = { ...header, key: e.target.value };
+                          if (index === headers.length - 1 && e.target.value) {
+                            newHeaders.push({ key: '', value: '', enabled: true });
+                          }
+                          handleHeadersChange(newHeaders);
+                        }}
                       />
                     </td>
                     <td>
@@ -775,17 +824,16 @@ export function RequestEditor({
                       />
                     </td>
                     <td>
-                      <button className="btn-icon small" onClick={() => removeHeader(index)}>
-                        ×
-                      </button>
+                      {header.key && (
+                        <button className="btn-icon small" onClick={() => removeHeader(index)}>
+                          ×
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <button className="btn-add" onClick={addHeader}>
-              + Add Header
-            </button>
           </div>
         )}
 
@@ -904,9 +952,11 @@ export function RequestEditor({
                               {field.fileName ? (
                                 <div className="file-selected">
                                   <span className="file-name">{field.fileName}</span>
-                                  <span className="file-size">
-                                    ({(field.fileSize / 1024).toFixed(1)} KB)
-                                  </span>
+                                  {field.fileSize > 0 && (
+                                    <span className="file-size">
+                                      ({(field.fileSize / 1024).toFixed(1)} KB)
+                                    </span>
+                                  )}
                                   <button
                                     type="button"
                                     className="btn-icon small"
@@ -916,6 +966,7 @@ export function RequestEditor({
                                         ...newFormData[index],
                                         value: '',
                                         fileName: undefined,
+                                        filePath: undefined,
                                         fileType: undefined,
                                         fileSize: undefined,
                                       };
@@ -929,7 +980,13 @@ export function RequestEditor({
                                 <button
                                   type="button"
                                   className="btn-select-file"
-                                  onClick={() => fileInputRefs.current[index]?.click()}
+                                  onClick={() => {
+                                    if ('__TAURI_INTERNALS__' in window) {
+                                      handleFileSelect(index, null);
+                                    } else {
+                                      fileInputRefs.current[index]?.click();
+                                    }
+                                  }}
                                 >
                                   <Upload size={14} />
                                   Select File

@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { X, Terminal } from 'lucide-react';
 
 // Parse cURL command
-function parseCurl(curlCommand) {
+export function parseCurl(curlCommand) {
   const result = {
     method: 'GET',
     url: '',
     headers: [],
     body: '',
     bodyType: 'none',
+    formData: [],
   };
 
   // Remove newlines and extra spaces, handle line continuations
@@ -98,13 +99,34 @@ function parseCurl(curlCommand) {
       if (result.method === 'GET') {
         result.method = 'POST';
       }
+    } else if (token === '-F' || token === '--form') {
+      const formField = tokens[++i] || '';
+      const eqIndex = formField.indexOf('=');
+      if (eqIndex > 0) {
+        const key = formField.slice(0, eqIndex);
+        let val = formField.slice(eqIndex + 1);
+        if (val.startsWith('@')) {
+          result.formData.push({ key, value: '', type: 'file', enabled: true });
+        } else {
+          result.formData.push({ key, value: val, type: 'text', enabled: true });
+        }
+      }
+      result.bodyType = 'form-data';
+      if (result.method === 'GET') {
+        result.method = 'POST';
+      }
+    } else if (token === '--location' || token === '--compressed' || token === '-L') {
+      // Skip flags we don't need
     } else if (!token.startsWith('-') && !result.url) {
       result.url = token;
     }
   }
 
-  // Add empty header for editing
+  // Add empty rows for editing
   result.headers.push({ key: '', value: '', enabled: true });
+  if (result.formData.length > 0) {
+    result.formData.push({ key: '', value: '', type: 'text', enabled: true });
+  }
 
   return result;
 }

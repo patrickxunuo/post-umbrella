@@ -5,6 +5,53 @@ use tauri::{Listener, Manager};
 use tauri_plugin_window_state::StateFlags;
 use std::time::Duration;
 use std::fs;
+use base64::Engine;
+
+#[derive(serde::Serialize)]
+struct FileInfo {
+  base64: String,
+  size: u64,
+  name: String,
+  mime_type: String,
+}
+
+#[tauri::command]
+fn read_file_at_path(path: String) -> Result<FileInfo, String> {
+  let file_path = std::path::Path::new(&path);
+  if !file_path.exists() {
+    return Err(format!("File not found: {}", path));
+  }
+
+  let metadata = fs::metadata(file_path).map_err(|e| e.to_string())?;
+  let bytes = fs::read(file_path).map_err(|e| e.to_string())?;
+  let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+  let name = file_path.file_name()
+    .and_then(|n| n.to_str())
+    .unwrap_or("file")
+    .to_string();
+
+  let mime_type = match file_path.extension().and_then(|e| e.to_str()) {
+    Some("png") => "image/png",
+    Some("jpg") | Some("jpeg") => "image/jpeg",
+    Some("gif") => "image/gif",
+    Some("webp") => "image/webp",
+    Some("pdf") => "application/pdf",
+    Some("json") => "application/json",
+    Some("xml") => "application/xml",
+    Some("csv") => "text/csv",
+    Some("txt") => "text/plain",
+    Some("zip") => "application/zip",
+    _ => "application/octet-stream",
+  }.to_string();
+
+  Ok(FileInfo {
+    base64: base64_data,
+    size: metadata.len(),
+    name,
+    mime_type,
+  })
+}
 
 #[derive(serde::Serialize)]
 struct HttpResponse {
@@ -77,7 +124,7 @@ pub fn run() {
   let wh = window::handler();
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![http_request])
+    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path])
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 
@@ -95,6 +142,7 @@ pub fn run() {
         .build(),
     )
     .plugin(tauri_plugin_deep_link::init())
+    .plugin(tauri_plugin_dialog::init())
     .setup(move |app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

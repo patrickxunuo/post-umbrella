@@ -111,7 +111,10 @@ export function useResponseExecution({
       }
 
       if (authType === 'bearer' && resolvedAuthToken) {
-        resolvedHeaders.push({
+        // Remove any existing Authorization header to avoid duplicates
+        const filtered = resolvedHeaders.filter(h => h.key.toLowerCase() !== 'authorization');
+        resolvedHeaders.length = 0;
+        resolvedHeaders.push(...filtered, {
           key: 'Authorization',
           value: `Bearer ${resolvedAuthToken}`,
           enabled: true,

@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy } from 'lucide-react';
+import CodeMirror from '@uiw/react-codemirror';
+import { StreamLanguage } from '@codemirror/language';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
+import { EditorView } from '@codemirror/view';
 import { WindowControls } from './components/WindowControls';
 import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
-import { RequestEditor } from './components/RequestEditor';
+import { RequestEditor, generateCurl } from './components/RequestEditor';
 import { ResponseViewer } from './components/ResponseViewer';
 import { ImportDropdown } from './components/ImportDropdown';
 import { EnvironmentEditor } from './components/EnvironmentEditor';
@@ -143,6 +147,60 @@ function upsertExampleInList(examples, example) {
   return [example, ...examples].sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 }
 
+const curlEditorTheme = EditorView.theme({
+  '&': {
+    backgroundColor: 'transparent',
+    color: 'var(--text-primary)',
+    fontSize: '12px',
+    fontFamily: 'var(--font-mono)',
+    height: '100%',
+  },
+  '.cm-content': {
+    padding: '14px 4px',
+    caretColor: 'transparent',
+  },
+  '.cm-cursor': { display: 'none' },
+  '.cm-activeLine': { backgroundColor: 'transparent' },
+  '&.cm-focused .cm-activeLine': { backgroundColor: 'transparent' },
+  '.cm-gutters': {
+    backgroundColor: 'transparent',
+    color: 'var(--text-tertiary)',
+    border: 'none',
+    borderRight: '1px solid var(--border-subtle)',
+  },
+  '.cm-activeLineGutter': { backgroundColor: 'transparent' },
+  '&.cm-focused .cm-activeLineGutter': { backgroundColor: 'transparent' },
+  '.cm-lineNumbers .cm-gutterElement': {
+    padding: '0 8px 0 12px',
+    minWidth: '28px',
+    fontSize: '11px',
+  },
+  '.cm-scroller': {
+    fontFamily: 'var(--font-mono)',
+    lineHeight: '1.7',
+    overflow: 'auto',
+  },
+  '&.cm-focused': { outline: 'none' },
+  '.cm-selectionBackground': { backgroundColor: 'rgba(59, 130, 246, 0.2) !important' },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: 'rgba(59, 130, 246, 0.3) !important' },
+});
+
+const curlLightSyntax = EditorView.theme({
+  '.ͼd': { color: '#16a34a' },  // strings
+  '.ͼc': { color: '#d97706' },  // numbers
+  '.ͼb': { color: '#0284c7' },  // keywords (curl, flags)
+  '.ͼe': { color: '#7c3aed' },  // builtins
+});
+
+const curlDarkSyntax = EditorView.theme({
+  '.ͼd': { color: '#4ade80' },  // strings
+  '.ͼc': { color: '#fbbf24' },  // numbers
+  '.ͼb': { color: '#38bdf8' },  // keywords
+  '.ͼe': { color: '#a78bfa' },  // builtins
+});
+
+const shellLang = StreamLanguage.define(shell);
+
 function AppContent() {
   const [showEnvEditor, setShowEnvEditor] = useState(false);
   const [showImportCurl, setShowImportCurl] = useState(false);
@@ -165,6 +223,10 @@ function AppContent() {
     startResizing,
     startResizingVertical,
     mainContentRef,
+    showCurlPanel,
+    curlPanelWidth,
+    startResizingCurl,
+    toggleCurlPanel,
   } = useLayoutState();
 
   const {
@@ -278,6 +340,36 @@ function AppContent() {
   } = useWorkbench();
 
   const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
+
+  const curlPreview = useMemo(() => {
+    if (!showCurlPanel) return '';
+    const req = activeTab?.type === 'example'
+      ? selectedExample?.request_data
+      : selectedRequest;
+    if (!req) return '';
+    const sub = (text) => {
+      if (!text || !activeEnvironment) return text;
+      let result = text;
+      for (const v of activeEnvironment.variables) {
+        if (v.enabled && v.key) {
+          result = result.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, 'g'), v.value || '');
+        }
+      }
+      return result;
+    };
+    const headers = (req.headers || []).map(h => ({ ...h, key: sub(h.key), value: sub(h.value) }));
+    const fd = (req.form_data || []).map(f => ({ ...f, key: sub(f.key), value: f.type === 'file' ? f.value : sub(f.value) }));
+    return generateCurl(
+      req.method || 'GET',
+      sub(req.url || ''),
+      headers,
+      sub(req.body || ''),
+      req.body_type || 'none',
+      fd,
+      req.auth_type || 'none',
+      sub(req.auth_token || '')
+    );
+  }, [showCurlPanel, selectedRequest, selectedExample, activeTab?.type, activeEnvironment]);
 
   // Register temp request save handler for Ctrl+S
   useEffect(() => {
@@ -938,6 +1030,8 @@ function AppContent() {
             activeDetailTab={activeTab?.activeDetailTab || 'params'}
             onActiveDetailTabChange={updateActiveDetailTab}
             canEdit={canEdit}
+            showCurlPanel={showCurlPanel}
+            onToggleCurlPanel={toggleCurlPanel}
           />
           <div
             className="vertical-resize-handle"
@@ -952,6 +1046,76 @@ function AppContent() {
             requestUrl={activeTab?.type === 'example' ? null : (activeTab?.request?.url || selectedRequest?.url)}
           />
         </main>
+
+        {showCurlPanel && (
+          <>
+            <div
+              className="curl-resize-handle"
+              onMouseDown={startResizingCurl}
+            />
+            <aside className="curl-panel" style={{ width: curlPanelWidth }}>
+              <div className="curl-panel-header">
+                <span className="curl-panel-title">cURL</span>
+                <div className="curl-panel-actions">
+                <button
+                  className="btn-icon small"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(curlPreview);
+                      toast.success('cURL copied to clipboard');
+                    } catch {
+                      const textArea = document.createElement('textarea');
+                      textArea.value = curlPreview;
+                      textArea.style.position = 'fixed';
+                      textArea.style.left = '-9999px';
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      document.execCommand('copy');
+                      document.body.removeChild(textArea);
+                      toast.success('cURL copied to clipboard');
+                    }
+                  }}
+                  title="Copy to clipboard"
+                >
+                  <Copy size={14} />
+                </button>
+                <button
+                  className="btn-icon small"
+                  onClick={toggleCurlPanel}
+                  title="Close panel"
+                >
+                  <X size={14} />
+                </button>
+                </div>
+              </div>
+              <div className="curl-panel-code">
+                <CodeMirror
+                  value={curlPreview}
+                  readOnly
+                  editable={false}
+                  theme={theme === 'dark' ? 'dark' : 'light'}
+                  extensions={[
+                    shellLang,
+                    curlEditorTheme,
+                    theme === 'dark' ? curlDarkSyntax : curlLightSyntax,
+                    EditorView.lineWrapping,
+                  ]}
+                  basicSetup={{
+                    lineNumbers: true,
+                    highlightActiveLineGutter: false,
+                    highlightActiveLine: false,
+                    foldGutter: false,
+                    bracketMatching: false,
+                    closeBrackets: false,
+                    autocompletion: false,
+                    indentOnInput: false,
+                    searchKeymap: false,
+                  }}
+                />
+              </div>
+            </aside>
+          </>
+        )}
 
       </div>
 
