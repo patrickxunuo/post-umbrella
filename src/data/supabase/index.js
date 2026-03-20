@@ -1011,10 +1011,10 @@ export const deleteEnvironment = async (id) => {
 };
 
 // Proxy - send HTTP request via Edge Function
-export const sendRequest = async (data) => {
+export const sendRequest = async (data, { signal } = {}) => {
   // In Tauri app, all requests go direct (Tauri HTTP plugin bypasses CORS at the system level)
   if ('__TAURI_INTERNALS__' in window) {
-    return sendDirectRequest(data);
+    return sendDirectRequest(data, signal);
   }
 
   // Check if URL points to a local/private address (should bypass remote proxy)
@@ -1073,6 +1073,7 @@ export const sendRequest = async (data) => {
       'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify(data),
+    signal,
   });
 
   if (!response.ok) {
