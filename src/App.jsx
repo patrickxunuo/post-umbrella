@@ -328,7 +328,6 @@ function AppContent() {
     handleDeleteCollection,
     handleDeleteRequest,
     handleDuplicateRequest,
-    handleMoveRequest,
     handleRenameCollection,
     handleRenameRequest,
     handleCreateExample,
@@ -906,7 +905,6 @@ function AppContent() {
           onDeleteCollection={handleDeleteCollection}
           onDeleteRequest={handleDeleteRequest}
           onDuplicateRequest={handleDuplicateRequest}
-          onMoveRequest={handleMoveRequest}
           onExportCollection={handleExportCollection}
           onRenameCollection={handleRenameCollection}
           onRenameRequest={handleRenameRequest}

@@ -219,7 +219,9 @@ export const getCollections = async (workspaceId = null) => {
     const { data: children, error } = await supabase
       .from('collections')
       .select('*')
-      .in('parent_id', parentIds);
+      .in('parent_id', parentIds)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
     if (children && children.length > 0) {
       allCollections = [...allCollections, ...children];
@@ -346,7 +348,9 @@ export const getCollectionTree = async (rootId) => {
     const { data: children, error } = await supabase
       .from('collections')
       .select('*')
-      .in('parent_id', parentIds);
+      .in('parent_id', parentIds)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
     if (children && children.length > 0) {
       allCollections = [...allCollections, ...children];
@@ -478,20 +482,13 @@ export const deleteRequest = async (id) => {
 };
 
 export const reorderRequests = async (collectionId, requestIds) => {
-  // Update sort_order for each request
-  const updates = requestIds.map((id, index) => ({
-    id,
-    sort_order: index,
-  }));
-
-  for (const update of updates) {
-    const { error } = await supabase
+  await Promise.all(requestIds.map((id, index) =>
+    supabase
       .from('requests')
-      .update({ sort_order: update.sort_order })
-      .eq('id', update.id);
-    if (error) throw new Error(error.message);
-  }
-
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
   return { success: true };
 };
 
@@ -504,6 +501,39 @@ export const moveRequest = async (requestId, collectionId) => {
     .single();
   if (error) throw new Error(error.message);
   return parseRequest(data);
+};
+
+export const reorderCollections = async (parentId, collectionIds) => {
+  await Promise.all(collectionIds.map((id, index) =>
+    supabase
+      .from('collections')
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
+  return { success: true };
+};
+
+export const moveCollection = async (collectionId, newParentId) => {
+  const { data, error } = await supabase
+    .from('collections')
+    .update({ parent_id: newParentId })
+    .eq('id', collectionId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const reorderExamples = async (requestId, exampleIds) => {
+  await Promise.all(exampleIds.map((id, index) =>
+    supabase
+      .from('examples')
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
+  return { success: true };
 };
 
 // Examples
@@ -519,7 +549,9 @@ export const getExamples = async (requestId) => {
   if (requestId) {
     query = query.eq('request_id', requestId);
   }
-  const { data, error } = await query.order('created_at', { ascending: false });
+  const { data, error } = await query
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data.map(parseExample);
 };
