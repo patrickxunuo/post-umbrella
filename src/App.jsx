@@ -350,6 +350,7 @@ function AppContent() {
     handleSaveRequest,
     handleSaveExample,
     handleSendRequest,
+    cancelRequest,
     updateTabRequest,
     updateTabExample,
     updateActiveDetailTab,
@@ -1050,6 +1051,7 @@ function AppContent() {
             example={selectedExample}
             isExample={activeTab?.type === 'example'}
             onSend={handleSendRequest}
+            onCancel={cancelRequest}
             onSave={activeTab?.isTemporary
               ? (requestData) => setDraftSavePending({ tabId: activeTabId, requestData: { ...activeTab.request, ...requestData } })
               : (activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest)}

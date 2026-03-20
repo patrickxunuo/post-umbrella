@@ -383,6 +383,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   const {
     loading,
     handleSendRequest,
+    cancelRequest,
   } = useResponseExecution({
     toast,
     activeTabId,
@@ -583,6 +584,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     handleSaveRequest,
     handleSaveExample,
     handleSendRequest,
+    cancelRequest,
     updateTabRequest,
     updateTabExample,
     updateActiveDetailTab,
