@@ -19,12 +19,6 @@ const baseTheme = EditorView.theme({
   '.cm-cursor': {
     borderLeftColor: 'var(--accent-primary)',
   },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(59, 130, 246, 0.3) !important',
-  },
-  '.cm-line ::selection': {
-    backgroundColor: 'rgba(59, 130, 246, 0.3) !important',
-  },
   '.cm-selectionMatch': {
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
   },
@@ -72,6 +66,13 @@ const baseTheme = EditorView.theme({
 
 // Light theme syntax colors
 const lightSyntax = EditorView.theme({
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'rgba(59, 130, 246, 0.25) !important',
+  },
+  '.cm-line ::selection': {
+    backgroundColor: 'rgba(59, 130, 246, 0.25) !important',
+    color: '#1e293b !important',
+  },
   '.ͼd': { color: '#16a34a' },           // strings - green
   '.ͼc': { color: '#d97706' },           // numbers - amber
   '.ͼe': { color: '#7c3aed' },           // booleans - purple
@@ -82,6 +83,13 @@ const lightSyntax = EditorView.theme({
 
 // Dark theme syntax colors (brighter for better visibility)
 const darkSyntax = EditorView.theme({
+  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
+    backgroundColor: 'rgba(96, 165, 250, 0.35) !important',
+  },
+  '.cm-line ::selection': {
+    backgroundColor: 'rgba(96, 165, 250, 0.35) !important',
+    color: '#f1f5f9 !important',
+  },
   '.ͼd': { color: '#4ade80' },           // strings - green
   '.ͼc': { color: '#fbbf24' },           // numbers - amber
   '.ͼe': { color: '#a78bfa' },           // booleans - purple

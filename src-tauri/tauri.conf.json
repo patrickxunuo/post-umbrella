@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Post Umbrella",
-  "version": "1.0.0",
+  "version": "0.1.5",
   "identifier": "ca.emonster.post-umbrella",
   "build": {
     "frontendDist": "../dist",
@@ -38,6 +38,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "createUpdaterArtifacts": true,
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"
@@ -50,6 +51,12 @@
       "desktop": {
         "schemes": ["postumbrella"]
       }
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/patrickxunuo/post-umbrella/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFMDBGRjM0RjRFRkI1RkQKUldUOXRlLzBOUDhBM2lPUnRQTEVUL09XaEt1TldsYlB0bnNvRlZFYWJJbXlDa2VIS0U3aHh3OHoK"
     }
   }
 }

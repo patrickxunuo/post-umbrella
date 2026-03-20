@@ -68,6 +68,7 @@ release
 # Tauri
 src-tauri/target
 src-tauri/gen
+tauri-updater.key
 
 # Temporary files
 tmp

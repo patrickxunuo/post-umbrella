@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy } from 'lucide-react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy, Info } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
@@ -23,6 +23,7 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { FolderPickerModal } from './components/FolderPicker';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
 import { SettingsModal } from './components/SettingsModal';
+import { AboutModal } from './components/AboutModal';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -211,9 +212,10 @@ function AppContent() {
   const [tempCloseTabId, setTempCloseTabId] = useState(null);
   const [dirtyCloseTabId, setDirtyCloseTabId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const [userConfig, setUserConfig] = useState({});
   const toast = useToast();
-  const { updateAvailable } = useVersionCheck();
+  const { updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, isTauri } = useVersionCheck();
 
   const {
     theme,
@@ -743,8 +745,21 @@ function AppContent() {
     <div className="app">
       {updateAvailable && (
         <div className="version-toast">
-          <span>New version available</span>
-          <button onClick={() => window.location.reload()}>Refresh</button>
+          {isTauri && tauriUpdate ? (
+            <>
+              <span>Update available: v{tauriUpdate.version}</span>
+              {downloading ? (
+                <span className="update-progress">{downloadProgress}%</span>
+              ) : (
+                <button onClick={installUpdate}>Install &amp; Restart</button>
+              )}
+            </>
+          ) : (
+            <>
+              <span>New version available</span>
+              <button onClick={() => window.location.reload()}>Refresh</button>
+            </>
+          )}
         </div>
       )}
       <header className="app-header" data-tauri-drag-region>
@@ -844,6 +859,10 @@ function AppContent() {
                   <button className="user-dropdown-item" onClick={() => { setShowUserDropdown(false); setShowSettings(true); }}>
                     <Settings size={14} />
                     Settings
+                  </button>
+                  <button className="user-dropdown-item" onClick={() => { setShowUserDropdown(false); setShowAbout(true); }}>
+                    <Info size={14} />
+                    About
                   </button>
                   <div className="user-dropdown-divider" />
                   <button className="user-dropdown-item danger" onClick={() => { setShowUserDropdown(false); handleLogout(); }}>
@@ -1166,6 +1185,17 @@ function AppContent() {
           onDeleteUser={handleDeleteUser}
           loading={usersLoading}
           isSystem={userProfile?.role === 'system'}
+        />
+      )}
+
+      {showAbout && (
+        <AboutModal
+          onClose={() => setShowAbout(false)}
+          updateAvailable={updateAvailable}
+          tauriUpdate={tauriUpdate}
+          downloading={downloading}
+          downloadProgress={downloadProgress}
+          installUpdate={installUpdate}
         />
       )}
 
