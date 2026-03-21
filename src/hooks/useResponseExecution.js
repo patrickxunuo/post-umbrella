@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
@@ -25,6 +25,14 @@ export function useResponseExecution({
   setOpenTabs,
 }) {
   const [loading, setLoading] = useState(false);
+  const abortRef = useRef(null);
+
+  const cancelRequest = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  }, []);
 
   const handleSendRequest = useCallback(async ({
     method,
@@ -38,6 +46,8 @@ export function useResponseExecution({
     preScript,
     postScript,
   }) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     let scriptLogs = [];
     let consoleLogs = [];
@@ -143,7 +153,10 @@ export function useResponseExecution({
         consoleLogs.push({ type: 'info', source: 'system', message: `Resolved URL: ${resolvedUrl}`, timestamp: Date.now() });
       }
 
-      const result = await data.sendRequest(requestPayload);
+      const result = await data.sendRequest(requestPayload, { signal: controller.signal });
+
+      // If cancelled while awaiting, skip everything
+      if (controller.signal.aborted) return;
 
       consoleLogs.push({
         type: result.error ? 'error' : 'info',
@@ -191,25 +204,30 @@ export function useResponseExecution({
         tab.id === activeTabId ? { ...tab, response: { ...result, resolvedUrl, scriptLogs, consoleLogs } } : tab
       )));
     } catch (error) {
-      consoleLogs.push({ type: 'error', source: 'system', message: error.message, timestamp: Date.now() });
-      setOpenTabs((prev) => prev.map((tab) => (
-        tab.id === activeTabId
-          ? {
-              ...tab,
-              response: {
-                status: 0,
-                statusText: 'Error',
-                body: error.message,
-                headers: [],
-                time: 0,
-                error: true,
-                scriptLogs,
-                consoleLogs,
-              },
-            }
-          : tab
-      )));
+      if (error.name === 'AbortError' || controller.signal.aborted) {
+        // Cancelled — keep previous response as-is
+      } else {
+        consoleLogs.push({ type: 'error', source: 'system', message: error.message, timestamp: Date.now() });
+        setOpenTabs((prev) => prev.map((tab) => (
+          tab.id === activeTabId
+            ? {
+                ...tab,
+                response: {
+                  status: 0,
+                  statusText: 'Error',
+                  body: error.message,
+                  headers: [],
+                  time: 0,
+                  error: true,
+                  scriptLogs,
+                  consoleLogs,
+                },
+              }
+            : tab
+        )));
+      }
     } finally {
+      abortRef.current = null;
       setLoading(false);
     }
   }, [activeEnvironment, activeTabId, activeWorkspaceId, loadEnvironments, setActiveEnvironment, setOpenTabs, toast]);
@@ -217,5 +235,6 @@ export function useResponseExecution({
   return {
     loading,
     handleSendRequest,
+    cancelRequest,
   };
 }

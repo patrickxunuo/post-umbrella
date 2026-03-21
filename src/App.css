@@ -325,7 +325,8 @@ body {
 }
 
 .tauri .header-left,
-.tauri .header-right {
+.tauri .header-right,
+.tauri .sidebar {
   -webkit-app-region: no-drag;
 }
 
@@ -1602,7 +1603,9 @@ body {
 
 .btn-send {
   height: 36px;
-  padding: 0 var(--space-5);
+  width: 72px;
+  justify-content: center;
+  padding: 0;
   background: var(--accent-primary);
   border: none;
   color: white;
@@ -1625,6 +1628,29 @@ body {
   background: var(--bg-hover);
   color: var(--text-tertiary);
   cursor: not-allowed;
+}
+
+.btn-cancel-request {
+  height: 36px;
+  width: 72px;
+  justify-content: center;
+  padding: 0;
+  background: var(--accent-danger);
+  border: none;
+  color: white;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.btn-cancel-request:hover {
+  background: var(--accent-danger-hover);
 }
 
 .btn-try {
@@ -2773,12 +2799,12 @@ body {
   gap: var(--space-3);
   align-items: center;
   margin-right: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .response-meta .status {
   font-weight: 600;
   padding: var(--space-1) var(--space-2);
-  margin-bottom: var(--space-1);
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-family: var(--font-mono);
@@ -4879,13 +4905,14 @@ body {
 
 /* Drag and Drop */
 .request-item.dragging {
-  opacity: 0.5;
+  opacity: 0.4;
   background: var(--bg-tertiary);
 }
 
 .request-item.drag-over {
   border-top: 2px solid var(--accent-primary);
   margin-top: -1px;
+  border-radius: 0;
 }
 
 .request-item[draggable="true"] {
@@ -4893,6 +4920,54 @@ body {
 }
 
 .request-item[draggable="true"]:active {
+  cursor: pointer;
+}
+
+.collection-header.drop-target {
+  background: var(--accent-primary-subtle, rgba(59, 130, 246, 0.08));
+  outline: 1.5px dashed var(--accent-primary);
+  outline-offset: -1.5px;
+}
+
+.collection.drag-collection-over > .collection-header {
+  background: var(--accent-primary-subtle, rgba(59, 130, 246, 0.08));
+  outline: 1.5px dashed var(--accent-primary);
+  outline-offset: -1.5px;
+}
+
+.collection-header.dragging {
+  opacity: 0.4;
+  background: var(--bg-tertiary);
+}
+
+.collection-header.folder-drag-over {
+  border-top: 2px solid var(--accent-primary);
+  margin-top: -2px;
+  border-radius: 0;
+}
+
+.collection-header.folder-drag-after {
+  border-bottom: 2px solid var(--accent-primary);
+  margin-bottom: -2px;
+  border-radius: 0;
+}
+
+.collection-header[draggable="true"] {
+  cursor: pointer;
+}
+
+.example-item-sidebar.dragging {
+  opacity: 0.4;
+  background: var(--bg-tertiary);
+}
+
+.example-item-sidebar.drag-over {
+  border-top: 2px solid var(--accent-primary);
+  margin-top: -1px;
+  border-radius: 0;
+}
+
+.example-item-sidebar[draggable="true"] {
   cursor: pointer;
 }
 

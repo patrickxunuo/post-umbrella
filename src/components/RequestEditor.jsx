@@ -99,6 +99,7 @@ export function RequestEditor({
   example,
   isExample,
   onSend,
+  onCancel,
   onSave,
   onSaveAsExample,
   onTry,
@@ -566,9 +567,13 @@ export function RequestEditor({
             <ExternalLink size={14} />
             Try
           </button>
+        ) : loading ? (
+          <button className="btn-cancel-request" onClick={() => onCancel?.()}>
+            Cancel
+          </button>
         ) : (
-          <button className="btn-send" onClick={handleSend} disabled={loading || !url}>
-            {loading ? 'Sending...' : 'Send'}
+          <button className="btn-send" onClick={handleSend} disabled={!url}>
+            Send
           </button>
         )}
         {canEdit && (

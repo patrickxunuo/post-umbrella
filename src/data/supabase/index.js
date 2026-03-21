@@ -219,7 +219,9 @@ export const getCollections = async (workspaceId = null) => {
     const { data: children, error } = await supabase
       .from('collections')
       .select('*')
-      .in('parent_id', parentIds);
+      .in('parent_id', parentIds)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
     if (children && children.length > 0) {
       allCollections = [...allCollections, ...children];
@@ -346,7 +348,9 @@ export const getCollectionTree = async (rootId) => {
     const { data: children, error } = await supabase
       .from('collections')
       .select('*')
-      .in('parent_id', parentIds);
+      .in('parent_id', parentIds)
+      .order('sort_order', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
     if (error) throw new Error(error.message);
     if (children && children.length > 0) {
       allCollections = [...allCollections, ...children];
@@ -478,20 +482,13 @@ export const deleteRequest = async (id) => {
 };
 
 export const reorderRequests = async (collectionId, requestIds) => {
-  // Update sort_order for each request
-  const updates = requestIds.map((id, index) => ({
-    id,
-    sort_order: index,
-  }));
-
-  for (const update of updates) {
-    const { error } = await supabase
+  await Promise.all(requestIds.map((id, index) =>
+    supabase
       .from('requests')
-      .update({ sort_order: update.sort_order })
-      .eq('id', update.id);
-    if (error) throw new Error(error.message);
-  }
-
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
   return { success: true };
 };
 
@@ -504,6 +501,39 @@ export const moveRequest = async (requestId, collectionId) => {
     .single();
   if (error) throw new Error(error.message);
   return parseRequest(data);
+};
+
+export const reorderCollections = async (parentId, collectionIds) => {
+  await Promise.all(collectionIds.map((id, index) =>
+    supabase
+      .from('collections')
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
+  return { success: true };
+};
+
+export const moveCollection = async (collectionId, newParentId) => {
+  const { data, error } = await supabase
+    .from('collections')
+    .update({ parent_id: newParentId })
+    .eq('id', collectionId)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
+export const reorderExamples = async (requestId, exampleIds) => {
+  await Promise.all(exampleIds.map((id, index) =>
+    supabase
+      .from('examples')
+      .update({ sort_order: index })
+      .eq('id', id)
+      .then(({ error }) => { if (error) throw new Error(error.message); })
+  ));
+  return { success: true };
 };
 
 // Examples
@@ -519,7 +549,9 @@ export const getExamples = async (requestId) => {
   if (requestId) {
     query = query.eq('request_id', requestId);
   }
-  const { data, error } = await query.order('created_at', { ascending: false });
+  const { data, error } = await query
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data.map(parseExample);
 };
@@ -1011,10 +1043,10 @@ export const deleteEnvironment = async (id) => {
 };
 
 // Proxy - send HTTP request via Edge Function
-export const sendRequest = async (data) => {
+export const sendRequest = async (data, { signal } = {}) => {
   // In Tauri app, all requests go direct (Tauri HTTP plugin bypasses CORS at the system level)
   if ('__TAURI_INTERNALS__' in window) {
-    return sendDirectRequest(data);
+    return sendDirectRequest(data, signal);
   }
 
   // Check if URL points to a local/private address (should bypass remote proxy)
@@ -1073,6 +1105,7 @@ export const sendRequest = async (data) => {
       'Authorization': `Bearer ${accessToken}`,
     },
     body: JSON.stringify(data),
+    signal,
   });
 
   if (!response.ok) {
@@ -1096,7 +1129,7 @@ const sendTauriRequest = async (url, method, headersArr, bodyBytes, timeout) => 
 };
 
 // Direct request (uses Tauri IPC in desktop app, browser fetch otherwise)
-const sendDirectRequest = async (data) => {
+const sendDirectRequest = async (data, signal) => {
   const { method, headers, body, bodyType, formData, timeout } = data;
   let url = data.url;
   if (!url.match(/^https?:\/\//i)) {
@@ -1149,7 +1182,17 @@ const sendDirectRequest = async (data) => {
 
     // Use custom Tauri command in desktop app (pure reqwest, no Origin header)
     if ('__TAURI_INTERNALS__' in window) {
-      const res = await sendTauriRequest(url, method || 'GET', headersArr, bodyBytes, timeout);
+      const tauriPromise = sendTauriRequest(url, method || 'GET', headersArr, bodyBytes, timeout);
+      // Race against abort signal so UI unblocks immediately on cancel
+      const res = signal
+        ? await Promise.race([
+            tauriPromise,
+            new Promise((_, reject) => {
+              if (signal.aborted) reject(new DOMException('The operation was aborted.', 'AbortError'));
+              signal.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+            }),
+          ])
+        : await tauriPromise;
       const endTime = Date.now();
 
       const responseHeaders = (res.headers || []).map(([key, value]) => ({ key, value }));
@@ -1200,6 +1243,11 @@ const sendDirectRequest = async (data) => {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout || 30000);
+    // If an external signal is provided, abort when it fires
+    if (signal) {
+      if (signal.aborted) controller.abort();
+      else signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
     config.signal = controller.signal;
 
     const response = await window.fetch(url, config);
@@ -1228,6 +1276,8 @@ const sendDirectRequest = async (data) => {
     const endTime = Date.now();
 
     if (error?.name === 'AbortError') {
+      // If cancelled by external signal, re-throw so the caller can handle it
+      if (signal?.aborted) throw error;
       return {
         status: 0,
         statusText: 'Timeout',

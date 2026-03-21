@@ -22,8 +22,9 @@ import { ImportCurlModal } from './components/ImportCurlModal';
 import { ThemeToggle } from './components/ThemeToggle';
 import { FolderPickerModal } from './components/FolderPicker';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsModal, syncCloseBehaviorToRust } from './components/SettingsModal';
 import { AboutModal } from './components/AboutModal';
+import { CloseToTrayModal } from './components/CloseToTrayModal';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -213,6 +214,7 @@ function AppContent() {
   const [dirtyCloseTabId, setDirtyCloseTabId] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showCloseModal, setShowCloseModal] = useState(false);
   const [userConfig, setUserConfig] = useState({});
   const toast = useToast();
   const { updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, isTauri } = useVersionCheck();
@@ -246,8 +248,23 @@ function AppContent() {
       if (config.theme) {
         handleThemeChange(config.theme);
       }
+      if (config.closeBehavior) {
+        syncCloseBehaviorToRust(config.closeBehavior);
+      }
     }).catch(() => {});
   }, [user, handleThemeChange]);
+
+  // Listen for Tauri close-requested event (when no preference is saved)
+  useEffect(() => {
+    if (!('__TAURI_INTERNALS__' in window)) return;
+    let unlisten;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen('close-requested', () => {
+        setShowCloseModal(true);
+      }).then(fn => { unlisten = fn; });
+    });
+    return () => { unlisten?.(); };
+  }, []);
 
   const {
     activeWorkspace,
@@ -311,7 +328,6 @@ function AppContent() {
     handleDeleteCollection,
     handleDeleteRequest,
     handleDuplicateRequest,
-    handleMoveRequest,
     handleRenameCollection,
     handleRenameRequest,
     handleCreateExample,
@@ -333,6 +349,7 @@ function AppContent() {
     handleSaveRequest,
     handleSaveExample,
     handleSendRequest,
+    cancelRequest,
     updateTabRequest,
     updateTabExample,
     updateActiveDetailTab,
@@ -888,7 +905,6 @@ function AppContent() {
           onDeleteCollection={handleDeleteCollection}
           onDeleteRequest={handleDeleteRequest}
           onDuplicateRequest={handleDuplicateRequest}
-          onMoveRequest={handleMoveRequest}
           onExportCollection={handleExportCollection}
           onRenameCollection={handleRenameCollection}
           onRenameRequest={handleRenameRequest}
@@ -1033,6 +1049,7 @@ function AppContent() {
             example={selectedExample}
             isExample={activeTab?.type === 'example'}
             onSend={handleSendRequest}
+            onCancel={cancelRequest}
             onSave={activeTab?.isTemporary
               ? (requestData) => setDraftSavePending({ tabId: activeTabId, requestData: { ...activeTab.request, ...requestData } })
               : (activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest)}
@@ -1188,6 +1205,30 @@ function AppContent() {
         />
       )}
 
+      {showCloseModal && (
+        <CloseToTrayModal
+          onHideToTray={async (remember) => {
+            setShowCloseModal(false);
+            if (remember) {
+              syncCloseBehaviorToRust('tray');
+              data.updateUserConfig({ closeBehavior: 'tray' }).then(setUserConfig).catch(() => {});
+            }
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('hide_window');
+          }}
+          onClose={async (remember) => {
+            setShowCloseModal(false);
+            if (remember) {
+              syncCloseBehaviorToRust('close');
+              data.updateUserConfig({ closeBehavior: 'close' }).then(setUserConfig).catch(() => {});
+            }
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('close_app');
+          }}
+          onCancel={() => setShowCloseModal(false)}
+        />
+      )}
+
       {showAbout && (
         <AboutModal
           onClose={() => setShowAbout(false)}
@@ -1208,6 +1249,9 @@ function AppContent() {
             setUserConfig(updated);
             if (patch.theme) {
               handleThemeChange(patch.theme);
+            }
+            if (patch.closeBehavior) {
+              syncCloseBehaviorToRust(patch.closeBehavior);
             }
             toast.success('Settings saved');
           }}

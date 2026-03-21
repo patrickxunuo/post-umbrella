@@ -1,11 +1,18 @@
 mod window;
 
 use window::WindowHandler;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
+use tauri::image::Image;
 use tauri_plugin_window_state::StateFlags;
 use std::time::Duration;
 use std::fs;
+use std::sync::atomic::{AtomicU8, Ordering};
 use base64::Engine;
+
+// 0 = ask (no preference), 1 = hide to tray, 2 = close app
+static CLOSE_BEHAVIOR: AtomicU8 = AtomicU8::new(0);
 
 #[derive(serde::Serialize)]
 struct FileInfo {
@@ -51,6 +58,22 @@ fn read_file_at_path(path: String) -> Result<FileInfo, String> {
     name,
     mime_type,
   })
+}
+
+// behavior: 0 = ask, 1 = hide to tray, 2 = close
+#[tauri::command]
+fn set_close_behavior(behavior: u8) {
+  CLOSE_BEHAVIOR.store(behavior, Ordering::Relaxed);
+}
+
+#[tauri::command]
+fn hide_window(window: tauri::WebviewWindow) {
+  let _ = window.hide();
+}
+
+#[tauri::command]
+fn close_app(app: tauri::AppHandle) {
+  app.exit(0);
 }
 
 #[derive(serde::Serialize)]
@@ -124,7 +147,7 @@ pub fn run() {
   let wh = window::handler();
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path])
+    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path, set_close_behavior, hide_window, close_app])
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 
@@ -145,6 +168,25 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_updater::Builder::new().build())
     .plugin(tauri_plugin_process::init())
+    .on_window_event(|window, event| {
+      if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        match CLOSE_BEHAVIOR.load(Ordering::Relaxed) {
+          0 => {
+            // No preference saved — ask the user
+            api.prevent_close();
+            let _ = window.emit("close-requested", ());
+          }
+          1 => {
+            // Hide to tray
+            api.prevent_close();
+            let _ = window.hide();
+          }
+          _ => {
+            // 2 = close normally — don't prevent
+          }
+        }
+      }
+    })
     .setup(move |app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -159,6 +201,50 @@ pub fn run() {
       if let Some(window) = app.get_webview_window("main") {
         wh.setup_window(&window);
       }
+
+      // System tray
+      let show_item = MenuItemBuilder::with_id("show", "Show").build(app)?;
+      let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+      let tray_menu = MenuBuilder::new(app)
+        .item(&show_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
+
+      let tray_icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
+        .expect("Failed to load tray icon");
+
+      let _tray = TrayIconBuilder::with_id("main-tray")
+        .icon(tray_icon)
+        .menu(&tray_menu)
+        .show_menu_on_left_click(false)
+        .tooltip("Post Umbrella")
+        .on_menu_event(move |app, event| {
+          match event.id().as_ref() {
+            "show" => {
+              if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+              }
+            }
+            "quit" => {
+              app.exit(0);
+            }
+            _ => {}
+          }
+        })
+        .on_tray_icon_event(|tray, event| {
+          if let tauri::tray::TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, .. } = event {
+            let app = tray.app_handle();
+            if let Some(win) = app.get_webview_window("main") {
+              let _ = win.show();
+              let _ = win.unminimize();
+              let _ = win.set_focus();
+            }
+          }
+        })
+        .build(app)?;
 
       // Handle deep link URLs via event
       let handle = app.handle().clone();

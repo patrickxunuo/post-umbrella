@@ -17,6 +17,7 @@
     "deep-link:default",
     "dialog:default",
     "updater:default",
-    "process:default"
+    "process:default",
+    "core:tray:default"
   ]
 }
