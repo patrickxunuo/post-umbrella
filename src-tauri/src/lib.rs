@@ -214,7 +214,7 @@ pub fn run() {
       let tray_icon = Image::from_bytes(include_bytes!("../icons/32x32.png"))
         .expect("Failed to load tray icon");
 
-      let _tray = TrayIconBuilder::new()
+      let _tray = TrayIconBuilder::with_id("main-tray")
         .icon(tray_icon)
         .menu(&tray_menu)
         .show_menu_on_left_click(false)

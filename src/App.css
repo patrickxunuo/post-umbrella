@@ -4946,6 +4946,12 @@ body {
   border-radius: 0;
 }
 
+.collection-header.folder-drag-after {
+  border-bottom: 2px solid var(--accent-primary);
+  margin-bottom: -2px;
+  border-radius: 0;
+}
+
 .collection-header[draggable="true"] {
   cursor: pointer;
 }
