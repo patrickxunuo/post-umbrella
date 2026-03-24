@@ -9,46 +9,6 @@ import * as data from '../data/index.js';
 
 const WorkbenchContext = createContext(null);
 
-function patchRequestInCollections(collections, requestId, updater) {
-  return collections.map((collection) => ({
-    ...collection,
-    requests: (collection.requests || []).map((request) => (
-      request.id === requestId ? updater(request) : request
-    )),
-  }));
-}
-
-function removeRequestFromCollections(collections, requestId) {
-  return collections.map((collection) => ({
-    ...collection,
-    requests: (collection.requests || []).filter((request) => request.id !== requestId),
-  }));
-}
-
-function insertRequestIntoCollection(collections, collectionId, request) {
-  return collections.map((collection) => (
-    collection.id === collectionId
-      ? {
-          ...collection,
-          requests: [...(collection.requests || []), request].sort((a, b) => {
-            const sortA = a.sort_order ?? Number.MAX_SAFE_INTEGER;
-            const sortB = b.sort_order ?? Number.MAX_SAFE_INTEGER;
-            if (sortA !== sortB) return sortA - sortB;
-            return (a.created_at || 0) - (b.created_at || 0);
-          }),
-        }
-      : collection
-  ));
-}
-
-function moveRequestInCollections(collections, updatedRequest) {
-  return insertRequestIntoCollection(
-    removeRequestFromCollections(collections, updatedRequest.id),
-    updatedRequest.collection_id,
-    updatedRequest
-  );
-}
-
 export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   const { user, authChecked } = useAuth();
   const {
@@ -105,7 +65,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     setEnvironments,
     activeEnvironment,
     setActiveEnvironment,
-    currentRootCollectionId,
     setCurrentRootCollectionId,
     loadCollections,
     loadEnvironments,
@@ -204,53 +163,49 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     const hasSidebar = transfer.expandedCollections.length > 0 || transfer.expandedRequests.length > 0;
     if (!hasTabs && !hasSidebar) return;
 
-    (async () => {
-      const accepted = await confirm({
-        title: 'Restore browser session?',
-        message: 'Apply your open tabs and sidebar state from the browser?',
-        confirmText: 'Restore',
-        cancelText: 'Skip',
-      });
-      if (!accepted) return;
+    toast.action('Restore browser session?', {
+      label: 'Restore',
+      onClick: async () => {
+        // Restore expanded state
+        if (transfer.expandedCollections.length) {
+          localStorage.setItem('expandedCollections', JSON.stringify(transfer.expandedCollections));
+        }
+        if (transfer.expandedRequests.length) {
+          localStorage.setItem('expandedRequests', JSON.stringify(transfer.expandedRequests));
+        }
+        // Dispatch event so Sidebar picks up new expanded state without reload
+        window.dispatchEvent(new CustomEvent('expanded-state-updated'));
 
-      // Restore expanded state
-      if (transfer.expandedCollections.length) {
-        localStorage.setItem('expandedCollections', JSON.stringify(transfer.expandedCollections));
-      }
-      if (transfer.expandedRequests.length) {
-        localStorage.setItem('expandedRequests', JSON.stringify(transfer.expandedRequests));
-      }
-      // Dispatch event so Sidebar picks up new expanded state without reload
-      window.dispatchEvent(new CustomEvent('expanded-state-updated'));
+        // Fetch and open transferred tabs
+        if (transfer.tabIds.length === 0) return;
+        const newTabs = (await Promise.all(
+          transfer.tabIds.map(async (id) => {
+            try {
+              const fullRequest = await data.getRequest(id);
+              const hasBody = fullRequest.body_type && fullRequest.body_type !== 'none';
+              return {
+                id: `request-${id}`,
+                type: 'request',
+                entityId: id,
+                request: fullRequest,
+                dirty: false,
+                response: null,
+                activeDetailTab: hasBody ? 'body' : 'params',
+              };
+            } catch {
+              return null;
+            }
+          })
+        )).filter(Boolean);
 
-      // Fetch and open transferred tabs
-      if (transfer.tabIds.length === 0) return;
-      const newTabs = (await Promise.all(
-        transfer.tabIds.map(async (id) => {
-          try {
-            const fullRequest = await data.getRequest(id);
-            const hasBody = fullRequest.body_type && fullRequest.body_type !== 'none';
-            return {
-              id: `request-${id}`,
-              type: 'request',
-              entityId: id,
-              request: fullRequest,
-              dirty: false,
-              response: null,
-              activeDetailTab: hasBody ? 'body' : 'params',
-            };
-          } catch {
-            return null;
-          }
-        })
-      )).filter(Boolean);
-
-      if (newTabs.length > 0) {
-        setOpenTabs(newTabs);
-        setActiveTabId(transfer.activeTabId ? `request-${transfer.activeTabId}` : newTabs[0].id);
-      }
-    })();
-  }, [collectionsLoading, confirm, setOpenTabs, setActiveTabId, user]);
+        if (newTabs.length > 0) {
+          setOpenTabs(newTabs);
+          setActiveTabId(transfer.activeTabId ? `request-${transfer.activeTabId}` : newTabs[0].id);
+        }
+      },
+      duration: 15000,
+    });
+  }, [collectionsLoading, toast, setOpenTabs, setActiveTabId, user]);
 
   const {
     openRequestInTab,
@@ -262,7 +217,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     handleDeleteCollection,
     handleDeleteRequest,
     handleDuplicateRequest,
-    handleMoveRequest,
     handleRenameCollection,
     handleRenameRequest,
     handleCreateExample,
@@ -525,7 +479,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     deletedTabs,
     setDeletedTabs,
     previewTabId,
-    setPreviewTabId,
     pendingRequestIds,
     pendingExampleIds,
     pendingExampleListRequestIds,
@@ -544,11 +497,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     examples,
     setExamples,
     environments,
-    setEnvironments,
     activeEnvironment,
-    setActiveEnvironment,
-    currentRootCollectionId,
-    setCurrentRootCollectionId,
     loadCollections,
     loadEnvironments,
     loading,
@@ -562,7 +511,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     handleDeleteCollection,
     handleDeleteRequest,
     handleDuplicateRequest,
-    handleMoveRequest,
     handleRenameCollection,
     handleRenameRequest,
     handleCreateExample,

@@ -13,9 +13,9 @@ export function useToast() {
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const addToast = useCallback((message, type = 'info', duration = 5000) => {
+  const addToast = useCallback((message, type = 'info', duration = 5000, action = null) => {
     const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
+    setToasts(prev => [...prev, { id, message, type, action }]);
 
     if (duration > 0) {
       setTimeout(() => {
@@ -36,6 +36,8 @@ export function ToastProvider({ children }) {
     warning: (message, duration) => addToast(message, 'warning', duration),
     info: (message, duration) => addToast(message, 'info', duration),
     loading: (message) => addToast(message, 'loading', 0), // duration 0 = no auto-dismiss
+    action: (message, { label, onClick, duration = 10000 } = {}) =>
+      addToast(message, 'info', duration, { label, onClick }),
     dismiss: (id) => removeToast(id),
   };
 
@@ -77,6 +79,11 @@ function Toast({ toast, onRemove }) {
         {toast.type === 'loading' && <span className="toast-spinner" />}
       </span>
       <span className="toast-message">{toast.message}</span>
+      {toast.action && (
+        <button className="toast-action" onClick={() => { toast.action.onClick?.(); handleRemove(); }}>
+          {toast.action.label}
+        </button>
+      )}
       {toast.type !== 'loading' && (
         <button className="toast-close" onClick={handleRemove}>×</button>
       )}

@@ -1,6 +1,21 @@
 // Supabase Data Provider
 import { supabase, PROXY_FUNCTION_URL } from './client.js';
 
+// Batch large .in() queries to avoid URL length limits (PostgREST 400 errors)
+const BATCH_SIZE = 100;
+const batchedIn = async (table, column, ids, select = '*', extraFilters) => {
+  if (ids.length === 0) return [];
+  const results = [];
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    let query = supabase.from(table).select(select).in(column, ids.slice(i, i + BATCH_SIZE));
+    if (extraFilters) query = extraFilters(query);
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    if (data) results.push(...data);
+  }
+  return results;
+};
+
 // Auth state storage (for compatibility with existing code)
 let currentUser = null;
 
@@ -49,6 +64,12 @@ export const checkEmailAllowed = async (email) => {
   return data;
 };
 
+const getAuthCallbackUrl = () => {
+  const base = import.meta.env.VITE_AUTH_CALLBACK_URL || `${window.location.origin}/auth/callback`;
+  const isDesktop = '__TAURI_INTERNALS__' in window;
+  return isDesktop ? `${base}?source=desktop` : base;
+};
+
 // Auth - Magic Link (email only)
 export const sendMagicLink = async (email) => {
   // Check if user is allowed to login before sending magic link
@@ -58,42 +79,33 @@ export const sendMagicLink = async (email) => {
     throw new Error(result.message || 'This email is not registered.');
   }
 
-  const { data, error } = await supabase.auth.signInWithOtp({
+  const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: import.meta.env.VITE_AUTH_CALLBACK_URL || `${window.location.origin}/auth/callback`,
+      shouldCreateUser: false,
+      emailRedirectTo: getAuthCallbackUrl(),
     },
   });
   if (error) throw new Error(error.message);
   return { message: 'Check your email for the magic link!' };
 };
 
-// Auth - Bitbucket OAuth
-export const signInWithBitbucket = async () => {
+export const signInWithSlack = async () => {
+  const isDesktop = '__TAURI_INTERNALS__' in window;
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'bitbucket',
+    provider: 'slack_oidc',
     options: {
-      redirectTo: window.location.origin,
+      redirectTo: getAuthCallbackUrl(),
+      skipBrowserRedirect: isDesktop,
     },
   });
   if (error) throw new Error(error.message);
-  return data;
+  if (isDesktop && data?.url) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('open_url_in_browser', { url: data.url });
+  }
 };
 
-export const verifyMagicLink = async (token) => {
-  // This is handled automatically by Supabase when user clicks the link
-  // The detectSessionInUrl option handles the token exchange
-  const { data: { session }, error } = await supabase.auth.getSession();
-  if (error) throw new Error(error.message);
-  if (!session) throw new Error('No session found');
-
-  currentUser = {
-    id: session.user.id,
-    email: session.user.email,
-  };
-  setCurrentUser(currentUser);
-  return { user: currentUser };
-};
 
 // Password login (for compatibility - not primary auth method)
 export const login = async (email, password) => {
@@ -179,7 +191,7 @@ export const getDesktopDeepLink = async (uiState = {}) => {
 // Subscribe to auth state changes (for handling async hash token processing)
 export const onAuthStateChange = (callback) => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') && session?.user) {
       currentUser = {
         id: session.user.id,
         email: session.user.email,
@@ -230,28 +242,19 @@ export const getCollections = async (workspaceId = null) => {
   };
   await fetchChildren(topLevelIds);
 
-  // Fetch all requests for these collections
+  // Fetch all requests for these collections (batched to avoid URL length limits)
   const allCollectionIds = allCollections.map(c => c.id);
-  let reqQuery = supabase.from('requests').select('*');
-  if (allCollectionIds.length > 0) {
-    reqQuery = reqQuery.in('collection_id', allCollectionIds);
-  }
-  const { data: requests, error: reqError } = await reqQuery
-    .order('sort_order', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true });
-  if (reqError) throw new Error(reqError.message);
+  const requests = allCollectionIds.length > 0
+    ? await batchedIn('requests', 'collection_id', allCollectionIds, '*', q =>
+        q.order('sort_order', { ascending: true, nullsFirst: false })
+         .order('created_at', { ascending: true }))
+    : [];
 
-  // Get example counts for all requests
+  // Get example counts for all requests (batched to avoid URL length limits)
   const requestIds = requests?.map(r => r.id) || [];
-  let exampleCounts = [];
-  if (requestIds.length > 0) {
-    const { data: counts, error: exError } = await supabase
-      .from('examples')
-      .select('request_id')
-      .in('request_id', requestIds);
-    if (exError) throw new Error(exError.message);
-    exampleCounts = counts || [];
-  }
+  const exampleCounts = requestIds.length > 0
+    ? await batchedIn('examples', 'request_id', requestIds, 'request_id')
+    : [];
 
   // Build count map
   const countMap = {};
@@ -318,16 +321,6 @@ export const deleteCollection = async (id) => {
     .eq('id', id);
   if (error) throw new Error(error.message);
   return null;
-};
-
-export const getCollection = async (id) => {
-  const { data, error } = await supabase
-    .from('collections')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (error) throw new Error(error.message);
-  return data;
 };
 
 // Fetch a single collection tree (with children and requests) by root ID
@@ -686,72 +679,6 @@ export const getEnvironments = async (workspaceId) => {
 };
 
 
-// Get active environment for a workspace (with merged current values)
-export const getActiveEnvironment = async (workspaceId) => {
-  const user = await checkAuth();
-
-  const { data: activeEnv } = await supabase
-    .from('user_active_environment')
-    .select('environment_id')
-    .eq('user_id', user.id)
-    .eq('workspace_id', workspaceId)
-    .single();
-
-  if (!activeEnv?.environment_id) return null;
-
-  // Get environment with variables
-  const { data: env, error } = await supabase
-    .from('environments')
-    .select(`
-      *,
-      environment_variables (
-        id,
-        key,
-        initial_value,
-        enabled,
-        sort_order
-      )
-    `)
-    .eq('id', activeEnv.environment_id)
-    .single();
-
-  if (error) return null;
-
-  // Get user's current values for variables in this environment
-  const varIds = (env.environment_variables || []).map(v => v.id);
-  let userValuesMap = {};
-
-  if (varIds.length > 0) {
-    const { data: userValues } = await supabase
-      .from('environment_user_values')
-      .select('variable_id, current_value')
-      .eq('user_id', user.id)
-      .in('variable_id', varIds);
-
-    (userValues || []).forEach(uv => {
-      userValuesMap[uv.variable_id] = uv.current_value;
-    });
-  }
-
-  return {
-    ...env,
-    variables: (env.environment_variables || [])
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map(v => {
-        const current_value = userValuesMap[v.id] || '';
-        return {
-          id: v.id,
-          key: v.key,
-          initial_value: v.initial_value || '',
-          current_value,
-          value: current_value || v.initial_value || '',
-          enabled: v.enabled !== false,
-        };
-      }),
-    environment_variables: undefined,
-    is_active: true,
-  };
-};
 
 
 export const createEnvironment = async (environment) => {
@@ -964,31 +891,6 @@ export const updateCurrentValues = async (environmentId, currentValues) => {
         });
       if (error) throw new Error(error.message);
     }
-  }
-
-  return { success: true };
-};
-
-// Clear all current values for an environment (reset to initial values)
-export const clearCurrentValues = async (environmentId) => {
-  const user = await checkAuth();
-
-  // Get variable IDs for this environment
-  const { data: vars } = await supabase
-    .from('environment_variables')
-    .select('id')
-    .eq('environment_id', environmentId);
-
-  const varIds = (vars || []).map(v => v.id);
-
-  if (varIds.length > 0) {
-    const { error } = await supabase
-      .from('environment_user_values')
-      .delete()
-      .eq('user_id', user.id)
-      .in('variable_id', varIds);
-
-    if (error) throw new Error(error.message);
   }
 
   return { success: true };
@@ -1400,23 +1302,6 @@ function buildPostmanCollection(collection, allCollections, allRequests, allExam
     item: items,
   };
 }
-
-export const exportCollections = async () => {
-  const allCollections = await getCollections();
-  const allRequests = await getRequests();
-  const allExamples = await getExamples();
-
-  // Build Postman collection for each top-level collection
-  const postmanCollections = allCollections
-    .filter(c => !c.parent_id)
-    .map(collection => buildPostmanCollection(collection, allCollections, allRequests, allExamples));
-
-  // If single collection, return it directly; otherwise wrap in array
-  if (postmanCollections.length === 1) {
-    return postmanCollections[0];
-  }
-  return postmanCollections;
-};
 
 export const exportCollection = async (id) => {
   const allCollections = await getCollections();

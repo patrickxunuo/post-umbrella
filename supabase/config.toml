@@ -317,13 +317,6 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
-# Bitbucket OAuth (requires workspace admin to create OAuth consumer)
-# [auth.external.bitbucket]
-# enabled = true
-# client_id = "env(SUPABASE_AUTH_BITBUCKET_CLIENT_ID)"
-# secret = "env(SUPABASE_AUTH_BITBUCKET_SECRET)"
-# redirect_uri = ""
-
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]

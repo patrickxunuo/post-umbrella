@@ -391,32 +391,6 @@ export function useRequestActions({
     }
   }, [markAsRecentlyModified, openRequestInTab, setCollections, toast]);
 
-  const handleMoveRequest = useCallback(async (requestId, targetCollectionId) => {
-    try {
-      const updatedRequest = await withPendingId(setPendingRequestIds, requestId, async () => (
-        data.moveRequest(requestId, targetCollectionId)
-      ));
-      const tabId = `request-${requestId}`;
-      setOpenTabs((prev) => prev.map((tab) => (
-        tab.id === tabId ? { ...tab, request: { ...tab.request, collection_id: targetCollectionId } } : tab
-      )));
-      setCollections((prev) => {
-        const withoutRequest = prev.map((collection) => ({
-          ...collection,
-          requests: (collection.requests || []).filter((request) => request.id !== requestId),
-        }));
-        return withoutRequest.map((collection) => (
-          collection.id === targetCollectionId
-            ? { ...collection, requests: [...(collection.requests || []), { ...updatedRequest, example_count: updatedRequest.example_count ?? 0 }] }
-            : collection
-        ));
-      });
-      toast.success('Request moved successfully');
-    } catch (err) {
-      toast.error(err.message || 'Failed to move request');
-    }
-  }, [setCollections, setOpenTabs, setPendingRequestIds, toast, withPendingId]);
-
   const handleRenameCollection = useCallback(async (id, name) => {
     markAsRecentlyModified(`collection-${id}`);
     await withPendingId(setPendingCollectionIds, id, async () => {
@@ -564,19 +538,41 @@ export function useRequestActions({
   }, [activeWorkspace, markAsRecentlyModified, setCollections, toast]);
 
   const handleExportCollection = useCallback(async (collection) => {
+    const loadingToast = toast.loading('Exporting collection...');
     try {
       const exportData = await data.exportCollection(collection.id);
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${collection.name.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`Exported "${collection.name}" successfully`);
+      const json = JSON.stringify(exportData, null, 2);
+      const defaultName = `${collection.name.replace(/[^a-z0-9]/gi, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+
+      if ('__TAURI_INTERNALS__' in window) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const filePath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        });
+        if (!filePath) {
+          toast.dismiss(loadingToast);
+          return;
+        }
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('write_text_file', { path: filePath, contents: json });
+        toast.dismiss(loadingToast);
+        toast.success(`Exported to ${filePath.split(/[/\\]/).pop()}`);
+      } else {
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.dismiss(loadingToast);
+        toast.success(`Exported "${collection.name}" successfully`);
+      }
     } catch (err) {
+      toast.dismiss(loadingToast);
       toast.error(err.message || 'Failed to export collection');
     }
   }, [toast]);
@@ -656,11 +652,9 @@ export function useRequestActions({
     handleDeleteCollection,
     handleDeleteRequest,
     handleDuplicateRequest,
-    handleMoveRequest,
     handleRenameCollection,
     handleRenameRequest,
     handleCreateExample,
-    handleDeleteExample,
     handleDuplicateExample,
     handleSaveAsExample,
     handleRenameExample,

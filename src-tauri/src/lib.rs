@@ -60,6 +60,11 @@ fn read_file_at_path(path: String) -> Result<FileInfo, String> {
   })
 }
 
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+  fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
 // behavior: 0 = ask, 1 = hide to tray, 2 = close
 #[tauri::command]
 fn set_close_behavior(behavior: u8) {
@@ -74,6 +79,20 @@ fn hide_window(window: tauri::WebviewWindow) {
 #[tauri::command]
 fn close_app(app: tauri::AppHandle) {
   app.exit(0);
+}
+
+#[tauri::command]
+fn open_url_in_browser(url: String) -> Result<(), String> {
+  if !url.starts_with("https://") && !url.starts_with("http://") {
+    return Err("Only HTTP(S) URLs are allowed".to_string());
+  }
+  #[cfg(target_os = "windows")]
+  { std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", &url]).spawn().map_err(|e| e.to_string())?; }
+  #[cfg(target_os = "macos")]
+  { std::process::Command::new("open").arg(&url).spawn().map_err(|e| e.to_string())?; }
+  #[cfg(target_os = "linux")]
+  { std::process::Command::new("xdg-open").arg(&url).spawn().map_err(|e| e.to_string())?; }
+  Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -147,7 +166,7 @@ pub fn run() {
   let wh = window::handler();
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path, set_close_behavior, hide_window, close_app])
+    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path, write_text_file, set_close_behavior, hide_window, close_app, open_url_in_browser])
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 
@@ -170,21 +189,10 @@ pub fn run() {
     .plugin(tauri_plugin_process::init())
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-        match CLOSE_BEHAVIOR.load(Ordering::Relaxed) {
-          0 => {
-            // No preference saved — ask the user
-            api.prevent_close();
-            let _ = window.emit("close-requested", ());
-          }
-          1 => {
-            // Hide to tray
-            api.prevent_close();
-            let _ = window.hide();
-          }
-          _ => {
-            // 2 = close normally — don't prevent
-          }
-        }
+        // Always prevent close and delegate to JS, which checks auth state.
+        // JS will call hide_window or close_app as appropriate.
+        api.prevent_close();
+        let _ = window.emit("close-requested", ());
       }
     })
     .setup(move |app| {

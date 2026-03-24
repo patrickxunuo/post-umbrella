@@ -9,6 +9,7 @@ export function useAuthSession({ onAfterLogout } = {}) {
     const verifyAuth = async () => {
       try {
         const validUser = await data.checkAuth();
+        await data.activateUser();
         setUser(validUser);
       } catch {
         setUser(null);
@@ -27,7 +28,18 @@ export function useAuthSession({ onAfterLogout } = {}) {
       if (event === 'SIGNED_OUT') {
         setUser(null);
       } else if (userData) {
-        setUser((prev) => prev?.id === userData?.id ? prev : userData);
+        data.activateUser().then(() => {
+          setUser((prev) => prev?.id === userData?.id ? prev : userData);
+        }).catch((e) => {
+          const message = e.action === 'disabled'
+            ? 'Your account has been disabled. Please contact an administrator.'
+            : e.action === 'unauthorized'
+              ? 'Your account is not authorized. Please contact an administrator to get invited.'
+              : 'Sign in failed. Please try again.';
+          window.dispatchEvent(new CustomEvent('auth:error', { detail: { message } }));
+          data.logout();
+          setUser(null);
+        });
       }
     });
 

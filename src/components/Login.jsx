@@ -11,8 +11,18 @@ export function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [waitingForBrowser, setWaitingForBrowser] = useState(false);
 
   const useMagicLink = data.supportsMagicLink;
+
+  useEffect(() => {
+    const handleAuthError = (e) => {
+      setWaitingForBrowser(false);
+      setError(e.detail?.message || 'Sign in failed.');
+    };
+    window.addEventListener('auth:error', handleAuthError);
+    return () => window.removeEventListener('auth:error', handleAuthError);
+  }, []);
 
   // Validate email domain if restriction is set
   const isEmailValid = (emailAddr) => {
@@ -107,6 +117,41 @@ export function Login({ onLogin }) {
     }
   };
 
+  useEffect(() => {
+    if (!waitingForBrowser) return;
+    const timer = setTimeout(() => {
+      setWaitingForBrowser(false);
+      setError('Sign in timed out. Please try again.');
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, [waitingForBrowser]);
+
+  if (waitingForBrowser) {
+    return (
+      <div className="login-container">
+        <div className="login-drag-region" data-tauri-drag-region />
+        <WindowControls className="login-window-controls" compact />
+        <div className="login-box">
+          <div className="login-logo login-logo-breathing">
+            <img src="/umbrella.svg" alt="Post Umbrella" />
+          </div>
+          <h1>Waiting for browser <span className="animated-dots"><span>.</span><span>.</span><span>.</span></span></h1>
+          <p className="login-subtitle">
+            Complete sign in from your browser to continue.
+          </p>
+          {error && <div className="login-error">{error}</div>}
+          <button
+            type="button"
+            className="btn-login btn-secondary"
+            onClick={() => { setWaitingForBrowser(false); setError(''); }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (magicLinkSent) {
     return (
       <div className="login-container">
@@ -146,8 +191,32 @@ export function Login({ onLogin }) {
         <h1>Post Umbrella</h1>
         <p className="login-subtitle">Sign in to continue</p>
 
+        {error && <div className="login-error">{error}</div>}
+
+        {useMagicLink && (
+          <>
+            <button
+              type="button"
+              className="btn-login btn-slack"
+              onClick={async () => {
+                setError('');
+                try {
+                  await data.signInWithSlack();
+                  if ('__TAURI_INTERNALS__' in window) setWaitingForBrowser(true);
+                } catch (err) {
+                  setError(err.message);
+                }
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg"><path d="M19.712.133a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386h5.376V5.52A5.381 5.381 0 0 0 19.712.133m0 14.365H5.376A5.381 5.381 0 0 0 0 19.884a5.381 5.381 0 0 0 5.376 5.387h14.336a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386" fill="#36C5F0"/><path d="M53.76 19.884a5.381 5.381 0 0 0-5.376-5.386 5.381 5.381 0 0 0-5.376 5.386v5.387h5.376a5.381 5.381 0 0 0 5.376-5.387m-14.336 0V5.52A5.381 5.381 0 0 0 34.048.133a5.381 5.381 0 0 0-5.376 5.387v14.364a5.381 5.381 0 0 0 5.376 5.387 5.381 5.381 0 0 0 5.376-5.387" fill="#2EB67D"/><path d="M34.048 54a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386h-5.376v5.386A5.381 5.381 0 0 0 34.048 54m0-14.365h14.336a5.381 5.381 0 0 0 5.376-5.386 5.381 5.381 0 0 0-5.376-5.387H34.048a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386" fill="#ECB22E"/><path d="M0 34.249a5.381 5.381 0 0 0 5.376 5.386 5.381 5.381 0 0 0 5.376-5.386v-5.387H5.376A5.381 5.381 0 0 0 0 34.25m14.336-.001v14.364A5.381 5.381 0 0 0 19.712 54a5.381 5.381 0 0 0 5.376-5.387V34.249a5.381 5.381 0 0 0-5.376-5.387 5.381 5.381 0 0 0-5.376 5.387" fill="#E01E5A"/></svg>
+              Sign in with Slack
+            </button>
+
+            <div className="login-divider"><span>or</span></div>
+          </>
+        )}
+
         <form onSubmit={handleSubmit}>
-          {error && <div className="login-error">{error}</div>}
 
           <div className="form-group">
             <label htmlFor="email">Email</label>

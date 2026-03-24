@@ -3318,6 +3318,28 @@ body {
   height: 64px;
 }
 
+.login-logo-breathing img {
+  animation: logoBreathe 2.4s ease-in-out infinite;
+}
+
+@keyframes logoBreathe {
+  0%, 100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 0 transparent); }
+  50% { transform: scale(1.08); opacity: 0.85; filter: drop-shadow(0 4px 12px rgba(59, 130, 246, 0.25)); }
+}
+
+.animated-dots span {
+  animation: dotFade 1.4s ease-in-out infinite;
+  opacity: 0;
+}
+
+.animated-dots span:nth-child(2) { animation-delay: 0.2s; }
+.animated-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes dotFade {
+  0%, 100% { opacity: 0; }
+  30%, 70% { opacity: 1; }
+}
+
 .login-box h1 {
   font-size: 22px;
   font-weight: 700;
@@ -3421,20 +3443,17 @@ body {
   background: var(--bg-hover);
 }
 
-.btn-login.btn-bitbucket {
-  background: #0052CC;
+.btn-login.btn-slack {
+  background: #4A154B;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.btn-login.btn-bitbucket:hover {
-  background: #0747A6;
-}
-
-.btn-login.btn-bitbucket svg {
-  flex-shrink: 0;
+.btn-login.btn-slack:hover {
+  background: #5B2D5E;
 }
 
 .login-divider {
@@ -4411,8 +4430,6 @@ body {
 }
 
 .examples-list-sidebar {
-  background: var(--bg-tertiary);
-  border-left: 2px solid var(--accent-primary);
   margin-left: 24px;
   margin-bottom: 2px;
 }
@@ -5558,6 +5575,24 @@ body {
 
 .toast-close:hover {
   color: var(--text-primary);
+}
+
+.toast-action {
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toast-action:hover {
+  opacity: 0.85;
 }
 
 /* ============================================

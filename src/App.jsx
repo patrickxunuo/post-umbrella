@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy, Info } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
@@ -233,6 +233,8 @@ function AppContent() {
     toggleCurlPanel,
   } = useLayoutState();
 
+  const userRef = useRef(null);
+  const closeBehaviorRef = useRef(null);
   const {
     user,
     authChecked,
@@ -254,16 +256,33 @@ function AppContent() {
     }).catch(() => {});
   }, [user, handleThemeChange]);
 
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { closeBehaviorRef.current = userConfig.closeBehavior; }, [userConfig]);
+
   // Listen for Tauri close-requested event (when no preference is saved)
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return;
     let unlisten;
+    let cancelled = false;
     import('@tauri-apps/api/event').then(({ listen }) => {
-      listen('close-requested', () => {
-        setShowCloseModal(true);
-      }).then(fn => { unlisten = fn; });
+      if (cancelled) return;
+      listen('close-requested', async () => {
+        const { invoke } = await import('@tauri-apps/api/core');
+        if (!userRef.current) {
+          await invoke('close_app');
+        } else {
+          const behavior = closeBehaviorRef.current;
+          if (behavior === 'tray') {
+            await invoke('hide_window');
+          } else if (behavior === 'close') {
+            await invoke('close_app');
+          } else {
+            setShowCloseModal(true);
+          }
+        }
+      }).then(fn => { if (!cancelled) unlisten = fn; else fn(); });
     });
-    return () => { unlisten?.(); };
+    return () => { cancelled = true; unlisten?.(); };
   }, []);
 
   const {
@@ -355,8 +374,80 @@ function AppContent() {
     updateActiveDetailTab,
     wasRecentlyModified,
     openRequestInTab,
+    openExampleInTab,
     saveFunctionsRef,
   } = useWorkbench();
+
+  const lastClipboardLinkRef = useRef(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+    const pattern = new RegExp(
+      `^${baseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\?.*type=(collection|folder|request|example)&id=([0-9a-f-]+)`
+    );
+
+    const handleFocus = async () => {
+      let text;
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        return;
+      }
+      if (!text) return;
+      const match = text.match(pattern);
+      if (!match) return;
+      const type = match[1];
+      const id = match[2];
+
+      const urlParams = new URLSearchParams(text.split('?')[1]);
+      const uid = urlParams.get('uid');
+      if (uid && uid === String(user.id)) return;
+
+      if (text === lastClipboardLinkRef.current) return;
+      lastClipboardLinkRef.current = text;
+
+      if (type === 'collection' || type === 'folder') {
+        if (!collections.some(c => c.id === id)) return;
+        toast.action(`Open shared ${type}?`, {
+          label: 'Open',
+          onClick: () => setRevealCollectionId(id),
+        });
+      } else if (type === 'request') {
+        let request = null;
+        for (const c of collections) {
+          request = c.requests?.find(r => r.id === id);
+          if (request) break;
+        }
+        if (!request) return;
+        toast.action('Open shared request?', {
+          label: 'Open',
+          onClick: async () => {
+            const fullRequest = await data.getRequest(id);
+            openRequestInTab(fullRequest, { replacePreview: false });
+            setRevealRequestId(id);
+          },
+        });
+      } else if (type === 'example') {
+        toast.action('Open shared example?', {
+          label: 'Open',
+          onClick: async () => {
+            try {
+              const example = await data.getExample(id);
+              const parentRequest = await data.getRequest(example.request_id);
+              openExampleInTab(example, parentRequest, { replacePreview: false });
+              setRevealRequestId(parentRequest.id);
+            } catch {
+              toast.error('Failed to open shared example.');
+            }
+          },
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [user, collections, toast, openRequestInTab, openExampleInTab, setRevealCollectionId, setRevealRequestId]);
 
   const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
 
@@ -408,14 +499,14 @@ function AppContent() {
 
   const handleCopyLink = useCallback(async (type, id) => {
     const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-    const url = `${baseUrl}/?type=${type}&id=${id}`;
+    const url = `${baseUrl}/?type=${type}&id=${id}${user?.id ? `&uid=${user.id}` : ''}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success('Link copied to clipboard.');
     } catch (error) {
       toast.error('Failed to copy link.');
     }
-  }, [toast]);
+  }, [toast, user]);
 
   const handleWebSocketMessage = useCallback(
     (message) => {
