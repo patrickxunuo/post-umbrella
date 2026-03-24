@@ -19,6 +19,7 @@ export function Sidebar({
   collections,
   selectedRequest,
   onSelectRequest,
+  onOpenCollection,
   onCreateCollection,
   onCreateSubCollection,
   onCreateRequest,
@@ -376,6 +377,9 @@ export function Sidebar({
     setCollectionMenuOpen(null);
 
     switch (action) {
+      case 'open':
+        onOpenCollection?.(collection);
+        break;
       case 'add-request':
         onCreateRequest(collection.id);
         // Auto-expand the collection
@@ -943,6 +947,7 @@ export function Sidebar({
           data-collection-id={collection.id}
           style={{ paddingLeft: `${12 + depth * 16}px` }}
           onClick={() => toggleCollection(collection.id)}
+          onDoubleClick={() => onOpenCollection?.(collection)}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleCollectionMenu(collection.id, e); }}
           draggable={isFolderDraggable}
           onDragStart={isFolderDraggable ? (e) => handleFolderDragStart(e, collection) : undefined}
@@ -987,6 +992,13 @@ export function Sidebar({
             )}
             {collectionMenuOpen === collection.id && (
               <div className="request-menu collection-menu" ref={collectionMenuRef}>
+                <button
+                  className="request-menu-item"
+                  onClick={(e) => handleCollectionMenuAction('open', collection, e)}
+                >
+                  <FileText size={14} />
+                  Open
+                </button>
                 {canEdit && (
                   <>
                     <button

@@ -208,6 +208,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   }, [collectionsLoading, toast, setOpenTabs, setActiveTabId, user]);
 
   const {
+    openCollectionInTab,
     openRequestInTab,
     openExampleInTab,
     closeTab,
@@ -261,12 +262,13 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
 
     try {
       if (pendingSharedLink.type === 'collection' || pendingSharedLink.type === 'folder') {
-        const found = nextCollections.some((c) => c.id === pendingSharedLink.id);
+        const found = nextCollections.find((c) => c.id === pendingSharedLink.id);
         if (!found) {
           toast.info('This shared item belongs to a different workspace.');
           consumePendingSharedLink();
           return;
         }
+        await openCollectionInTab(found, { replacePreview: false });
         setRevealCollectionId(pendingSharedLink.id);
         consumePendingSharedLink();
         return;
@@ -343,6 +345,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     activeTabId,
     activeEnvironment,
     activeWorkspaceId: activeWorkspace?.id,
+    collections,
     loadEnvironments,
     setActiveEnvironment,
     setOpenTabs,
@@ -399,6 +402,67 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     }));
   }, [activeTabId, previewTabId]);
 
+  const initCollectionTab = useCallback((tabId, collectionData) => {
+    originalRequestsRef.current[tabId] = JSON.stringify({
+      auth_type: collectionData.auth_type,
+      auth_token: collectionData.auth_token,
+      pre_script: collectionData.pre_script,
+      post_script: collectionData.post_script,
+    });
+    setOpenTabs((prev) => prev.map((tab) =>
+      tab.id === tabId ? { ...tab, collection: { ...tab.collection, ...collectionData } } : tab
+    ));
+  }, []);
+
+  const updateTabCollection = useCallback((updates) => {
+    if (!activeTabId) return;
+    setOpenTabs((prev) => prev.map((tab) => {
+      if (tab.id !== activeTabId || tab.type !== 'collection') return tab;
+      const collection = { ...tab.collection, ...updates };
+      const current = JSON.stringify({
+        auth_type: collection.auth_type,
+        auth_token: collection.auth_token,
+        pre_script: collection.pre_script,
+        post_script: collection.post_script,
+      });
+      const dirty = current !== originalRequestsRef.current[tab.id];
+
+      if (dirty && previewTabId === tab.id) {
+        setPreviewTabId(null);
+      }
+
+      return { ...tab, collection, dirty };
+    }));
+  }, [activeTabId, previewTabId]);
+
+  const handleSaveCollection = useCallback(async () => {
+    if (!activeTabId) return;
+    const tab = openTabs.find(t => t.id === activeTabId);
+    if (!tab || tab.type !== 'collection') return;
+
+    const col = tab.collection;
+    try {
+      await data.updateCollection(col.id, {
+        auth_type: col.auth_type || 'none',
+        auth_token: col.auth_token || '',
+        pre_script: col.pre_script || '',
+        post_script: col.post_script || '',
+      });
+      originalRequestsRef.current[activeTabId] = JSON.stringify({
+        auth_type: col.auth_type || 'none',
+        auth_token: col.auth_token || '',
+        pre_script: col.pre_script || '',
+        post_script: col.post_script || '',
+      });
+      setOpenTabs(prev => prev.map(t =>
+        t.id === activeTabId ? { ...t, dirty: false } : t
+      ));
+      return { success: true };
+    } catch (err) {
+      throw err;
+    }
+  }, [activeTabId, openTabs]);
+
   const updateActiveDetailTab = useCallback((tabName) => {
     if (!activeTabId) return;
     setOpenTabs((prev) => prev.map((tab) => (
@@ -411,10 +475,10 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     saveStateRef.current = { activeTab, selectedRequest, selectedExample };
   }, [activeTab, selectedExample, selectedRequest]);
 
-  const saveFunctionsRef = useRef({ handleSaveRequest: null, handleSaveExample: null, handleSaveTempRequest: null });
+  const saveFunctionsRef = useRef({ handleSaveRequest: null, handleSaveExample: null, handleSaveTempRequest: null, handleSaveCollection: null });
   useEffect(() => {
-    saveFunctionsRef.current = { handleSaveRequest, handleSaveExample, handleSaveTempRequest: saveFunctionsRef.current.handleSaveTempRequest };
-  }, [handleSaveExample, handleSaveRequest]);
+    saveFunctionsRef.current = { handleSaveRequest, handleSaveExample, handleSaveCollection, handleSaveTempRequest: saveFunctionsRef.current.handleSaveTempRequest };
+  }, [handleSaveExample, handleSaveRequest, handleSaveCollection]);
 
   const canEditRef = useRef(false);
   useEffect(() => {
@@ -439,6 +503,11 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
       }
 
       if (!currentSaveState.activeTab?.dirty) return;
+
+      if (currentSaveState.activeTab.type === 'collection' && currentSaveFunctions.handleSaveCollection) {
+        currentSaveFunctions.handleSaveCollection();
+        return;
+      }
 
       if (currentSaveState.activeTab.type === 'example' && currentSaveState.selectedExample && currentSaveFunctions.handleSaveExample) {
         currentSaveFunctions.handleSaveExample({
@@ -501,6 +570,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     loadCollections,
     loadEnvironments,
     loading,
+    openCollectionInTab,
     openRequestInTab,
     openExampleInTab,
     saveFunctionsRef,
@@ -535,6 +605,9 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     cancelRequest,
     updateTabRequest,
     updateTabExample,
+    initCollectionTab,
+    updateTabCollection,
+    handleSaveCollection,
     updateActiveDetailTab,
     wasRecentlyModified,
   };

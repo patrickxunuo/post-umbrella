@@ -10,6 +10,7 @@ export function EnvVariableInput({
   placeholder,
   className,
   activeEnvironment,
+  collectionVariables,
   onEnvironmentUpdate,
   disabled = false,
 }) {
@@ -56,21 +57,47 @@ export function EnvVariableInput({
 
   // Check if variable exists in environment
   const variableExists = (varName) => {
-    if (!activeEnvironment?.variables) return false;
-    return activeEnvironment.variables.some(v => v.key === varName && v.enabled);
+    if (activeEnvironment?.variables?.some(v => v.key === varName && v.enabled)) return true;
+    if (collectionVariables?.some(v => v.key === varName && v.enabled)) return true;
+    return false;
+  };
+
+  const getVariableSource = (varName) => {
+    if (activeEnvironment?.variables?.some(v => v.key === varName && v.enabled)) return 'env';
+    if (collectionVariables?.some(v => v.key === varName && v.enabled)) return 'collection';
+    return null;
   };
 
   // Check if the value contains any variables
   const hasVariables = /\{\{[^}]+\}\}/.test(value);
 
-  // Get filtered variables for autocomplete
+  // Get filtered variables for autocomplete (merged collection + env vars)
   const getFilteredVariables = useCallback((filterText) => {
-    if (!activeEnvironment?.variables) return [];
     const filter = filterText.toLowerCase();
-    return activeEnvironment.variables
-      .filter(v => v.enabled && v.key.toLowerCase().includes(filter))
-      .sort((a, b) => a.key.localeCompare(b.key));
-  }, [activeEnvironment]);
+    const result = [];
+    const seenKeys = new Set();
+
+    // Add env variables first (higher priority)
+    if (activeEnvironment?.variables) {
+      for (const v of activeEnvironment.variables) {
+        if (v.enabled && v.key.toLowerCase().includes(filter)) {
+          result.push({ ...v, source: 'env' });
+          seenKeys.add(v.key);
+        }
+      }
+    }
+
+    // Add collection variables (lower priority, skip duplicates)
+    if (collectionVariables) {
+      for (const v of collectionVariables) {
+        if (v.enabled && v.key.toLowerCase().includes(filter) && !seenKeys.has(v.key)) {
+          result.push({ ...v, source: 'collection' });
+        }
+      }
+    }
+
+    return result.sort((a, b) => a.key.localeCompare(b.key));
+  }, [activeEnvironment, collectionVariables]);
 
   // Check if cursor is inside an incomplete {{ pattern (for autocomplete trigger)
   const checkAutocomplete = useCallback((text, cursorPos) => {
@@ -455,6 +482,9 @@ export function EnvVariableInput({
                 onClick={() => insertVariable(v.key)}
                 onMouseEnter={() => setSuggestionIndex(i)}
               >
+                <span className={`suggestion-source-badge ${v.source === 'collection' ? 'collection' : 'env'}`}>
+                  {v.source === 'collection' ? 'C' : 'E'}
+                </span>
                 <span className="suggestion-key">{`{{${v.key}}}`}</span>
                 <span className="suggestion-value">{v.value || '(empty)'}</span>
               </div>
@@ -466,7 +496,7 @@ export function EnvVariableInput({
       {hoveredVar && (
         <div
           ref={popoverRef}
-          className={`env-var-popover ${!activeEnvironment ? 'no-env' : !variableExists(hoveredVar.name) ? 'unresolved' : ''}`}
+          className={`env-var-popover ${!variableExists(hoveredVar.name) ? (!activeEnvironment ? 'no-env' : 'unresolved') : ''}`}
           style={{
             position: 'fixed',
             top: popoverPos.top,
@@ -479,11 +509,16 @@ export function EnvVariableInput({
         >
           <div className="env-var-popover-header">
             <span className="env-var-name">{hoveredVar.name}</span>
-            {activeEnvironment ? (
-              <span className="env-var-env">{activeEnvironment.name}</span>
-            ) : (
-              <span className="env-var-env no-env">No Environment</span>
-            )}
+            {(() => {
+              const source = getVariableSource(hoveredVar.name);
+              if (source === 'collection') {
+                return <span className="env-var-env collection-var">Collection Variable</span>;
+              }
+              if (activeEnvironment) {
+                return <span className="env-var-env">{activeEnvironment.name}</span>;
+              }
+              return <span className="env-var-env no-env">No Environment</span>;
+            })()}
           </div>
           {!activeEnvironment ? (
             <div className="env-var-popover-value">

@@ -25,6 +25,7 @@ import { UnsavedChangesModal } from './components/UnsavedChangesModal';
 import { SettingsModal, syncCloseBehaviorToRust } from './components/SettingsModal';
 import { AboutModal } from './components/AboutModal';
 import { CloseToTrayModal } from './components/CloseToTrayModal';
+import { CollectionEditor } from './components/CollectionEditor';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -371,8 +372,12 @@ function AppContent() {
     cancelRequest,
     updateTabRequest,
     updateTabExample,
+    initCollectionTab,
+    updateTabCollection,
+    handleSaveCollection,
     updateActiveDetailTab,
     wasRecentlyModified,
+    openCollectionInTab,
     openRequestInTab,
     openExampleInTab,
     saveFunctionsRef,
@@ -408,10 +413,14 @@ function AppContent() {
       lastClipboardLinkRef.current = text;
 
       if (type === 'collection' || type === 'folder') {
-        if (!collections.some(c => c.id === id)) return;
+        const found = collections.find(c => c.id === id);
+        if (!found) return;
         toast.action(`Open shared ${type}?`, {
           label: 'Open',
-          onClick: () => setRevealCollectionId(id),
+          onClick: () => {
+            openCollectionInTab(found, { replacePreview: false });
+            setRevealCollectionId(id);
+          },
         });
       } else if (type === 'request') {
         let request = null;
@@ -447,7 +456,7 @@ function AppContent() {
 
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [user, collections, toast, openRequestInTab, openExampleInTab, setRevealCollectionId, setRevealRequestId]);
+  }, [user, collections, toast, openCollectionInTab, openRequestInTab, openExampleInTab, setRevealCollectionId, setRevealRequestId]);
 
   const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
 
@@ -990,6 +999,7 @@ function AppContent() {
           collections={collections}
           selectedRequest={selectedRequest}
           onSelectRequest={handleSelectRequest}
+          onOpenCollection={openCollectionInTab}
           onCreateCollection={handleCreateCollection}
           onCreateSubCollection={handleCreateSubCollection}
           onCreateRequest={handleCreateRequest}
@@ -1029,20 +1039,21 @@ function AppContent() {
             ) : (
               openTabs.map(tab => {
                 const isExample = tab.type === 'example';
-                const name = isExample ? tab.example?.name : tab.request?.name;
+                const isCollection = tab.type === 'collection';
+                const name = isCollection ? tab.collection?.name : (isExample ? tab.example?.name : tab.request?.name);
                 const method = isExample ? tab.example?.request_data?.method : tab.request?.method;
                 const isConflicted = !!conflictedTabs[tab.id];
                 const isDeleted = deletedTabs.has(tab.id);
 
                 // Build tooltip showing name with status
-                let tooltip = `${isExample ? '[Example] ' : ''}${name || 'Untitled'}`;
+                let tooltip = `${isCollection ? '[Collection] ' : isExample ? '[Example] ' : ''}${name || 'Untitled'}`;
                 if (isDeleted) tooltip += ' [deleted]';
                 else if (isConflicted) tooltip += ' [conflicted]';
 
                 return (
                 <div
                   key={tab.id}
-                  className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
+                  className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isCollection ? 'collection-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
                   onClick={() => setActiveTabId(tab.id)}
                   draggable
                   onDragStart={(e) => handleTabDragStart(e, tab.id)}
@@ -1051,7 +1062,9 @@ function AppContent() {
                   onDrop={(e) => handleTabDrop(e, tab.id)}
                   title={tooltip}
                 >
-                  {isExample ? (
+                  {isCollection ? (
+                    <span className="tab-collection-badge">{tab.collection?.parent_id ? 'FD' : 'CL'}</span>
+                  ) : isExample ? (
                     <span className="tab-example-badge">EX</span>
                   ) : (
                     <span
@@ -1135,43 +1148,70 @@ function AppContent() {
             )}
           </div>
 
-          <RequestEditor
-            request={selectedRequest}
-            example={selectedExample}
-            isExample={activeTab?.type === 'example'}
-            onSend={handleSendRequest}
-            onCancel={cancelRequest}
-            onSave={activeTab?.isTemporary
-              ? (requestData) => setDraftSavePending({ tabId: activeTabId, requestData: { ...activeTab.request, ...requestData } })
-              : (activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest)}
-            onSaveAsExample={handleSaveAsExample}
-            onTry={handleTryExample}
-            onRequestChange={activeTab?.type === 'example' ? updateTabExample : updateTabRequest}
-            loading={loading}
-            response={response}
-            dirty={activeTab?.dirty}
-            isTemporary={activeTab?.isTemporary}
-            activeEnvironment={activeEnvironment}
-            onEnvironmentUpdate={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
-            height={requestEditorHeight}
-            activeDetailTab={activeTab?.activeDetailTab || 'params'}
-            onActiveDetailTabChange={updateActiveDetailTab}
-            canEdit={canEdit}
-            showCurlPanel={showCurlPanel}
-            onToggleCurlPanel={toggleCurlPanel}
-          />
-          <div
-            className="vertical-resize-handle"
-            onMouseDown={startResizingVertical}
-          />
-          <ResponseViewer
-            response={response}
-            loading={loading}
-            isExample={activeTab?.type === 'example'}
-            example={selectedExample}
-            onExampleChange={activeTab?.type === 'example' ? updateTabExample : undefined}
-            requestUrl={activeTab?.type === 'example' ? null : (activeTab?.request?.url || selectedRequest?.url)}
-          />
+          {activeTab?.type === 'collection' ? (
+            <CollectionEditor
+              collection={activeTab.collection}
+              activeDetailTab={activeTab.activeDetailTab || 'overview'}
+              onActiveDetailTabChange={updateActiveDetailTab}
+              onCollectionChange={(updates, isInit) => {
+                if (isInit) {
+                  initCollectionTab(activeTab.id, updates);
+                } else {
+                  updateTabCollection(updates);
+                }
+              }}
+              canEdit={canEdit}
+              dirty={activeTab.dirty}
+              onSave={async () => {
+                try {
+                  await handleSaveCollection();
+                  toast.success('Collection saved');
+                } catch (err) {
+                  toast.error(err.message || 'Failed to save collection');
+                }
+              }}
+            />
+          ) : (
+            <>
+              <RequestEditor
+                request={selectedRequest}
+                example={selectedExample}
+                isExample={activeTab?.type === 'example'}
+                onSend={handleSendRequest}
+                onCancel={cancelRequest}
+                onSave={activeTab?.isTemporary
+                  ? (requestData) => setDraftSavePending({ tabId: activeTabId, requestData: { ...activeTab.request, ...requestData } })
+                  : (activeTab?.type === 'example' ? handleSaveExample : handleSaveRequest)}
+                onSaveAsExample={handleSaveAsExample}
+                onTry={handleTryExample}
+                onRequestChange={activeTab?.type === 'example' ? updateTabExample : updateTabRequest}
+                loading={loading}
+                response={response}
+                dirty={activeTab?.dirty}
+                isTemporary={activeTab?.isTemporary}
+                activeEnvironment={activeEnvironment}
+                onEnvironmentUpdate={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
+                height={requestEditorHeight}
+                activeDetailTab={activeTab?.activeDetailTab || 'params'}
+                onActiveDetailTabChange={updateActiveDetailTab}
+                canEdit={canEdit}
+                showCurlPanel={showCurlPanel}
+                onToggleCurlPanel={toggleCurlPanel}
+              />
+              <div
+                className="vertical-resize-handle"
+                onMouseDown={startResizingVertical}
+              />
+              <ResponseViewer
+                response={response}
+                loading={loading}
+                isExample={activeTab?.type === 'example'}
+                example={selectedExample}
+                onExampleChange={activeTab?.type === 'example' ? updateTabExample : undefined}
+                requestUrl={activeTab?.type === 'example' ? null : (activeTab?.request?.url || selectedRequest?.url)}
+              />
+            </>
+          )}
         </main>
 
         {showCurlPanel && (

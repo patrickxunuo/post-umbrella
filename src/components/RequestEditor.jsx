@@ -422,6 +422,7 @@ export function RequestEditor({
         authToken,
         preScript,
         postScript,
+        collectionId: request?.collection_id,
       });
     }
   };
@@ -759,6 +760,16 @@ export function RequestEditor({
                 <input
                   type="radio"
                   name="authType"
+                  value="inherit"
+                  checked={authType === 'inherit'}
+                  onChange={() => handleAuthTypeChange('inherit')}
+                />
+                Inherit from Parent
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="authType"
                   value="bearer"
                   checked={authType === 'bearer'}
                   onChange={() => handleAuthTypeChange('bearer')}
@@ -766,6 +777,11 @@ export function RequestEditor({
                 Bearer Token
               </label>
             </div>
+            {authType === 'inherit' && (
+              <p className="hint" style={{ marginTop: 8 }}>
+                Authorization will be inherited from the parent collection's auth settings.
+              </p>
+            )}
             {authType === 'bearer' && (
               <div className="auth-token-input">
                 <label>Token</label>
