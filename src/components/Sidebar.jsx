@@ -17,6 +17,7 @@ const METHOD_COLORS = {
 
 export function Sidebar({
   collections,
+  activeTab,
   selectedRequest,
   onSelectRequest,
   onOpenCollection,
@@ -251,16 +252,27 @@ export function Sidebar({
     return children.some(child => hasMatchingRequests(child));
   };
 
-  const toggleCollection = (id) => {
-    setExpandedCollections((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
+  const handleCollectionClick = (collection) => {
+    const id = collection.id;
+    const isExpanded = expandedCollections.has(id);
+    const isTabFocused = activeTab?.type === 'collection' && activeTab?.entityId === id;
+
+    if (isTabFocused && isExpanded) {
+      // A2B2 → A1B2: collapse menu, keep tab
+      setExpandedCollections((prev) => {
+        const next = new Set(prev);
         next.delete(id);
-      } else {
-        next.add(id);
+        return next;
+      });
+    } else {
+      // A1B1, A1B2, A2B1 → A2B2: expand + open/focus tab
+      if (!isExpanded) {
+        setExpandedCollections((prev) => new Set([...prev, id]));
       }
-      return next;
-    });
+      if (!isTabFocused) {
+        onOpenCollection?.(collection);
+      }
+    }
   };
 
   const toggleRequest = async (requestId, e) => {
@@ -377,9 +389,6 @@ export function Sidebar({
     setCollectionMenuOpen(null);
 
     switch (action) {
-      case 'open':
-        onOpenCollection?.(collection);
-        break;
       case 'add-request':
         onCreateRequest(collection.id);
         // Auto-expand the collection
@@ -946,8 +955,7 @@ export function Sidebar({
           className={`collection-header ${dragOverCollection === collection.id ? 'drop-target' : ''} ${draggedFolder?.id === collection.id ? 'dragging' : ''} ${dragOverFolder === collection.id && folderDropZone === 'before' ? 'folder-drag-over' : ''} ${dragOverFolder === collection.id && folderDropZone === 'after' ? 'folder-drag-after' : ''}`}
           data-collection-id={collection.id}
           style={{ paddingLeft: `${12 + depth * 16}px` }}
-          onClick={() => toggleCollection(collection.id)}
-          onDoubleClick={() => onOpenCollection?.(collection)}
+          onClick={() => handleCollectionClick(collection)}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleCollectionMenu(collection.id, e); }}
           draggable={isFolderDraggable}
           onDragStart={isFolderDraggable ? (e) => handleFolderDragStart(e, collection) : undefined}
@@ -992,13 +1000,6 @@ export function Sidebar({
             )}
             {collectionMenuOpen === collection.id && (
               <div className="request-menu collection-menu" ref={collectionMenuRef}>
-                <button
-                  className="request-menu-item"
-                  onClick={(e) => handleCollectionMenuAction('open', collection, e)}
-                >
-                  <FileText size={14} />
-                  Open
-                </button>
                 {canEdit && (
                   <>
                     <button

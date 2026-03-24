@@ -11,6 +11,7 @@ export function EnvVariableInput({
   className,
   activeEnvironment,
   collectionVariables,
+  rootCollectionId,
   onEnvironmentUpdate,
   disabled = false,
 }) {
@@ -48,11 +49,13 @@ export function EnvVariableInput({
     return null;
   };
 
-  // Get the current value of a variable from the environment
+  // Get the current value of a variable from environment or collection
   const getVariableValue = (varName) => {
-    if (!activeEnvironment?.variables) return null;
-    const variable = activeEnvironment.variables.find(v => v.key === varName && v.enabled);
-    return variable?.value ?? null;
+    const envVar = activeEnvironment?.variables?.find(v => v.key === varName && v.enabled);
+    if (envVar) return envVar.value ?? null;
+    const colVar = collectionVariables?.find(v => v.key === varName && v.enabled);
+    if (colVar) return colVar.value ?? null;
+    return null;
   };
 
   // Check if variable exists in environment
@@ -265,8 +268,12 @@ export function EnvVariableInput({
       if (segment.match(/^\{\{[^}]+\}\}$/)) {
         // This is a variable
         const varName = segment.slice(2, -2);
-        const exists = variableExists(varName);
-        const varClass = !activeEnvironment ? 'no-env' : !exists ? 'unresolved' : 'resolved';
+        const source = getVariableSource(varName);
+        let varClass;
+        if (!source && !activeEnvironment) varClass = 'no-env';
+        else if (!source) varClass = 'unresolved';
+        else if (source === 'collection') varClass = 'collection';
+        else varClass = 'resolved';
         parts.push(
           <span key={index} className={`env-var-highlight ${varClass}`}>
             {segment}
@@ -371,29 +378,35 @@ export function EnvVariableInput({
 
   // Save the variable value
   const saveVariable = async () => {
-    if (!activeEnvironment || !hoveredVar) return;
+    if (!hoveredVar) return;
+
+    const source = getVariableSource(hoveredVar.name);
 
     try {
-      const exists = activeEnvironment.variables.some(v => v.key === hoveredVar.name);
-
-      if (!exists) {
-        // Variable doesn't exist yet — add it via updateEnvironment
-        const updatedVariables = [
-          ...activeEnvironment.variables,
-          { key: hoveredVar.name, value: editValue, enabled: true },
-        ];
-        await data.updateEnvironment(activeEnvironment.id, {
-          variables: updatedVariables,
-        });
-      } else {
-        // Variable exists — update user's current value
-        await data.updateCurrentValues(activeEnvironment.id, {
+      if (source === 'collection' && rootCollectionId) {
+        await data.updateCollectionVariableCurrentValues(rootCollectionId, {
           [hoveredVar.name]: editValue,
         });
+        onEnvironmentUpdate?.();
+      } else if (activeEnvironment) {
+        const exists = activeEnvironment.variables.some(v => v.key === hoveredVar.name);
+        if (!exists) {
+          const updatedVariables = [
+            ...activeEnvironment.variables,
+            { key: hoveredVar.name, value: editValue, enabled: true },
+          ];
+          await data.updateEnvironment(activeEnvironment.id, {
+            variables: updatedVariables,
+          });
+        } else {
+          await data.updateCurrentValues(activeEnvironment.id, {
+            [hoveredVar.name]: editValue,
+          });
+        }
+        onEnvironmentUpdate?.();
       }
-      onEnvironmentUpdate?.();
     } catch (err) {
-      console.error('Failed to update environment variable:', err);
+      console.error('Failed to update variable:', err);
     }
 
     setIsEditing(false);
@@ -508,23 +521,29 @@ export function EnvVariableInput({
           onMouseLeave={handlePopoverMouseLeave}
         >
           <div className="env-var-popover-header">
-            <span className="env-var-name">{hoveredVar.name}</span>
+            <span className={`env-var-name ${getVariableSource(hoveredVar.name) || ''}`}>
+              {(() => {
+                const source = getVariableSource(hoveredVar.name);
+                if (source === 'collection') {
+                  return <span className="suggestion-source-badge collection">C</span>;
+                }
+                if (source === 'env') {
+                  return <span className="suggestion-source-badge env">E</span>;
+                }
+                return null;
+              })()}
+              {hoveredVar.name}
+            </span>
             {(() => {
               const source = getVariableSource(hoveredVar.name);
-              if (source === 'collection') {
-                return <span className="env-var-env collection-var">Collection Variable</span>;
-              }
+              if (source === 'collection') return null;
               if (activeEnvironment) {
                 return <span className="env-var-env">{activeEnvironment.name}</span>;
               }
               return <span className="env-var-env no-env">No Environment</span>;
             })()}
           </div>
-          {!activeEnvironment ? (
-            <div className="env-var-popover-value">
-              <span className="warning">Select an environment to use variables</span>
-            </div>
-          ) : isEditing ? (
+          {isEditing ? (
             <div className="env-var-popover-edit">
               <input
                 type="text"
@@ -536,19 +555,19 @@ export function EnvVariableInput({
               />
               <button onClick={saveVariable}>Save</button>
             </div>
+          ) : getVariableValue(hoveredVar.name) !== null ? (
+            <div className="env-var-popover-value">
+              {getVariableValue(hoveredVar.name) || <span className="empty">(empty string)</span>}
+              <span className="edit-hint">Click to edit</span>
+            </div>
+          ) : !activeEnvironment ? (
+            <div className="env-var-popover-value">
+              <span className="warning">Select an environment to use variables</span>
+            </div>
           ) : (
             <div className="env-var-popover-value">
-              {getVariableValue(hoveredVar.name) !== null ? (
-                <>
-                  {getVariableValue(hoveredVar.name) || <span className="empty">(empty string)</span>}
-                  <span className="edit-hint">Click to edit</span>
-                </>
-              ) : (
-                <>
-                  <span className="warning">Variable not found in "{activeEnvironment.name}"</span>
-                  <span className="edit-hint">Click to create it</span>
-                </>
-              )}
+              <span className="warning">Variable not found in "{activeEnvironment.name}"</span>
+              <span className="edit-hint">Click to create it</span>
             </div>
           )}
         </div>

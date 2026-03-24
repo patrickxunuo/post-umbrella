@@ -1,13 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { FolderOpen, Folder, Clock, User, Hash, Plus, Trash2, Save, Shield, Code } from 'lucide-react';
 import { ScriptEditor } from './ScriptEditor';
+import { EnvVariableInput } from './EnvVariableInput';
 import * as data from '../data/index.js';
 
-const AUTH_TYPES = [
-  { value: 'none', label: 'No Auth' },
-  { value: 'inherit', label: 'Inherit from Parent' },
-  { value: 'bearer', label: 'Bearer Token' },
-];
 
 function formatDate(timestamp) {
   if (!timestamp) return '—';
@@ -64,7 +60,7 @@ function OverviewTab({ collection, requestCount, loading }) {
   );
 }
 
-function VariablesTab({ collectionId, canEdit }) {
+function VariablesTab({ collectionId, canEdit, onEnvironmentUpdate }) {
   const [variables, setVariables] = useState([]);
   const [editingVars, setEditingVars] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -160,6 +156,7 @@ function VariablesTab({ collectionId, canEdit }) {
         // Non-admin: just refresh
         await loadVariables();
       }
+      onEnvironmentUpdate?.();
     } finally {
       setSaving(false);
     }
@@ -176,17 +173,15 @@ function VariablesTab({ collectionId, canEdit }) {
           Collection variables are shared across all requests. Use <code>{'{{key}}'}</code> to reference them.
         </span>
         <div className="collection-variables-actions">
-          {hasChanges && (
-            <button className="btn-primary small" onClick={handleSave} disabled={saving}>
-              <Save size={13} />
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-          )}
+          <button className="btn-primary small" onClick={handleSave} disabled={!hasChanges || saving}>
+            <Save size={13} />
+            {saving ? 'Saving...' : 'Save'}
+          </button>
         </div>
       </div>
 
-      <div className="collection-variables-table-wrapper">
-        <table className="collection-variables-table">
+      <div className="env-var-table">
+        <table>
           <thead>
             <tr>
               <th className="col-key">Variable</th>
@@ -223,99 +218,88 @@ function VariablesTab({ collectionId, canEdit }) {
                 )}
               </tr>
             ))}
-            {editingVars.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 3 : 2} className="empty-state">
-                  No variables defined
-                </td>
-              </tr>
-            )}
+            {!editingVars.length && <tr className="empty-row"><td colSpan={canEdit ? 3 : 2}>No variables yet</td></tr>}
           </tbody>
         </table>
+        {canEdit && (
+          <button className="btn-add-var" onClick={addVar}>
+            <Plus size={14} />Add Variable
+          </button>
+        )}
       </div>
-
-      {canEdit && (
-        <button className="btn-secondary small add-var-btn" onClick={addVar}>
-          <Plus size={13} />
-          Add Variable
-        </button>
-      )}
     </div>
   );
 }
 
-function AuthTab({ authType, authToken, onChange, canEdit }) {
-  return (
-    <div className="collection-auth-tab">
-      <div className="collection-auth-type">
-        <label>Authorization Type</label>
-        <select
-          value={authType || 'none'}
-          onChange={e => onChange({ auth_type: e.target.value })}
-          disabled={!canEdit}
-        >
-          {AUTH_TYPES.map(t => (
-            <option key={t.value} value={t.value}>{t.label}</option>
-          ))}
-        </select>
-      </div>
+function AuthTab({ authType, authToken, onChange, canEdit, isFolder, activeEnvironment, collectionVariables, rootCollectionId, onEnvironmentUpdate }) {
+  const handleAuthTypeChange = (type) => {
+    if (!canEdit) return;
+    onChange({ auth_type: type });
+  };
 
-      {authType === 'bearer' && (
-        <div className="collection-auth-token">
-          <label>Token</label>
+  return (
+    <div className="auth-editor">
+      <div className="auth-type-selector">
+        <label>
           <input
-            type="text"
-            placeholder="Enter bearer token or {{variable}}"
-            value={authToken || ''}
-            onChange={e => onChange({ auth_token: e.target.value })}
+            type="radio"
+            name="collectionAuthType"
+            value="none"
+            checked={authType === 'none'}
+            onChange={() => handleAuthTypeChange('none')}
             disabled={!canEdit}
           />
-        </div>
-      )}
-
+          No Auth
+        </label>
+        {isFolder && (
+          <label>
+            <input
+              type="radio"
+              name="collectionAuthType"
+              value="inherit"
+              checked={authType === 'inherit'}
+              onChange={() => handleAuthTypeChange('inherit')}
+              disabled={!canEdit}
+            />
+            Inherit from Parent
+          </label>
+        )}
+        <label>
+          <input
+            type="radio"
+            name="collectionAuthType"
+            value="bearer"
+            checked={authType === 'bearer'}
+            onChange={() => handleAuthTypeChange('bearer')}
+            disabled={!canEdit}
+          />
+          Bearer Token
+        </label>
+      </div>
       {authType === 'inherit' && (
-        <div className="collection-auth-inherit-notice">
-          Authorization will be inherited from the parent collection.
+        <p className="hint" style={{ marginTop: 8 }}>
+          Authorization will be inherited from the parent collection's auth settings.
+        </p>
+      )}
+      {authType === 'bearer' && (
+        <div className="auth-token-input">
+          <label>Token</label>
+          <EnvVariableInput
+            className="auth-token-field"
+            placeholder="Enter bearer token or {{variable}}"
+            value={authToken || ''}
+            onChange={(e) => onChange({ auth_token: e.target.value })}
+            disabled={!canEdit}
+            activeEnvironment={activeEnvironment}
+            collectionVariables={collectionVariables}
+            rootCollectionId={rootCollectionId}
+            onEnvironmentUpdate={onEnvironmentUpdate}
+          />
+          <p className="hint">
+            The token will be sent as: Authorization: Bearer &lt;token&gt;
+          </p>
         </div>
       )}
-
-      {authType === 'none' && (
-        <div className="collection-auth-inherit-notice">
-          No authorization is set. Requests in this collection will use their own auth settings.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ScriptsTab({ preScript, postScript, onChange, canEdit }) {
-  return (
-    <div className="collection-scripts-tab">
-      <div className="collection-script-section">
-        <div className="collection-script-header">
-          <label>Pre-request Script</label>
-          <span className="collection-script-hint">Runs before every request in this collection</span>
-        </div>
-        <ScriptEditor
-          value={preScript || ''}
-          onChange={val => onChange({ pre_script: val })}
-          placeholder="// Pre-request script runs before every request in this collection..."
-          readOnly={!canEdit}
-        />
-      </div>
-
-      <div className="collection-script-section">
-        <div className="collection-script-header">
-          <label>Post-response Script</label>
-          <span className="collection-script-hint">Runs after every request in this collection</span>
-        </div>
-        <ScriptEditor
-          value={postScript || ''}
-          onChange={val => onChange({ post_script: val })}
-          placeholder="// Post-response script runs after every request in this collection..."
-          readOnly={!canEdit}
-        />
-      </div>
     </div>
   );
 }
@@ -323,7 +307,8 @@ function ScriptsTab({ preScript, postScript, onChange, canEdit }) {
 const TABS = [
   { id: 'overview', label: 'Overview', icon: FolderOpen },
   { id: 'authorization', label: 'Auth', icon: Shield },
-  { id: 'scripts', label: 'Scripts', icon: Code },
+  { id: 'pre-script', label: 'Pre-script', icon: Code },
+  { id: 'post-script', label: 'Post-script', icon: Code },
 ];
 
 export function CollectionEditor({
@@ -334,6 +319,10 @@ export function CollectionEditor({
   canEdit,
   onSave,
   dirty,
+  activeEnvironment,
+  collectionVariables,
+  rootCollectionId,
+  onEnvironmentUpdate,
 }) {
   const [fullCollection, setFullCollection] = useState(null);
   const [requestCount, setRequestCount] = useState(0);
@@ -431,6 +420,7 @@ export function CollectionEditor({
           <VariablesTab
             collectionId={collection.id}
             canEdit={canEdit}
+            onEnvironmentUpdate={onEnvironmentUpdate}
           />
         )}
 
@@ -440,16 +430,73 @@ export function CollectionEditor({
             authToken={collection.auth_token || ''}
             onChange={handleAuthChange}
             canEdit={canEdit}
+            isFolder={!isRoot}
+            activeEnvironment={activeEnvironment}
+            collectionVariables={collectionVariables}
+            rootCollectionId={rootCollectionId}
+            onEnvironmentUpdate={onEnvironmentUpdate}
           />
         )}
 
-        {activeDetailTab === 'scripts' && (
-          <ScriptsTab
-            preScript={collection.pre_script || ''}
-            postScript={collection.post_script || ''}
-            onChange={handleScriptChange}
-            canEdit={canEdit}
-          />
+        {activeDetailTab === 'pre-script' && (
+          <div className="script-panel">
+            <div className="script-help">
+              <p>Pre-request script runs before every request in this collection. Use it to set variables or modify request data.</p>
+              <details>
+                <summary>Available API</summary>
+                <pre>{`// Get/set environment variables
+pm.environment.get("varName")
+pm.environment.set("varName", "value")
+
+// Access request data
+pm.request.url
+pm.request.method
+pm.request.headers
+
+// Console logging
+console.log("message")`}</pre>
+              </details>
+            </div>
+            <ScriptEditor
+              value={collection.pre_script || ''}
+              onChange={val => handleScriptChange({ pre_script: val })}
+              placeholder="// Pre-request script runs before every request in this collection..."
+              readOnly={!canEdit}
+            />
+          </div>
+        )}
+
+        {activeDetailTab === 'post-script' && (
+          <div className="script-panel">
+            <div className="script-help">
+              <p>Post-response script runs after every request in this collection. Use it to extract data and set variables.</p>
+              <details>
+                <summary>Available API</summary>
+                <pre>{`// Get/set environment variables
+pm.environment.get("varName")
+pm.environment.set("varName", "value")
+
+// Access response data
+const json = pm.response.json();
+pm.response.code    // status code
+pm.response.body    // raw body
+pm.response.headers
+
+// Example: Extract token from response
+const data = pm.response.json();
+pm.environment.set("authToken", data.token);
+
+// Console logging
+console.log("message")`}</pre>
+              </details>
+            </div>
+            <ScriptEditor
+              value={collection.post_script || ''}
+              onChange={val => handleScriptChange({ post_script: val })}
+              placeholder="// Post-response script runs after every request in this collection..."
+              readOnly={!canEdit}
+            />
+          </div>
         )}
       </div>
     </div>

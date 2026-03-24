@@ -460,6 +460,39 @@ function AppContent() {
 
   const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
 
+  // Load collection variables for the active request/collection's root collection
+  const [collectionVariables, setCollectionVariables] = useState([]);
+
+  const activeCollectionId = useMemo(() => {
+    if (activeTab?.type === 'collection') return activeTab.collection?.id;
+    if (selectedRequest?.collection_id) return selectedRequest.collection_id;
+    return null;
+  }, [activeTab?.type, activeTab?.collection?.id, selectedRequest?.collection_id]);
+
+  const rootCollectionId = useMemo(() => {
+    if (!activeCollectionId || !collections) return null;
+    let currentId = activeCollectionId;
+    let iterations = 0;
+    while (currentId && iterations < 50) {
+      const col = collections.find(c => c.id === currentId);
+      if (!col) break;
+      if (!col.parent_id) return col.id;
+      currentId = col.parent_id;
+      iterations++;
+    }
+    return currentId;
+  }, [activeCollectionId, collections]);
+
+  const reloadCollectionVariables = useCallback(() => {
+    if (!rootCollectionId) return;
+    data.getCollectionVariables(rootCollectionId).then(setCollectionVariables).catch(() => setCollectionVariables([]));
+  }, [rootCollectionId]);
+
+  useEffect(() => {
+    if (!rootCollectionId) { setCollectionVariables([]); return; }
+    reloadCollectionVariables();
+  }, [rootCollectionId, reloadCollectionVariables]);
+
   const curlPreview = useMemo(() => {
     if (!showCurlPanel) return '';
     const req = activeTab?.type === 'example'
@@ -998,6 +1031,7 @@ function AppContent() {
         <Sidebar
           collections={collections}
           selectedRequest={selectedRequest}
+          activeTab={activeTab}
           onSelectRequest={handleSelectRequest}
           onOpenCollection={openCollectionInTab}
           onCreateCollection={handleCreateCollection}
@@ -1170,6 +1204,10 @@ function AppContent() {
                   toast.error(err.message || 'Failed to save collection');
                 }
               }}
+              activeEnvironment={activeEnvironment}
+              collectionVariables={collectionVariables}
+              rootCollectionId={rootCollectionId}
+              onEnvironmentUpdate={() => { activeWorkspace?.id && loadEnvironments(activeWorkspace.id); reloadCollectionVariables(); }}
             />
           ) : (
             <>
@@ -1190,7 +1228,9 @@ function AppContent() {
                 dirty={activeTab?.dirty}
                 isTemporary={activeTab?.isTemporary}
                 activeEnvironment={activeEnvironment}
-                onEnvironmentUpdate={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
+                collectionVariables={collectionVariables}
+                rootCollectionId={rootCollectionId}
+                onEnvironmentUpdate={() => { activeWorkspace?.id && loadEnvironments(activeWorkspace.id); reloadCollectionVariables(); }}
                 height={requestEditorHeight}
                 activeDetailTab={activeTab?.activeDetailTab || 'params'}
                 onActiveDetailTabChange={updateActiveDetailTab}

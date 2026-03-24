@@ -109,6 +109,8 @@ export function RequestEditor({
   dirty,
   isTemporary,
   activeEnvironment,
+  collectionVariables,
+  rootCollectionId,
   onEnvironmentUpdate,
   height,
   activeDetailTab = 'params',
@@ -545,6 +547,8 @@ export function RequestEditor({
           onKeyDown={(e) => e.key === 'Enter' && !isExample && handleSend()}
           onPaste={canEdit ? handleUrlPaste : undefined}
           activeEnvironment={activeEnvironment}
+          collectionVariables={collectionVariables}
+          rootCollectionId={rootCollectionId}
           onEnvironmentUpdate={onEnvironmentUpdate}
           disabled={!canEdit}
         />
@@ -706,15 +710,18 @@ export function RequestEditor({
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        placeholder="Value"
+                      <EnvVariableInput
                         value={param.value}
                         onChange={(e) => {
                           const newParams = [...params];
                           newParams[index] = { ...param, value: e.target.value };
                           handleParamsChange(newParams);
                         }}
+                        placeholder="Value"
+                        activeEnvironment={activeEnvironment}
+                        collectionVariables={collectionVariables}
+                        rootCollectionId={rootCollectionId}
+                        onEnvironmentUpdate={onEnvironmentUpdate}
                       />
                     </td>
                     <td>
@@ -791,6 +798,8 @@ export function RequestEditor({
                   value={authToken}
                   onChange={(e) => handleAuthTokenChange(e.target.value)}
                   activeEnvironment={activeEnvironment}
+                  collectionVariables={collectionVariables}
+                  rootCollectionId={rootCollectionId}
                   onEnvironmentUpdate={onEnvironmentUpdate}
                 />
                 <p className="hint">
@@ -837,11 +846,14 @@ export function RequestEditor({
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        placeholder="Value"
+                      <EnvVariableInput
                         value={header.value}
                         onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                        placeholder="Value"
+                        activeEnvironment={activeEnvironment}
+                        collectionVariables={collectionVariables}
+                        rootCollectionId={rootCollectionId}
+                        onEnvironmentUpdate={onEnvironmentUpdate}
                       />
                     </td>
                     <td>
@@ -1015,11 +1027,14 @@ export function RequestEditor({
                               )}
                             </div>
                           ) : (
-                            <input
-                              type="text"
-                              placeholder="Value"
+                            <EnvVariableInput
                               value={field.value || ''}
                               onChange={(e) => updateFormDataField(index, 'value', e.target.value)}
+                              placeholder="Value"
+                              activeEnvironment={activeEnvironment}
+                              collectionVariables={collectionVariables}
+                              rootCollectionId={rootCollectionId}
+                              onEnvironmentUpdate={onEnvironmentUpdate}
                             />
                           )}
                         </td>
