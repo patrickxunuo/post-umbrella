@@ -2,7 +2,11 @@ import { useCallback, useMemo, useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView } from '@codemirror/view';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import JSON5 from 'json5';
+import { createEnvVariableExtensions } from '../utils/envVariableExtension';
+import { useVariablePopover } from './VariablePopover';
 
 // Custom theme that matches the app's design system using CSS variables
 const baseTheme = EditorView.theme({
@@ -65,37 +69,50 @@ const baseTheme = EditorView.theme({
 });
 
 // Light theme syntax colors
-const lightSyntax = EditorView.theme({
+const lightSyntaxHighlight = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.string, color: '#16a34a' },
+  { tag: tags.number, color: '#d97706' },
+  { tag: tags.bool, color: '#7c3aed' },
+  { tag: tags.null, color: '#dc2626' },
+  { tag: tags.propertyName, color: '#0284c7' },
+  { tag: tags.punctuation, color: '#64748b' },
+  { tag: tags.brace, color: '#64748b' },
+  { tag: tags.squareBracket, color: '#64748b' },
+]));
+
+const lightSelection = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(59, 130, 246, 0.25) !important',
+    backgroundColor: 'rgba(37, 99, 235, 0.25) !important',
   },
   '.cm-line ::selection': {
-    backgroundColor: 'rgba(59, 130, 246, 0.25) !important',
+    backgroundColor: 'rgba(37, 99, 235, 0.35) !important',
     color: '#1e293b !important',
   },
-  '.ͼd': { color: '#16a34a' },           // strings - green
-  '.ͼc': { color: '#d97706' },           // numbers - amber
-  '.ͼe': { color: '#7c3aed' },           // booleans - purple
-  '.ͼb': { color: '#dc2626' },           // null - red
-  '.ͼm': { color: '#0284c7' },           // property names - sky blue
-  '.ͼ7': { color: '#64748b' },           // punctuation - slate
+  '.cm-content': {
+    caretColor: 'var(--accent-primary)',
+  },
 });
 
-// Dark theme syntax colors (brighter for better visibility)
-const darkSyntax = EditorView.theme({
+// Dark theme syntax colors
+const darkSyntaxHighlight = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.string, color: '#4ade80' },
+  { tag: tags.number, color: '#fbbf24' },
+  { tag: tags.bool, color: '#a78bfa' },
+  { tag: tags.null, color: '#f87171' },
+  { tag: tags.propertyName, color: '#38bdf8' },
+  { tag: tags.punctuation, color: '#94a3b8' },
+  { tag: tags.brace, color: '#94a3b8' },
+  { tag: tags.squareBracket, color: '#94a3b8' },
+]));
+
+const darkSelection = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(96, 165, 250, 0.35) !important',
+    backgroundColor: 'rgba(96, 165, 250, 0.3) !important',
   },
   '.cm-line ::selection': {
-    backgroundColor: 'rgba(96, 165, 250, 0.35) !important',
+    backgroundColor: 'rgba(96, 165, 250, 0.4) !important',
     color: '#f1f5f9 !important',
   },
-  '.ͼd': { color: '#4ade80' },           // strings - green
-  '.ͼc': { color: '#fbbf24' },           // numbers - amber
-  '.ͼe': { color: '#a78bfa' },           // booleans - purple
-  '.ͼb': { color: '#f87171' },           // null - red
-  '.ͼm': { color: '#38bdf8' },           // property names - sky blue
-  '.ͼ7': { color: '#94a3b8' },           // punctuation - slate
 });
 
 export function JsonEditor({
@@ -107,7 +124,10 @@ export function JsonEditor({
   minHeight = '150px',
   maxHeight,
   className = '',
+  activeEnvironment,
+  collectionVariables,
 }) {
+  const variablePopover = useVariablePopover();
   // Detect and react to theme changes
   const [isDark, setIsDark] = useState(() => {
     if (typeof document !== 'undefined') {
@@ -130,12 +150,24 @@ export function JsonEditor({
     return () => observer.disconnect();
   }, []);
 
-  const extensions = useMemo(() => [
-    json(),
-    baseTheme,
-    isDark ? darkSyntax : lightSyntax,
-    EditorView.lineWrapping,
-  ], [isDark]);
+  const extensions = useMemo(() => {
+    const exts = [
+      json(),
+      baseTheme,
+      isDark ? darkSyntaxHighlight : lightSyntaxHighlight,
+      isDark ? darkSelection : lightSelection,
+      EditorView.lineWrapping,
+    ];
+    if (activeEnvironment || collectionVariables) {
+      exts.push(...createEnvVariableExtensions({
+        activeEnvironment,
+        collectionVariables,
+        onHover: variablePopover?.show,
+        onLeave: variablePopover?.hide,
+      }));
+    }
+    return exts;
+  }, [isDark, activeEnvironment, collectionVariables, variablePopover]);
 
   const handleChange = useCallback((val) => {
     onChange?.(val);
@@ -144,12 +176,23 @@ export function JsonEditor({
   const handleBeautify = useCallback(() => {
     if (!value) return;
     try {
-      // Parse with JSON5 to support comments, then output standard JSON
-      const parsed = JSON5.parse(value);
-      const formatted = JSON.stringify(parsed, null, 2);
+      // Replace {{var}} with placeholders before parsing, then restore after
+      // Track whether each placeholder was originally quoted or bare
+      const placeholders = [];
+      const safe = value.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
+        const idx = placeholders.length;
+        const wasQuoted = match.startsWith('"') && match.endsWith('"');
+        placeholders.push({ original: `{{${varName.trim()}}}`, wasQuoted });
+        return `"__ENV_VAR_${idx}__"`;
+      });
+      const parsed = JSON5.parse(safe);
+      let formatted = JSON.stringify(parsed, null, 2);
+      placeholders.forEach(({ original, wasQuoted }, i) => {
+        const replacement = wasQuoted ? `"${original}"` : original;
+        formatted = formatted.replace(`"__ENV_VAR_${i}__"`, replacement);
+      });
       onChange?.(formatted);
     } catch (e) {
-      // Invalid JSON - can't beautify
       console.warn('Cannot beautify invalid JSON:', e.message);
     }
   }, [value, onChange]);
@@ -157,9 +200,19 @@ export function JsonEditor({
   const handleMinify = useCallback(() => {
     if (!value) return;
     try {
-      // Parse with JSON5 to support comments, then output standard JSON
-      const parsed = JSON5.parse(value);
-      const minified = JSON.stringify(parsed);
+      const placeholders = [];
+      const safe = value.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
+        const idx = placeholders.length;
+        const wasQuoted = match.startsWith('"') && match.endsWith('"');
+        placeholders.push({ original: `{{${varName.trim()}}}`, wasQuoted });
+        return `"__ENV_VAR_${idx}__"`;
+      });
+      const parsed = JSON5.parse(safe);
+      let minified = JSON.stringify(parsed);
+      placeholders.forEach(({ original, wasQuoted }, i) => {
+        const replacement = wasQuoted ? `"${original}"` : original;
+        minified = minified.replace(`"__ENV_VAR_${i}__"`, replacement);
+      });
       onChange?.(minified);
     } catch (e) {
       console.warn('Cannot minify invalid JSON:', e.message);
@@ -171,7 +224,8 @@ export function JsonEditor({
   const isValidJson = useMemo(() => {
     if (!value) return true;
     try {
-      JSON5.parse(value);
+      const safe = value.replace(/"?\{\{([^}]+)\}\}"?/g, '"__env_check__"');
+      JSON5.parse(safe);
       return true;
     } catch {
       return false;
@@ -221,6 +275,7 @@ export function JsonEditor({
           closeBrackets: true,
           autocompletion: false,
           indentOnInput: true,
+          defaultHighlightStyle: false,
         }}
         className="json-codemirror"
       />

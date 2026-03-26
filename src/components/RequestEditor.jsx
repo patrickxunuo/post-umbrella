@@ -109,6 +109,8 @@ export function RequestEditor({
   dirty,
   isTemporary,
   activeEnvironment,
+  collectionVariables,
+  rootCollectionId,
   onEnvironmentUpdate,
   height,
   activeDetailTab = 'params',
@@ -422,27 +424,35 @@ export function RequestEditor({
         authToken,
         preScript,
         postScript,
+        collectionId: request?.collection_id,
       });
     }
   };
 
   const handleSave = () => {
+    // Normalize {{  key  }} → {{key}} in a string
+    const trimVars = (s) => s ? s.replace(/\{\{\s*([^}]+?)\s*\}\}/g, '{{$1}}') : s;
+
     // Filter out empty params but keep disabled ones
-    const paramsToSave = params.filter((p) => p.key.trim());
+    const paramsToSave = params.filter((p) => p.key.trim()).map(p => ({ ...p, value: trimVars(p.value) }));
+    const trimmedUrl = trimVars(url).trim();
+    const trimmedBody = trimVars(body);
+    const trimmedHeaders = headers.filter((h) => h.key).map(h => ({ ...h, value: trimVars(h.value) }));
+    const trimmedFormData = formData.filter((f) => f.key).map(f => ({ ...f, value: f.type === 'file' ? f.value : trimVars(f.value) }));
+    const trimmedAuthToken = trimVars(authToken);
 
     if (isExample) {
-      // For examples, save with full structure
       onSave({
         name: example?.name,
         request_data: {
           method,
-          url,
-          headers: headers.filter((h) => h.key),
-          body,
+          url: trimmedUrl,
+          headers: trimmedHeaders,
+          body: trimmedBody,
           body_type: bodyType,
-          form_data: formData.filter((f) => f.key),
+          form_data: trimmedFormData,
           auth_type: authType,
-          auth_token: authToken,
+          auth_token: trimmedAuthToken,
           params: paramsToSave,
         },
         response_data: example?.response_data,
@@ -450,13 +460,13 @@ export function RequestEditor({
     } else {
       onSave({
         method,
-        url,
-        headers: headers.filter((h) => h.key),
-        body,
+        url: trimmedUrl,
+        headers: trimmedHeaders,
+        body: trimmedBody,
         body_type: bodyType,
-        form_data: formData.filter((f) => f.key),
+        form_data: trimmedFormData,
         auth_type: authType,
-        auth_token: authToken,
+        auth_token: trimmedAuthToken,
         params: paramsToSave,
         pre_script: preScript,
         post_script: postScript,
@@ -544,6 +554,8 @@ export function RequestEditor({
           onKeyDown={(e) => e.key === 'Enter' && !isExample && handleSend()}
           onPaste={canEdit ? handleUrlPaste : undefined}
           activeEnvironment={activeEnvironment}
+          collectionVariables={collectionVariables}
+          rootCollectionId={rootCollectionId}
           onEnvironmentUpdate={onEnvironmentUpdate}
           disabled={!canEdit}
         />
@@ -705,15 +717,18 @@ export function RequestEditor({
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        placeholder="Value"
+                      <EnvVariableInput
                         value={param.value}
                         onChange={(e) => {
                           const newParams = [...params];
                           newParams[index] = { ...param, value: e.target.value };
                           handleParamsChange(newParams);
                         }}
+                        placeholder="Value"
+                        activeEnvironment={activeEnvironment}
+                        collectionVariables={collectionVariables}
+                        rootCollectionId={rootCollectionId}
+                        onEnvironmentUpdate={onEnvironmentUpdate}
                       />
                     </td>
                     <td>
@@ -759,6 +774,16 @@ export function RequestEditor({
                 <input
                   type="radio"
                   name="authType"
+                  value="inherit"
+                  checked={authType === 'inherit'}
+                  onChange={() => handleAuthTypeChange('inherit')}
+                />
+                Inherit from Parent
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="authType"
                   value="bearer"
                   checked={authType === 'bearer'}
                   onChange={() => handleAuthTypeChange('bearer')}
@@ -766,6 +791,11 @@ export function RequestEditor({
                 Bearer Token
               </label>
             </div>
+            {authType === 'inherit' && (
+              <p className="hint" style={{ marginTop: 8 }}>
+                Authorization will be inherited from the parent collection's auth settings.
+              </p>
+            )}
             {authType === 'bearer' && (
               <div className="auth-token-input">
                 <label>Token</label>
@@ -775,6 +805,8 @@ export function RequestEditor({
                   value={authToken}
                   onChange={(e) => handleAuthTokenChange(e.target.value)}
                   activeEnvironment={activeEnvironment}
+                  collectionVariables={collectionVariables}
+                  rootCollectionId={rootCollectionId}
                   onEnvironmentUpdate={onEnvironmentUpdate}
                 />
                 <p className="hint">
@@ -821,11 +853,14 @@ export function RequestEditor({
                       />
                     </td>
                     <td>
-                      <input
-                        type="text"
-                        placeholder="Value"
+                      <EnvVariableInput
                         value={header.value}
                         onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                        placeholder="Value"
+                        activeEnvironment={activeEnvironment}
+                        collectionVariables={collectionVariables}
+                        rootCollectionId={rootCollectionId}
+                        onEnvironmentUpdate={onEnvironmentUpdate}
                       />
                     </td>
                     <td>
@@ -999,11 +1034,14 @@ export function RequestEditor({
                               )}
                             </div>
                           ) : (
-                            <input
-                              type="text"
-                              placeholder="Value"
+                            <EnvVariableInput
                               value={field.value || ''}
                               onChange={(e) => updateFormDataField(index, 'value', e.target.value)}
+                              placeholder="Value"
+                              activeEnvironment={activeEnvironment}
+                              collectionVariables={collectionVariables}
+                              rootCollectionId={rootCollectionId}
+                              onEnvironmentUpdate={onEnvironmentUpdate}
                             />
                           )}
                         </td>
@@ -1031,6 +1069,8 @@ export function RequestEditor({
                 placeholder='{\n  "key": "value"\n}'
                 showBeautify={true}
                 className="request-json-editor"
+                activeEnvironment={activeEnvironment}
+                collectionVariables={collectionVariables}
               />
             )}
 
@@ -1051,9 +1091,13 @@ export function RequestEditor({
               <p>Pre-request script runs before the request is sent. Use it to set variables or modify request data.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access request data
 pm.request.url
@@ -1081,9 +1125,13 @@ console.log("message")`}</pre>
               <p>Post-response script runs after the response is received. Use it to extract data and set variables.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access response data
 const json = pm.response.json();

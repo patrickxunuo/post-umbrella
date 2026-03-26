@@ -86,6 +86,43 @@ export function useRequestActions({
     setPreviewTabId,
   ]);
 
+  const openCollectionInTab = useCallback(async (collection, options = {}) => {
+    const { replacePreview = true } = options;
+    const tabId = `collection-${collection.id}`;
+    const existingTab = openTabs.find((tab) => tab.id === tabId);
+    if (existingTab) {
+      setActiveTabId(tabId);
+      return;
+    }
+
+    const newTab = {
+      id: tabId,
+      type: 'collection',
+      entityId: collection.id,
+      collection: {
+        id: collection.id,
+        name: collection.name,
+        parent_id: collection.parent_id,
+      },
+      dirty: false,
+      activeDetailTab: 'overview',
+    };
+
+    setOpenTabs((prev) => {
+      if (prev.some((tab) => tab.id === tabId)) return prev;
+
+      const previewTab = previewTabId ? prev.find((tab) => tab.id === previewTabId) : null;
+      if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary && !previewTab.runState) {
+        delete originalRequestsRef.current[previewTab.id];
+        return prev.map((tab) => (tab.id === previewTabId ? newTab : tab));
+      }
+      return [...prev, newTab];
+    });
+
+    setActiveTabId(tabId);
+    setPreviewTabId(tabId);
+  }, [openTabs, originalRequestsRef, previewTabId, setActiveTabId, setOpenTabs, setPreviewTabId]);
+
   const openRequestInTab = useCallback(async (request, options = {}) => {
     const { replacePreview = true } = options;
     const tabId = `request-${request.id}`;
@@ -129,7 +166,7 @@ export function useRequestActions({
 
       const previewTab = previewTabId ? prev.find((tab) => tab.id === previewTabId) : null;
 
-      if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary) {
+      if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary && !previewTab.runState) {
         delete originalRequestsRef.current[previewTab.id];
         return prev.map((tab) => (tab.id === previewTabId ? newTab : tab));
       }
@@ -178,7 +215,7 @@ export function useRequestActions({
 
       const previewTab = previewTabId ? prev.find((tab) => tab.id === previewTabId) : null;
 
-      if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary) {
+      if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary && !previewTab.runState) {
         delete originalRequestsRef.current[previewTab.id];
         return prev.map((tab) => (tab.id === previewTabId ? newTab : tab));
       }
@@ -337,10 +374,11 @@ export function useRequestActions({
       // Now remove from state
       setCollections(prev => prev.filter(col => !collectionIdsToRemove.has(col.id)));
 
-      // Close tabs for requests in deleted collections
+      // Close tabs for requests and collections in deleted tree
       setOpenTabs(prev => prev.filter(tab => {
-        if (tab.type !== 'request') return true;
-        return !collectionIdsToRemove.has(tab.request?.collection_id);
+        if (tab.type === 'collection') return !collectionIdsToRemove.has(tab.entityId);
+        if (tab.type === 'request') return !collectionIdsToRemove.has(tab.request?.collection_id);
+        return true;
       }));
     } catch (err) {
       toast.error(err.message || 'Failed to delete collection');
@@ -643,6 +681,7 @@ export function useRequestActions({
   }, [setActiveTabId, setOpenTabs]);
 
   return {
+    openCollectionInTab,
     openRequestInTab,
     openExampleInTab,
     closeTab,
@@ -665,5 +704,33 @@ export function useRequestActions({
     handleExportCollection,
     handleImportCurl,
     handleTryExample,
+    openWorkflowInTab: useCallback(async (workflow, options = {}) => {
+      const { replacePreview = true } = options;
+      const tabId = `workflow-${workflow.id}`;
+      const existingTab = openTabs.find(tab => tab.id === tabId);
+      if (existingTab) {
+        setActiveTabId(tabId);
+        return;
+      }
+      const newTab = {
+        id: tabId,
+        type: 'workflow',
+        entityId: workflow.id,
+        workflow: { id: workflow.id, name: workflow.name, steps: workflow.steps || [] },
+        dirty: false,
+      };
+      originalRequestsRef.current[tabId] = JSON.stringify({ name: workflow.name, steps: workflow.steps || [] });
+      setOpenTabs(prev => {
+        if (prev.some(tab => tab.id === tabId)) return prev;
+        const previewTab = previewTabId ? prev.find(tab => tab.id === previewTabId) : null;
+        if (replacePreview && previewTab && !previewTab.dirty && !previewTab.isTemporary && !previewTab.runState) {
+          delete originalRequestsRef.current[previewTab.id];
+          return prev.map(tab => tab.id === previewTabId ? newTab : tab);
+        }
+        return [...prev, newTab];
+      });
+      setActiveTabId(tabId);
+      setPreviewTabId(tabId);
+    }, [openTabs, originalRequestsRef, previewTabId, setActiveTabId, setOpenTabs, setPreviewTabId]),
   };
 }

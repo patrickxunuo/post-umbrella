@@ -3,6 +3,16 @@
  * Executes pre-script and post-script with a Postman-like pm object
  */
 
+function tryParseJson(val) {
+  if (val === null || val === undefined) return val;
+  if (typeof val !== 'string') return val;
+  const trimmed = val.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try { return JSON.parse(trimmed); } catch { return val; }
+  }
+  return val;
+}
+
 /**
  * Create a pm object for script execution
  * @param {Object} context - The context for script execution
@@ -17,6 +27,7 @@ function createPmObject(context) {
   const {
     environment,
     onEnvironmentUpdate,
+    collectionVariables,
     request,
     response,
     onRequestUpdate,
@@ -24,6 +35,7 @@ function createPmObject(context) {
 
   // Store for variables set during script execution
   const envUpdates = {};
+  const collectionVarUpdates = {};
 
   const pm = {
     // Environment operations
@@ -31,15 +43,16 @@ function createPmObject(context) {
       get: (key) => {
         // Check updates first, then existing environment
         if (key in envUpdates) {
-          return envUpdates[key];
+          return tryParseJson(envUpdates[key]);
         }
         if (!environment?.variables) return undefined;
         const variable = environment.variables.find(v => v.key === key && v.enabled);
-        // Use current_value if set, fallback to initial_value
-        return variable?.current_value ?? variable?.initial_value ?? variable?.value;
+        const val = variable?.current_value ?? variable?.initial_value ?? variable?.value;
+        return tryParseJson(val);
       },
       set: (key, value) => {
-        envUpdates[key] = String(value);
+        if (value === undefined || value === null) { envUpdates[key] = ''; return; }
+        envUpdates[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);
       },
       unset: (key) => {
         envUpdates[key] = null; // Mark for deletion
@@ -66,6 +79,27 @@ function createPmObject(context) {
       },
       // Internal: Get all updates to apply after script execution
       _getUpdates: () => envUpdates,
+    },
+
+    // Collection variable operations
+    collectionVariables: {
+      get: (key) => {
+        if (key in collectionVarUpdates) {
+          return tryParseJson(collectionVarUpdates[key]);
+        }
+        if (!collectionVariables) return undefined;
+        const variable = collectionVariables.find(v => v.key === key && v.enabled);
+        const val = variable?.current_value ?? variable?.initial_value ?? variable?.value;
+        return tryParseJson(val);
+      },
+      set: (key, value) => {
+        if (value === undefined || value === null) { collectionVarUpdates[key] = ''; return; }
+        collectionVarUpdates[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      },
+      unset: (key) => {
+        collectionVarUpdates[key] = null;
+      },
+      _getUpdates: () => collectionVarUpdates,
     },
 
     // Request object (primarily for pre-script)
@@ -247,6 +281,7 @@ export async function executeScript(script, context) {
       logs,
       errors,
       envUpdates: pm.environment._getUpdates(),
+      collectionVarUpdates: pm.collectionVariables._getUpdates(),
     };
   } catch (error) {
     errors.push({
@@ -260,6 +295,7 @@ export async function executeScript(script, context) {
       logs,
       errors,
       envUpdates: pm.environment._getUpdates(),
+      collectionVarUpdates: pm.collectionVariables._getUpdates(),
     };
   }
 }

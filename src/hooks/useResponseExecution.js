@@ -15,11 +15,45 @@ function stripJsonComments(text) {
   }
 }
 
+// Walk up the collection hierarchy to resolve inherited auth
+function resolveInheritedAuth(collectionId, collections) {
+  let currentId = collectionId;
+  let iterations = 0;
+  while (currentId && iterations < 50) {
+    const col = collections.find(c => c.id === currentId);
+    if (!col) break;
+    if (col.auth_type && col.auth_type !== 'none' && col.auth_type !== 'inherit') {
+      return { auth_type: col.auth_type, auth_token: col.auth_token || '' };
+    }
+    currentId = col.parent_id;
+    iterations++;
+  }
+  return { auth_type: 'none', auth_token: '' };
+}
+
+// Collect pre/post scripts from root down to the request's collection
+function resolveCollectionScripts(collectionId, collections) {
+  const chain = [];
+  let currentId = collectionId;
+  let iterations = 0;
+  while (currentId && iterations < 50) {
+    const col = collections.find(c => c.id === currentId);
+    if (!col) break;
+    chain.unshift(col); // prepend so root is first
+    currentId = col.parent_id;
+    iterations++;
+  }
+  const preScripts = chain.map(c => c.pre_script).filter(Boolean);
+  const postScripts = chain.map(c => c.post_script).filter(Boolean);
+  return { preScripts, postScripts };
+}
+
 export function useResponseExecution({
   toast,
   activeTabId,
   activeEnvironment,
   activeWorkspaceId,
+  collections,
   loadEnvironments,
   setActiveEnvironment,
   setOpenTabs,
@@ -41,10 +75,11 @@ export function useResponseExecution({
     body,
     bodyType,
     formData,
-    authType,
-    authToken,
+    authType: rawAuthType,
+    authToken: rawAuthToken,
     preScript,
     postScript,
+    collectionId,
   }) => {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -53,12 +88,59 @@ export function useResponseExecution({
     let consoleLogs = [];
     let currentEnv = activeEnvironment;
 
+    // Resolve inherited auth
+    let authType = rawAuthType;
+    let authToken = rawAuthToken;
+    if (authType === 'inherit' && collectionId && collections) {
+      const resolved = resolveInheritedAuth(collectionId, collections);
+      authType = resolved.auth_type;
+      authToken = resolved.auth_token;
+    }
+
+    // Collect and concatenate collection scripts
+    let collectionPreScripts = [];
+    let collectionPostScripts = [];
+    if (collectionId && collections) {
+      const scripts = resolveCollectionScripts(collectionId, collections);
+      collectionPreScripts = scripts.preScripts;
+      collectionPostScripts = scripts.postScripts;
+    }
+
+    // Combine: collection scripts run first (root→leaf), then request script
+    const allPreScripts = [...collectionPreScripts, preScript].filter(Boolean);
+    const allPostScripts = [...collectionPostScripts, postScript].filter(Boolean);
+
     try {
       consoleLogs.push({ type: 'info', source: 'system', message: `${method} ${url}`, timestamp: Date.now() });
 
-      if (preScript) {
-        const preResult = await executeScript(preScript, {
+      // Load collection variables (needed for both scripts and substitution)
+      let collectionVars = [];
+      let rootCollectionId = null;
+      if (collectionId) {
+        rootCollectionId = collectionId;
+        if (collections) {
+          let currentId = collectionId;
+          let iterations = 0;
+          while (currentId && iterations < 50) {
+            const col = collections.find(c => c.id === currentId);
+            if (!col) break;
+            if (!col.parent_id) { rootCollectionId = col.id; break; }
+            currentId = col.parent_id;
+            iterations++;
+          }
+        }
+        try {
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
+        } catch {
+          // Silently ignore — collection vars are optional
+        }
+      }
+
+      // Execute all pre-scripts in order
+      for (const script of allPreScripts) {
+        const preResult = await executeScript(script, {
           environment: currentEnv,
+          collectionVariables: collectionVars,
           request: { method, url, headers, body },
         });
 
@@ -72,24 +154,41 @@ export function useResponseExecution({
 
         if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
           currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
-          // Save only current_values (private), not initial_value (shared)
           await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
           setActiveEnvironment(currentEnv);
+        }
+
+        if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          await data.updateCollectionVariableCurrentValues(rootCollectionId, preResult.collectionVarUpdates);
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
         }
       }
 
       const substituteWithEnv = (text) => {
-        if (!text || !currentEnv) return text;
+        if (!text) return text;
 
         let result = text;
-        for (const variable of currentEnv.variables) {
+
+        // Apply collection variables first (lower priority)
+        for (const variable of collectionVars) {
           if (variable.enabled && variable.key) {
-            // Use computed value field (current_value || initial_value)
             const value = variable.value || variable.current_value || variable.initial_value || '';
-            const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
+            const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
             result = result.replace(regex, value);
           }
         }
+
+        // Apply env variables second (higher priority — overwrites collection vars)
+        if (currentEnv) {
+          for (const variable of currentEnv.variables) {
+            if (variable.enabled && variable.key) {
+              const value = variable.value || variable.current_value || variable.initial_value || '';
+              const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
+              result = result.replace(regex, value);
+            }
+          }
+        }
+
         return result;
       };
 
@@ -167,9 +266,10 @@ export function useResponseExecution({
         timestamp: Date.now(),
       });
 
-      if (postScript) {
-        const postResult = await executeScript(postScript, {
+      for (const script of allPostScripts) {
+        const postResult = await executeScript(script, {
           environment: currentEnv,
+          collectionVariables: collectionVars,
           response: result,
         });
 
@@ -183,12 +283,16 @@ export function useResponseExecution({
 
         if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {
           currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
-          // Save only current_values (private), not initial_value (shared)
           await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
           setActiveEnvironment(currentEnv);
           if (activeWorkspaceId) {
             loadEnvironments(activeWorkspaceId);
           }
+        }
+
+        if (Object.keys(postResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          await data.updateCollectionVariableCurrentValues(rootCollectionId, postResult.collectionVarUpdates);
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
         }
       }
 
@@ -230,7 +334,7 @@ export function useResponseExecution({
       abortRef.current = null;
       setLoading(false);
     }
-  }, [activeEnvironment, activeTabId, activeWorkspaceId, loadEnvironments, setActiveEnvironment, setOpenTabs, toast]);
+  }, [activeEnvironment, activeTabId, activeWorkspaceId, collections, loadEnvironments, setActiveEnvironment, setOpenTabs, toast]);
 
   return {
     loading,
