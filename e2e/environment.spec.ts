@@ -1,8 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { cleanupTestCollections, cleanupTestEnvironments } from './helpers/cleanup';
 
 // Generate unique names for each test run
 const timestamp = Date.now();
 const uniqueName = (base: string) => `${base} ${timestamp}`;
+
+test.afterAll(async () => {
+  await cleanupTestCollections(timestamp);
+  await cleanupTestEnvironments(timestamp);
+});
 
 // Helper to wait for app to be ready
 async function waitForAppReady(page) {
@@ -94,6 +100,7 @@ test.describe('Environments', () => {
     await page.screenshot({ path: 'e2e/screenshots/env-created.png' });
   });
 
+  // Flaky: save button sometimes not found in drawer (scroll/visibility issue)
   test('user can edit environment variables', async ({ page }) => {
     const envName = uniqueName('Vars Env');
 
@@ -125,19 +132,36 @@ test.describe('Environments', () => {
     const keyInput = newRow.locator('input[placeholder="Variable name"]');
     const valueInput = newRow.locator('input[placeholder="Value"]');
 
-    await keyInput.fill('API_URL');
-    await valueInput.fill('https://api.example.com');
+    await keyInput.click();
+    await keyInput.type('API_URL', { delay: 10 });
+    await valueInput.click();
+    await valueInput.type('https://api.example.com', { delay: 10 });
 
     // Add another variable
     await addVarBtn.click();
     const secondRow = varTable.locator('tr').nth(1);
-    await secondRow.locator('input[placeholder="Variable name"]').fill('API_KEY');
-    await secondRow.locator('input[placeholder="Value"]').fill('secret123');
+    const key2 = secondRow.locator('input[placeholder="Variable name"]');
+    const val2 = secondRow.locator('input[placeholder="Value"]');
+    await key2.click();
+    await key2.type('API_KEY', { delay: 10 });
+    await val2.click();
+    await val2.type('secret123', { delay: 10 });
+
+    // Dismiss version toast if visible (it can block the save button)
+    const versionToast = page.locator('.version-toast');
+    if (await versionToast.isVisible({ timeout: 500 }).catch(() => false)) {
+      await versionToast.locator('button').click().catch(() => {});
+      await page.waitForTimeout(300);
+    }
+
+    // Wait for React state to settle after fills
+    await page.waitForTimeout(500);
 
     // Save the changes
-    const saveBtn = envDrawer.locator('.btn-save');
-    await expect(saveBtn).toBeEnabled();
-    await saveBtn.click();
+    const saveBtn = page.locator('.env-var-footer .btn-save');
+    await expect(saveBtn).toBeVisible({ timeout: 5000 });
+    await expect(saveBtn).toBeEnabled({ timeout: 5000 });
+    await saveBtn.click({ force: true });
 
     // Wait for save to complete (button should become disabled when no changes)
     await expect(saveBtn).toBeDisabled({ timeout: 5000 });

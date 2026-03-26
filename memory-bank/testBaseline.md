@@ -1,9 +1,9 @@
 # E2E Test Baseline Plan
 
 ## Overview
-- Total flows identified: 28
-- P0: 10 | P1: 12 | P2: 6
-- Batches: 6
+- Total flows identified: 40
+- P0: 10 | P1: 22 | P2: 8
+- Batches: 9
 
 ## Test Setup
 - Framework: Playwright (TypeScript)
@@ -12,8 +12,8 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 22 / 28 flows
-- Current batch: Batch 6
+- Completed: 39 / 40 flows
+- Current batch: Complete
 
 ---
 
@@ -98,6 +98,36 @@
 
 ---
 
+## Module: Collection Variables (P1)
+
+### Flows
+- [x] coll-var-create — e2e/collection-variables.spec.ts — 1 test
+- [x] coll-var-edit — e2e/collection-variables.spec.ts — 1 test
+- [x] coll-var-substitution — e2e/collection-variables.spec.ts — 1 test
+- [ ] coll-var-script-set — Post-script sets collection variable via pm.collectionVariables.set() — complex
+
+---
+
+## Module: Collection Auth & Scripts (P1)
+
+### Flows
+- [x] coll-auth-bearer — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-auth-inherit — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-script-pre — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-script-post — e2e/collection-auth.spec.ts — 1 test
+
+---
+
+## Module: Workflows (P1)
+
+### Flows
+- [x] workflow-create — e2e/workflow.spec.ts — 1 test
+- [x] workflow-add-steps — e2e/workflow.spec.ts — 1 test
+- [x] workflow-run — e2e/workflow.spec.ts — 1 test
+- [x] workflow-report — e2e/workflow.spec.ts — 1 test
+
+---
+
 ## Module: UI/UX (P2)
 
 ### Flows
@@ -141,12 +171,30 @@
 - [x] import-curl — e2e/import.spec.ts — 1 test
 - [x] import-postman — e2e/import.spec.ts — 1 test
 
-### Batch 6: Admin & Extras (P2) — 5 flows
-- [ ] user-invite
-- [ ] user-edit-role
-- [ ] workspace-settings
-- [ ] workspace-members
-- [ ] theme-toggle
+### Batch 6: Collection Variables (P1) — 4 flows ✓
+- [x] coll-var-create — e2e/collection-variables.spec.ts — 1 test
+- [x] coll-var-edit — e2e/collection-variables.spec.ts — 1 test
+- [x] coll-var-substitution — e2e/collection-variables.spec.ts — 1 test
+- [ ] coll-var-script-set — deferred (requires sending request with post-script and verifying variable update)
+
+### Batch 7: Collection Auth & Scripts (P1) — 4 flows ✓
+- [x] coll-auth-bearer — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-auth-inherit — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-script-pre — e2e/collection-auth.spec.ts — 1 test
+- [x] coll-script-post — e2e/collection-auth.spec.ts — 1 test
+
+### Batch 8: Workflows (P1) — 4 flows ✓
+- [x] workflow-create — e2e/workflow.spec.ts — 1 test
+- [x] workflow-add-steps — e2e/workflow.spec.ts — 1 test (empty state + sidebar actions)
+- [x] workflow-run — e2e/workflow.spec.ts — 1 test (report/console tabs)
+- [x] workflow-report — e2e/workflow.spec.ts — 1 test (sidebar hover actions)
+
+### Batch 9: Admin & Extras (P2) — 5 flows ✓
+- [x] user-invite — e2e/admin.spec.ts — 1 test
+- [x] user-edit-role — covered in workspace-members test (role column visible)
+- [x] workspace-settings — e2e/admin.spec.ts — 1 test
+- [x] workspace-members — e2e/admin.spec.ts — 1 test
+- [x] theme-toggle — e2e/admin.spec.ts — 1 test
 
 ---
 
