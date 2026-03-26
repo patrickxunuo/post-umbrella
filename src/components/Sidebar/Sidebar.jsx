@@ -1,19 +1,10 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Link } from 'lucide-react';
-import * as data from '../data/index.js';
-import { useConfirm } from './ConfirmModal';
-import { useToast } from './Toast';
-import { DropdownMenu } from './DropdownMenu';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Link, Play } from 'lucide-react';
+import * as data from '../../data/index.js';
+import { useConfirm } from '../ConfirmModal';
+import { useToast } from '../Toast';
 
-const METHOD_COLORS = {
-  GET: '#61affe',
-  POST: '#49cc90',
-  PUT: '#fca130',
-  PATCH: '#50e3c2',
-  DELETE: '#f93e3e',
-  HEAD: '#9012fe',
-  OPTIONS: '#0d5aa7',
-};
+import { METHOD_COLORS } from '../../constants/methodColors';
 
 export function Sidebar({
   collections,
@@ -48,6 +39,13 @@ export function Sidebar({
   revealRequestId = null,
   revealCollectionId = null,
   onRevealComplete,
+  workflows = [],
+  onOpenWorkflow,
+  onCreateWorkflow,
+  onDeleteWorkflow,
+  onRenameWorkflow,
+  onDuplicateWorkflow,
+  onRunWorkflow,
 }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -63,6 +61,7 @@ export function Sidebar({
   const [loadingExamples, setLoadingExamples] = useState({}); // Track which requests are loading examples
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
+  const [showWorkflowsOnly, setShowWorkflowsOnly] = useState(false);
   const [menuOpen, setMenuOpen] = useState(null);
   const [collectionMenuOpen, setCollectionMenuOpen] = useState(null);
   const [draggedRequest, setDraggedRequest] = useState(null);
@@ -79,8 +78,17 @@ export function Sidebar({
   const exampleMenuRef = useRef(null);
   const collectionsRef = useRef(collections);
 
-  // Reposition menus that overflow the viewport
+  // Reposition menus that overflow the available space
   useEffect(() => {
+    // Find the bottom boundary — the workflow divider or sidebar bottom
+    const divider = document.querySelector('.sidebar-workflows-divider');
+    const sidebar = document.querySelector('.sidebar');
+    const boundaryBottom = divider
+      ? divider.getBoundingClientRect().top
+      : sidebar
+        ? sidebar.getBoundingClientRect().bottom
+        : window.innerHeight;
+
     const refs = [menuRef, collectionMenuRef, exampleMenuRef];
     for (const ref of refs) {
       const el = ref.current;
@@ -88,7 +96,7 @@ export function Sidebar({
       el.style.top = '';
       el.style.bottom = '';
       const rect = el.getBoundingClientRect();
-      if (rect.bottom > window.innerHeight - 8) {
+      if (rect.bottom > boundaryBottom - 8) {
         el.style.top = 'auto';
         el.style.bottom = 'calc(100% + 3px)';
       }
@@ -252,26 +260,24 @@ export function Sidebar({
     return children.some(child => hasMatchingRequests(child));
   };
 
+  const toggleCollectionExpand = (collectionId, e) => {
+    e.stopPropagation();
+    setExpandedCollections((prev) => {
+      const next = new Set(prev);
+      if (next.has(collectionId)) next.delete(collectionId);
+      else next.add(collectionId);
+      return next;
+    });
+  };
+
   const handleCollectionClick = (collection) => {
     const id = collection.id;
     const isExpanded = expandedCollections.has(id);
-    const isTabFocused = activeTab?.type === 'collection' && activeTab?.entityId === id;
-
-    if (isTabFocused && isExpanded) {
-      // A2B2 → A1B2: collapse menu, keep tab
-      setExpandedCollections((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    } else {
-      // A1B1, A1B2, A2B1 → A2B2: expand + open/focus tab
-      if (!isExpanded) {
-        setExpandedCollections((prev) => new Set([...prev, id]));
-      }
-      if (!isTabFocused) {
-        onOpenCollection?.(collection);
-      }
+    // Always open/focus the tab
+    onOpenCollection?.(collection);
+    // Expand if collapsed
+    if (!isExpanded) {
+      setExpandedCollections((prev) => new Set([...prev, id]));
     }
   };
 
@@ -307,25 +313,6 @@ export function Sidebar({
     }
   };
 
-  // Refresh examples for a request
-  const refreshExamples = async (requestId) => {
-    try {
-      const examples = await data.getExamples(requestId);
-      setRequestExamples(prev => ({
-        ...prev,
-        [requestId]: examples
-      }));
-    } catch (err) {
-      console.error('Failed to refresh examples:', err);
-    }
-  };
-
-  const startEditing = (id, name, e) => {
-    e.stopPropagation();
-    setEditingId(id);
-    setEditingName(name);
-  };
-
   const handleRename = (type, id) => {
     if (editingName.trim()) {
       if (type === 'collection') {
@@ -333,6 +320,14 @@ export function Sidebar({
       } else {
         onRenameRequest(id, editingName);
       }
+    }
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const handleWorkflowRename = (wfId) => {
+    if (editingName.trim()) {
+      onRenameWorkflow?.(wfId, editingName);
     }
     setEditingId(null);
     setEditingName('');
@@ -396,7 +391,10 @@ export function Sidebar({
         break;
       case 'add-folder':
         onCreateSubCollection?.(collection.id);
-        // Auto-expand the collection
+        setExpandedCollections(prev => new Set([...prev, collection.id]));
+        break;
+      case 'add-workflow':
+        onCreateWorkflow?.(collection.id);
         setExpandedCollections(prev => new Set([...prev, collection.id]));
         break;
       case 'rename':
@@ -527,8 +525,9 @@ export function Sidebar({
   // Drag and drop handlers
   const handleDragStart = (e, request, collectionId) => {
     setDraggedRequest({ ...request, collectionId });
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', request.id);
+    e.dataTransfer.setData('text/x-request-id', request.id);
   };
 
   const handleDragEnd = () => {
@@ -821,6 +820,13 @@ export function Sidebar({
 
   // Scroll to active item (request or example) in sidebar
   const handleScrollToActive = () => {
+    // If a workflow tab is active, scroll to it in the workflows list
+    if (activeTab?.type === 'workflow') {
+      const el = document.querySelector('.sidebar-workflow-item.active');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     const isExample = !!selectedExample;
     const targetRequestId = isExample ? selectedExample.request_id : selectedRequest?.id;
     if (!targetRequestId) return;
@@ -937,6 +943,11 @@ export function Sidebar({
       return null;
     }
 
+    // Workflows-only mode: skip folders (only show root collections)
+    if (showWorkflowsOnly && collection.parent_id) {
+      return null;
+    }
+
     const childCollections = getChildCollections(collection.id);
     const siblingCollections = collection.parent_id ? getChildCollections(collection.parent_id) : [];
     // If this collection or a parent matches, show all requests; otherwise filter
@@ -947,6 +958,7 @@ export function Sidebar({
     const isExpanded = searchQuery.trim() ? true : expandedCollections.has(collection.id);
     const hasChildren = childCollections.length > 0 || (collection.requests?.length > 0);
     const isFolder = !!collection.parent_id;
+    const collectionWorkflows = !isFolder ? workflows.filter(w => w.collection_id === collection.id) : [];
     const isFolderDraggable = isFolder && canEdit;
 
     return (
@@ -964,7 +976,7 @@ export function Sidebar({
           onDragLeave={handleCollectionDragLeave}
           onDrop={(e) => handleCollectionDrop(e, collection.id, siblingCollections)}
         >
-          <span className="collection-arrow">
+          <span className="collection-arrow" onClick={hasChildren ? (e) => toggleCollectionExpand(collection.id, e) : undefined}>
             {hasChildren ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
           </span>
           {collection.parent_id && <Folder size={12} className="folder-icon" />}
@@ -1016,6 +1028,15 @@ export function Sidebar({
                       <FolderPlus size={14} />
                       Add Folder
                     </button>
+                    {!collection.parent_id && (
+                      <button
+                        className="request-menu-item"
+                        onClick={(e) => handleCollectionMenuAction('add-workflow', collection, e)}
+                      >
+                        <Play size={14} />
+                        Add Workflow
+                      </button>
+                    )}
                     <button
                       className="request-menu-item"
                       onClick={(e) => handleCollectionMenuAction('rename', collection, e)}
@@ -1060,11 +1081,11 @@ export function Sidebar({
 
         {isExpanded && (
           <div className="collection-children">
-            {/* Render child collections first */}
-            {childCollections.map(child => renderCollection(child, depth + 1, showAll))}
+            {/* Render child collections (skip in workflows-only mode) */}
+            {!showWorkflowsOnly && childCollections.map(child => renderCollection(child, depth + 1, showAll))}
 
-            {/* Render requests */}
-            {filteredReqs?.length > 0 ? (
+            {/* Render requests (skip in workflows-only mode) */}
+            {!showWorkflowsOnly && filteredReqs?.length > 0 ? (
               <div className="collection-requests" style={{ paddingLeft: `${20 + depth * 16}px` }}>
                 {filteredReqs.map((request) => {
                   const isSelected = selectedRequest?.id === request.id;
@@ -1298,11 +1319,67 @@ export function Sidebar({
                 })}
               </div>
             ) : (
-              childCollections.length === 0 && (
+              !showWorkflowsOnly && childCollections.length === 0 && !collection.parent_id && collectionWorkflows.length === 0 && (
                 <div className="no-requests" style={{ paddingLeft: `${28 + depth * 16}px` }}>
                   No requests
                 </div>
               )
+            )}
+
+            {/* Workflows (root collections only) */}
+            {!collection.parent_id && collectionWorkflows.length > 0 && (
+              <div className="collection-workflows" style={{ paddingLeft: `${20 + depth * 16}px` }}>
+                {collectionWorkflows.map(wf => (
+                  <div
+                    key={wf.id}
+                    className={`sidebar-workflow-item ${activeTab?.type === 'workflow' && activeTab?.entityId === wf.id ? 'active' : ''}`}
+                    onClick={() => editingId !== `workflow-${wf.id}` && onOpenWorkflow(wf)}
+                  >
+                    <Play size={11} className="workflow-play-icon" />
+                    {editingId === `workflow-${wf.id}` ? (
+                      <input
+                        className="rename-input"
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => handleWorkflowRename(wf.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleWorkflowRename(wf.id);
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="workflow-item-label">
+                        <span className="workflow-item-name">{wf.name}</span>
+                        <span className="workflow-item-count">{(wf.steps || []).length}</span>
+                      </span>
+                    )}
+                    <div className="workflow-item-actions">
+                      {canEdit && editingId !== `workflow-${wf.id}` && (
+                        <>
+                          <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); onRunWorkflow?.(wf); }} title="Run">
+                            <Play size={11} />
+                          </button>
+                          <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); setEditingId(`workflow-${wf.id}`); setEditingName(wf.name); }} title="Rename">
+                            <Edit2 size={11} />
+                          </button>
+                          <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); onDuplicateWorkflow?.(wf); }} title="Duplicate">
+                            <Copy size={11} />
+                          </button>
+                          <button className="btn-icon small" onClick={async (e) => {
+                            e.stopPropagation();
+                            const confirmed = await confirm({ title: 'Delete Workflow', message: `Delete "${wf.name}"?`, confirmText: 'Delete', variant: 'danger' });
+                            if (confirmed) onDeleteWorkflow(wf);
+                          }} title="Delete">
+                            <Trash2 size={11} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -1319,7 +1396,7 @@ export function Sidebar({
             onClick={handleScrollToActive}
             className="btn-icon small"
             title="Scroll to active item"
-            disabled={!selectedRequest && !selectedExample}
+            disabled={!selectedRequest && !selectedExample && activeTab?.type !== 'workflow'}
           >
             <Crosshair size={14} />
           </button>
@@ -1336,6 +1413,13 @@ export function Sidebar({
             title="Collapse all folders"
           >
             <ChevronsDownUp size={14} />
+          </button>
+          <button
+            onClick={() => setShowWorkflowsOnly(prev => !prev)}
+            className={`btn-icon small ${showWorkflowsOnly ? 'active' : ''}`}
+            title={showWorkflowsOnly ? 'Show all collections' : 'Show workflows only'}
+          >
+            <Play size={14} />
           </button>
           {canEdit && (
             <button

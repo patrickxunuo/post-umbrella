@@ -3,15 +3,7 @@ import { ChevronDown } from 'lucide-react';
 
 const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'];
 
-const METHOD_COLORS = {
-  GET: '#10b981',
-  POST: '#f59e0b',
-  PUT: '#3b82f6',
-  PATCH: '#8b5cf6',
-  DELETE: '#ef4444',
-  HEAD: '#06b6d4',
-  OPTIONS: '#71717a',
-};
+import { METHOD_COLORS } from '../constants/methodColors';
 
 export function MethodSelector({ value, onChange, disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);

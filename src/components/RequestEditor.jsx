@@ -430,22 +430,29 @@ export function RequestEditor({
   };
 
   const handleSave = () => {
+    // Normalize {{  key  }} → {{key}} in a string
+    const trimVars = (s) => s ? s.replace(/\{\{\s*([^}]+?)\s*\}\}/g, '{{$1}}') : s;
+
     // Filter out empty params but keep disabled ones
-    const paramsToSave = params.filter((p) => p.key.trim());
+    const paramsToSave = params.filter((p) => p.key.trim()).map(p => ({ ...p, value: trimVars(p.value) }));
+    const trimmedUrl = trimVars(url).trim();
+    const trimmedBody = trimVars(body);
+    const trimmedHeaders = headers.filter((h) => h.key).map(h => ({ ...h, value: trimVars(h.value) }));
+    const trimmedFormData = formData.filter((f) => f.key).map(f => ({ ...f, value: f.type === 'file' ? f.value : trimVars(f.value) }));
+    const trimmedAuthToken = trimVars(authToken);
 
     if (isExample) {
-      // For examples, save with full structure
       onSave({
         name: example?.name,
         request_data: {
           method,
-          url,
-          headers: headers.filter((h) => h.key),
-          body,
+          url: trimmedUrl,
+          headers: trimmedHeaders,
+          body: trimmedBody,
           body_type: bodyType,
-          form_data: formData.filter((f) => f.key),
+          form_data: trimmedFormData,
           auth_type: authType,
-          auth_token: authToken,
+          auth_token: trimmedAuthToken,
           params: paramsToSave,
         },
         response_data: example?.response_data,
@@ -453,13 +460,13 @@ export function RequestEditor({
     } else {
       onSave({
         method,
-        url,
-        headers: headers.filter((h) => h.key),
-        body,
+        url: trimmedUrl,
+        headers: trimmedHeaders,
+        body: trimmedBody,
         body_type: bodyType,
-        form_data: formData.filter((f) => f.key),
+        form_data: trimmedFormData,
         auth_type: authType,
-        auth_token: authToken,
+        auth_token: trimmedAuthToken,
         params: paramsToSave,
         pre_script: preScript,
         post_script: postScript,
@@ -1062,6 +1069,8 @@ export function RequestEditor({
                 placeholder='{\n  "key": "value"\n}'
                 showBeautify={true}
                 className="request-json-editor"
+                activeEnvironment={activeEnvironment}
+                collectionVariables={collectionVariables}
               />
             )}
 
@@ -1082,9 +1091,13 @@ export function RequestEditor({
               <p>Pre-request script runs before the request is sent. Use it to set variables or modify request data.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access request data
 pm.request.url
@@ -1112,9 +1125,13 @@ console.log("message")`}</pre>
               <p>Post-response script runs after the response is received. Use it to extract data and set variables.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access response data
 const json = pm.response.json();

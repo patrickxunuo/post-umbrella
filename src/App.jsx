@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy, Info } from 'lucide-react';
+import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy, Info, Folder, FolderOpen, Play } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
@@ -26,6 +26,8 @@ import { SettingsModal, syncCloseBehaviorToRust } from './components/SettingsMod
 import { AboutModal } from './components/AboutModal';
 import { CloseToTrayModal } from './components/CloseToTrayModal';
 import { CollectionEditor } from './components/CollectionEditor';
+import { WorkflowEditor } from './components/WorkflowEditor';
+import { VariablePopoverProvider } from './components/VariablePopover';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -41,16 +43,9 @@ import './styles/workspace-settings.css';
 import './styles/user-management.css';
 import './styles/environment-editor.css';
 import './styles/presence-avatars.css';
+import './styles/workflow-editor.css';
 
-const METHOD_COLORS = {
-  GET: '#10b981',
-  POST: '#f59e0b',
-  PUT: '#3b82f6',
-  PATCH: '#8b5cf6',
-  DELETE: '#ef4444',
-  HEAD: '#06b6d4',
-  OPTIONS: '#64748b',
-};
+import { METHOD_COLORS } from './constants/methodColors';
 
 function sortRequests(requests) {
   return [...requests].sort((a, b) => {
@@ -338,6 +333,7 @@ function AppContent() {
     setExamples,
     environments,
     activeEnvironment,
+    setActiveEnvironment,
     loadCollections,
     loadEnvironments,
     loading,
@@ -381,6 +377,11 @@ function AppContent() {
     openRequestInTab,
     openExampleInTab,
     saveFunctionsRef,
+    workflows,
+    loadWorkflows,
+    openWorkflowInTab,
+    updateTabWorkflow,
+    handleSaveWorkflow,
   } = useWorkbench();
 
   const lastClipboardLinkRef = useRef(null);
@@ -801,8 +802,18 @@ function AppContent() {
           loadEnvironments(activeWorkspace.id);
         }
       }
+
+      // Workflow realtime events
+      if (event?.startsWith('workflow:')) {
+        loadWorkflows();
+        if (event === 'workflow:DELETE' && payload?.id) {
+          const tabId = `workflow-${payload.id}`;
+          const openTab = openTabs.find(t => t.id === tabId);
+          if (openTab) setDeletedTabs(prev => new Set([...prev, tabId]));
+        }
+      }
     },
-    [activeWorkspace?.id, examples, loadCollections, loadEnvironments, openTabs, selectedRequest?.id, setCollections, setExamples, wasRecentlyModified]
+    [activeWorkspace?.id, examples, loadCollections, loadEnvironments, loadWorkflows, openTabs, selectedRequest?.id, setCollections, setExamples, wasRecentlyModified]
   );
 
   useWebSocket(handleWebSocketMessage);
@@ -892,6 +903,12 @@ function AppContent() {
   }
 
   return (
+    <VariablePopoverProvider
+      activeEnvironment={activeEnvironment}
+      collectionVariables={collectionVariables}
+      rootCollectionId={rootCollectionId}
+      onEnvironmentUpdate={() => { activeWorkspace?.id && loadEnvironments(activeWorkspace.id); reloadCollectionVariables(); }}
+    >
     <div className="app">
       {updateAvailable && (
         <div className="version-toast">
@@ -1061,6 +1078,52 @@ function AppContent() {
           revealRequestId={revealRequestId}
           revealCollectionId={revealCollectionId}
           onRevealComplete={() => { setRevealRequestId(null); setRevealCollectionId(null); }}
+          workflows={workflows}
+          onOpenWorkflow={openWorkflowInTab}
+          onCreateWorkflow={async (collectionId) => {
+            try {
+              const wf = await data.createWorkflow({ collection_id: collectionId });
+              await loadWorkflows();
+              openWorkflowInTab(wf);
+            } catch (err) { toast.error('Failed to create workflow'); }
+          }}
+          onDeleteWorkflow={async (wf) => {
+            try {
+              await data.deleteWorkflow(wf.id);
+              loadWorkflows();
+              const tabId = `workflow-${wf.id}`;
+              setOpenTabs(prev => prev.filter(t => t.id !== tabId));
+              if (activeTabId === tabId) setActiveTabId(openTabs[0]?.id || null);
+              toast.success('Workflow deleted');
+            } catch (err) { toast.error('Failed to delete workflow'); }
+          }}
+          onDuplicateWorkflow={async (wf) => {
+            try {
+              const dup = await data.createWorkflow({
+                collection_id: wf.collection_id,
+                name: wf.name + ' (copy)',
+                steps: wf.steps || [],
+              });
+              await loadWorkflows();
+              openWorkflowInTab(dup);
+            } catch (err) { toast.error('Failed to duplicate workflow'); }
+          }}
+          onRenameWorkflow={async (id, name) => {
+            if (!name) return;
+            try {
+              await data.updateWorkflow(id, { name });
+              loadWorkflows();
+              setOpenTabs(prev => prev.map(t =>
+                t.id === `workflow-${id}` ? { ...t, workflow: { ...t.workflow, name } } : t
+              ));
+            } catch (err) { toast.error('Failed to rename workflow'); }
+          }}
+          onRunWorkflow={async (wf) => {
+            await openWorkflowInTab(wf, { replacePreview: false });
+            setOpenTabs(prev => prev.map(t =>
+              t.id === `workflow-${wf.id}` ? { ...t, pendingRun: true } : t
+            ));
+          }}
         />
         <div
           className="sidebar-resize-handle"
@@ -1074,20 +1137,21 @@ function AppContent() {
               openTabs.map(tab => {
                 const isExample = tab.type === 'example';
                 const isCollection = tab.type === 'collection';
-                const name = isCollection ? tab.collection?.name : (isExample ? tab.example?.name : tab.request?.name);
+                const isWorkflow = tab.type === 'workflow';
+                const name = isWorkflow ? tab.workflow?.name : isCollection ? tab.collection?.name : (isExample ? tab.example?.name : tab.request?.name);
                 const method = isExample ? tab.example?.request_data?.method : tab.request?.method;
                 const isConflicted = !!conflictedTabs[tab.id];
                 const isDeleted = deletedTabs.has(tab.id);
 
                 // Build tooltip showing name with status
-                let tooltip = `${isCollection ? '[Collection] ' : isExample ? '[Example] ' : ''}${name || 'Untitled'}`;
+                let tooltip = `${isWorkflow ? '[Workflow] ' : isCollection ? '[Collection] ' : isExample ? '[Example] ' : ''}${name || 'Untitled'}`;
                 if (isDeleted) tooltip += ' [deleted]';
                 else if (isConflicted) tooltip += ' [conflicted]';
 
                 return (
                 <div
                   key={tab.id}
-                  className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isCollection ? 'collection-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
+                  className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isCollection ? 'collection-tab' : ''} ${isWorkflow ? 'workflow-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
                   onClick={() => setActiveTabId(tab.id)}
                   draggable
                   onDragStart={(e) => handleTabDragStart(e, tab.id)}
@@ -1096,8 +1160,10 @@ function AppContent() {
                   onDrop={(e) => handleTabDrop(e, tab.id)}
                   title={tooltip}
                 >
-                  {isCollection ? (
-                    <span className="tab-collection-badge">{tab.collection?.parent_id ? 'FD' : 'CL'}</span>
+                  {isWorkflow ? (
+                    <span className="tab-workflow-badge"><Play size={10} /></span>
+                  ) : isCollection ? (
+                    <span className="tab-collection-badge">{tab.collection?.parent_id ? <Folder size={10} /> : <FolderOpen size={10} />}</span>
                   ) : isExample ? (
                     <span className="tab-example-badge">EX</span>
                   ) : (
@@ -1182,7 +1248,39 @@ function AppContent() {
             )}
           </div>
 
-          {activeTab?.type === 'collection' ? (
+          {activeTab?.type === 'workflow' ? (
+            <WorkflowEditor
+              workflow={activeTab.workflow}
+              onWorkflowChange={(updates) => updateTabWorkflow(updates)}
+              onSave={async () => {
+                try {
+                  await handleSaveWorkflow();
+                  toast.success('Workflow saved');
+                } catch (err) {
+                  toast.error(err.message || 'Failed to save workflow');
+                }
+              }}
+              dirty={activeTab.dirty}
+              canEdit={canEdit}
+              collections={collections}
+              activeEnvironment={activeEnvironment}
+              runState={activeTab.runState}
+              onRunStateChange={(rs) => {
+                setOpenTabs(prev => prev.map(t =>
+                  t.id === activeTabId ? { ...t, runState: rs } : t
+                ));
+              }}
+              pendingRun={activeTab.pendingRun}
+              onClearPendingRun={() => {
+                setOpenTabs(prev => prev.map(t =>
+                  t.id === activeTabId ? { ...t, pendingRun: false } : t
+                ));
+              }}
+              onOpenRequest={(req) => openRequestInTab(req, { replacePreview: false })}
+              openTabs={openTabs}
+              setActiveEnvironment={setActiveEnvironment}
+            />
+          ) : activeTab?.type === 'collection' ? (
             <CollectionEditor
               collection={activeTab.collection}
               activeDetailTab={activeTab.activeDetailTab || 'overview'}
@@ -1199,9 +1297,9 @@ function AppContent() {
               onSave={async () => {
                 try {
                   await handleSaveCollection();
-                  toast.success('Collection saved');
+                  toast.success(activeTab.collection?.parent_id ? 'Folder saved' : 'Collection saved');
                 } catch (err) {
-                  toast.error(err.message || 'Failed to save collection');
+                  toast.error(err.message || (activeTab.collection?.parent_id ? 'Failed to save folder' : 'Failed to save collection'));
                 }
               }}
               activeEnvironment={activeEnvironment}
@@ -1575,6 +1673,7 @@ function AppContent() {
         );
       })()}
     </div>
+    </VariablePopoverProvider>
   );
 }
 

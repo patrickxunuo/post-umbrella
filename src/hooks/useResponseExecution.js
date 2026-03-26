@@ -113,10 +113,34 @@ export function useResponseExecution({
     try {
       consoleLogs.push({ type: 'info', source: 'system', message: `${method} ${url}`, timestamp: Date.now() });
 
+      // Load collection variables (needed for both scripts and substitution)
+      let collectionVars = [];
+      let rootCollectionId = null;
+      if (collectionId) {
+        rootCollectionId = collectionId;
+        if (collections) {
+          let currentId = collectionId;
+          let iterations = 0;
+          while (currentId && iterations < 50) {
+            const col = collections.find(c => c.id === currentId);
+            if (!col) break;
+            if (!col.parent_id) { rootCollectionId = col.id; break; }
+            currentId = col.parent_id;
+            iterations++;
+          }
+        }
+        try {
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
+        } catch {
+          // Silently ignore — collection vars are optional
+        }
+      }
+
       // Execute all pre-scripts in order
       for (const script of allPreScripts) {
         const preResult = await executeScript(script, {
           environment: currentEnv,
+          collectionVariables: collectionVars,
           request: { method, url, headers, body },
         });
 
@@ -130,32 +154,13 @@ export function useResponseExecution({
 
         if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
           currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
-          // Save only current_values (private), not initial_value (shared)
           await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
           setActiveEnvironment(currentEnv);
         }
-      }
 
-      // Load collection variables for substitution
-      let collectionVars = [];
-      if (collectionId) {
-        // Walk up to root collection to get the root's variables
-        let rootId = collectionId;
-        if (collections) {
-          let currentId = collectionId;
-          let iterations = 0;
-          while (currentId && iterations < 50) {
-            const col = collections.find(c => c.id === currentId);
-            if (!col) break;
-            if (!col.parent_id) { rootId = col.id; break; }
-            currentId = col.parent_id;
-            iterations++;
-          }
-        }
-        try {
-          collectionVars = await data.getCollectionVariables(rootId);
-        } catch {
-          // Silently ignore — collection vars are optional
+        if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          await data.updateCollectionVariableCurrentValues(rootCollectionId, preResult.collectionVarUpdates);
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
         }
       }
 
@@ -168,7 +173,7 @@ export function useResponseExecution({
         for (const variable of collectionVars) {
           if (variable.enabled && variable.key) {
             const value = variable.value || variable.current_value || variable.initial_value || '';
-            const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
+            const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
             result = result.replace(regex, value);
           }
         }
@@ -178,7 +183,7 @@ export function useResponseExecution({
           for (const variable of currentEnv.variables) {
             if (variable.enabled && variable.key) {
               const value = variable.value || variable.current_value || variable.initial_value || '';
-              const regex = new RegExp(`\\{\\{${variable.key}\\}\\}`, 'g');
+              const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
               result = result.replace(regex, value);
             }
           }
@@ -264,6 +269,7 @@ export function useResponseExecution({
       for (const script of allPostScripts) {
         const postResult = await executeScript(script, {
           environment: currentEnv,
+          collectionVariables: collectionVars,
           response: result,
         });
 
@@ -277,12 +283,16 @@ export function useResponseExecution({
 
         if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {
           currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
-          // Save only current_values (private), not initial_value (shared)
           await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
           setActiveEnvironment(currentEnv);
           if (activeWorkspaceId) {
             loadEnvironments(activeWorkspaceId);
           }
+        }
+
+        if (Object.keys(postResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          await data.updateCollectionVariableCurrentValues(rootCollectionId, postResult.collectionVarUpdates);
+          collectionVars = await data.getCollectionVariables(rootCollectionId);
         }
       }
 

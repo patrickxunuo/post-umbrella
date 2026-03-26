@@ -610,6 +610,13 @@ body {
   cursor: not-allowed;
 }
 
+.btn-primary.compact {
+  padding: 4px 10px;
+  font-size: 12px;
+  gap: 4px;
+  border-radius: var(--radius-sm);
+}
+
 .btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -988,6 +995,11 @@ body {
 .sidebar-toolbar .btn-icon:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.sidebar-toolbar .btn-icon.active {
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb), 0.1);
 }
 
 .sidebar-search {
@@ -2723,6 +2735,7 @@ body {
   flex-direction: column;
   color: var(--text-tertiary);
   font-size: 13px;
+  height: 100%;
 }
 
 .loading-spinner {
@@ -4294,7 +4307,11 @@ body {
   min-width: 220px;
   max-width: 320px;
   z-index: 1000;
-  overflow: hidden;
+}
+
+.env-var-popover.has-json {
+  max-width: 480px;
+  min-width: 360px;
 }
 
 .env-var-popover-header {
@@ -4361,6 +4378,14 @@ body {
   gap: 8px;
 }
 
+.env-var-popover-edit:has(.env-var-popover-textarea) {
+  flex-direction: column;
+}
+
+.env-var-popover-edit:has(.env-var-popover-textarea) button {
+  align-self: flex-end;
+}
+
 .env-var-popover-edit input {
   flex: 1;
   padding: 8px 10px;
@@ -4386,6 +4411,41 @@ body {
 
 .env-var-popover-edit button:hover {
   background: var(--accent-primary-hover);
+}
+
+.env-var-popover-edit .env-var-popover-textarea {
+  width: 100%;
+  min-height: 140px;
+  max-height: 300px;
+  padding: 8px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-focus);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  resize: none;
+  outline: none;
+}
+
+.env-var-popover-edit .env-var-popover-textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.env-var-popover-json {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
 .env-var-popover.no-env .env-var-popover-header,

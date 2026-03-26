@@ -129,7 +129,7 @@ export function EnvironmentEditor({ onClose, workspaceId, workspaceName, canEdit
     if (!selectedEnv) return;
     setSaving(true);
     try {
-      const vars = editingVars.filter(v => v.key.trim());
+      const vars = editingVars.filter(v => v.key.trim()).map(v => ({ ...v, key: v.key.trim(), value: (v.value || '').trim() }));
       const existingKeys = new Set(selectedEnv.variables.map(v => v.key));
 
       // Check if there are new variables to create

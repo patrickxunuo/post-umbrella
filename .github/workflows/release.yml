@@ -67,6 +67,21 @@ jobs:
             echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
           fi
 
+      - name: Extract changelog
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          # Extract section between this version header and the next version header
+          BODY=$(sed -n "/^## ${VERSION}/,/^## v/{/^## v[0-9]/!p;}" CHANGELOG.md | sed '1d;/^$/N;/^\n$/d' | sed '/^$/d')
+          if [ -z "$BODY" ]; then
+            BODY="See the assets below to download and install."
+          fi
+          # Use EOF delimiter for multiline output
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$BODY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0.5.16
         env:
@@ -82,7 +97,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Post Umbrella ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download and install.'
+          releaseBody: ${{ steps.changelog.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}

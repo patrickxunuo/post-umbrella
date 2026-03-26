@@ -119,7 +119,7 @@ function VariablesTab({ collectionId, canEdit, onEnvironmentUpdate }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const vars = editingVars.filter(v => v.key.trim());
+      const vars = editingVars.filter(v => v.key.trim()).map(v => ({ ...v, key: v.key.trim(), value: (v.value || '').trim() }));
       const existingKeys = new Set(variables.map(v => v.key));
       const newVars = vars.filter((v, i) => newVarIndices.has(i) && !existingKeys.has(v.key));
 
@@ -329,12 +329,13 @@ export function CollectionEditor({
   const [loadingCount, setLoadingCount] = useState(true);
   const isRoot = !collection?.parent_id;
 
-  // Tabs: root collections get a "Variables" tab
+  // Tabs: root collections get Variables + Scripts; folders get only Overview + Auth
   const tabs = useMemo(() => {
     if (isRoot) {
       return [...TABS.slice(0, 1), { id: 'variables', label: 'Variables', icon: Hash }, ...TABS.slice(1)];
     }
-    return TABS;
+    // Folders: no scripts
+    return TABS.filter(t => t.id !== 'pre-script' && t.id !== 'post-script');
   }, [isRoot]);
 
   useEffect(() => {
@@ -399,9 +400,9 @@ export function CollectionEditor({
           );
         })}
         <div className="collection-editor-tabs-spacer" />
-        {dirty && canEdit && (
-          <button className="btn-primary small" onClick={onSave}>
-            <Save size={13} />
+        {canEdit && activeDetailTab !== 'variables' && (
+          <button className="btn-primary compact" onClick={onSave} disabled={!dirty}>
+            <Save size={12} />
             Save
           </button>
         )}
@@ -444,9 +445,13 @@ export function CollectionEditor({
               <p>Pre-request script runs before every request in this collection. Use it to set variables or modify request data.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access request data
 pm.request.url
@@ -472,9 +477,13 @@ console.log("message")`}</pre>
               <p>Post-response script runs after every request in this collection. Use it to extract data and set variables.</p>
               <details>
                 <summary>Available API</summary>
-                <pre>{`// Get/set environment variables
+                <pre>{`// Environment variables
 pm.environment.get("varName")
 pm.environment.set("varName", "value")
+
+// Collection variables
+pm.collectionVariables.get("varName")
+pm.collectionVariables.set("varName", "value")
 
 // Access response data
 const json = pm.response.json();
