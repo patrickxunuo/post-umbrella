@@ -8,6 +8,9 @@ A self-hosted, real-time collaborative API testing workspace for teams. An open-
 - **Response Viewer** — Status, headers, body with syntax highlighting
 - **Saved Examples** — Save request/response pairs for documentation and testing
 - **Environment Variables** — `{{variable}}` substitution across URLs, headers, body, and auth
+- **Collection Variables** — Shared `{{key}}` variables scoped to a collection, with per-user current values
+- **Collection Auth & Scripts** — Inherited Bearer Token auth from parent folders. Pre/post scripts at collection level run on every request
+- **Workflow Builder** — Drag requests into reusable sequential flows. Execute with real-time status, reports, and console output
 - **Real-time Collaboration** — WebSocket-powered sync with live presence
 - **Workspaces** — Organize collections and control access per team
 - **Import/Export** — Postman v2.1 collection format, cURL import
@@ -142,6 +145,12 @@ post-umbrella/
 │   ├── App.jsx
 │   ├── App.css
 │   ├── components/
+│   │   ├── Sidebar/            # Sidebar with collection tree + workflows
+│   │   ├── WorkflowEditor.jsx  # Workflow builder and runner
+│   │   ├── CollectionEditor.jsx # Collection settings (auth, scripts, variables)
+│   │   └── VariablePopover.jsx # Shared variable hover/edit popover
+│   ├── hooks/                  # Custom hooks (execution, drag, etc.)
+│   ├── utils/                  # Script runner, CodeMirror extensions
 │   └── data/supabase/          # Supabase client and data layer
 ├── supabase/
 │   ├── functions/proxy/        # Edge Function (CORS bypass)

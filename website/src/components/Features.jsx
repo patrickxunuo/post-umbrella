@@ -38,6 +38,32 @@ const features = [
     desc: 'Drop in your Postman collections and start working. Export in standard formats. Paste a cURL command and go.',
   },
   {
+    icon: 'workflow',
+    svg: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <circle cx="4" cy="10" r="2" stroke="currentColor" strokeWidth="1.5"/>
+        <circle cx="10" cy="10" r="2" stroke="currentColor" strokeWidth="1.5"/>
+        <circle cx="16" cy="10" r="2" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M6 10h2M12 10h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M8 6l2-2 2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+    title: 'Workflow Builder',
+    desc: 'Drag requests into reusable flows. Run steps sequentially with real-time status, detailed reports, and script execution between steps.',
+  },
+  {
+    icon: 'variables',
+    svg: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M5 4h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M7 9l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M6 4V2M14 4V2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+    title: 'Variables & Scripts',
+    desc: 'Collection variables with {{key}} substitution. Inherited auth from parent folders. Pre/post scripts run automatically on every request.',
+  },
+  {
     icon: 'selfhost',
     svg: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

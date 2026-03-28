@@ -88,3 +88,6 @@ mcp-server/.env
 # Generated at build time
 public/version.json
 .vercel
+
+/.claude/skills/
+/test-results*
