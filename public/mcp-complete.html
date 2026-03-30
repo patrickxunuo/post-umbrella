@@ -109,13 +109,43 @@
 
         if (!sessionId || !mcpBase) throw new Error('Missing session parameters');
 
+        // Try hash tokens first (magic link flow)
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-        const expiresAt = hashParams.get('expires_at');
+        let accessToken = hashParams.get('access_token');
+        let refreshToken = hashParams.get('refresh_token');
+        let expiresAt = hashParams.get('expires_at');
+
+        // If no hash tokens, try OAuth code exchange via Supabase client
+        if (!accessToken || !refreshToken) {
+          // Check for OAuth code in URL (PKCE flow)
+          const authCode = urlParams.get('code');
+          if (authCode) {
+            // Need SB_URL and SB_KEY — get from referrer or try common patterns
+            // The authorize page passes these, but they're not in the redirect URL
+            // Use Supabase client to exchange the code for a session
+            subtitleEl.textContent = 'Exchanging authorization code...';
+
+            // Try to get Supabase config from meta tag or localStorage
+            const sbUrl = localStorage.getItem('mcp_sb_url');
+            const sbKey = localStorage.getItem('mcp_sb_key');
+
+            if (sbUrl && sbKey) {
+              const supabase = window.supabase.createClient(sbUrl, sbKey, {
+                auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: true }
+              });
+
+              const { data, error } = await supabase.auth.exchangeCodeForSession(authCode);
+              if (error) throw new Error('OAuth code exchange failed: ' + error.message);
+
+              accessToken = data.session.access_token;
+              refreshToken = data.session.refresh_token;
+              expiresAt = data.session.expires_at;
+            }
+          }
+        }
 
         if (!accessToken || !refreshToken) {
-          throw new Error('No authentication tokens found. Please try clicking the magic link again.');
+          throw new Error('No authentication tokens found. Please try signing in again.');
         }
 
         // Decode JWT to get user info
