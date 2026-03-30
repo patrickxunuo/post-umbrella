@@ -115,7 +115,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
 
   useEffect(() => {
     const persistentTabs = openTabs.filter((tab) => !tab.isTemporary).map(tab => {
-      const { runState, ...rest } = tab;
+      const { runState, docsCache, ...rest } = tab;
       return rest;
     });
     localStorage.setItem('openTabs', JSON.stringify(persistentTabs));
@@ -254,6 +254,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     handleImportCurl,
     handleTryExample,
     openWorkflowInTab,
+    openDocsInTab,
   } = useRequestActions({
     prompt,
     confirm,
@@ -669,6 +670,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     setWorkflows,
     loadWorkflows,
     openWorkflowInTab,
+    openDocsInTab,
     updateTabWorkflow,
     handleSaveWorkflow,
   };

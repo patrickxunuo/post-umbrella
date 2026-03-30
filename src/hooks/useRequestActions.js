@@ -732,5 +732,25 @@ export function useRequestActions({
       setActiveTabId(tabId);
       setPreviewTabId(tabId);
     }, [openTabs, originalRequestsRef, previewTabId, setActiveTabId, setOpenTabs, setPreviewTabId]),
+
+    openDocsInTab: useCallback((collection) => {
+      const tabId = `docs-${collection.id}`;
+      const existingTab = openTabs.find(tab => tab.id === tabId);
+      if (existingTab) {
+        setActiveTabId(tabId);
+        return;
+      }
+      const newTab = {
+        id: tabId,
+        type: 'docs',
+        entityId: collection.id,
+        docs: { collectionId: collection.id, collectionName: collection.name },
+      };
+      setOpenTabs(prev => {
+        if (prev.some(tab => tab.id === tabId)) return prev;
+        return [...prev, newTab];
+      });
+      setActiveTabId(tabId);
+    }, [openTabs, setActiveTabId, setOpenTabs]),
   };
 }

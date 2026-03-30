@@ -252,8 +252,6 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                   '--w-rjv-copied-success-color': 'var(--accent-success)',
                   fontSize: '12px',
                   padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-primary)',
                 }}
               />
             </div>
