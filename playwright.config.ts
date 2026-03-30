@@ -1,4 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as dotenv from 'dotenv';
+dotenv.config();
 
 const STORAGE_STATE_PATH = 'e2e/.auth/user.json';
 

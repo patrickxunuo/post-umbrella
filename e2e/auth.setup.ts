@@ -7,10 +7,9 @@ const STORAGE_STATE_PATH = 'e2e/.auth/user.json';
 // For production testing, set VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
 
-// Service role key - for local Supabase dev (must set env var for production)
-// This key is REQUIRED for admin operations like generating magic links
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
+// Service role key - set via SUPABASE_SERVICE_ROLE_KEY env var
+// Required for admin operations like generating magic links
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
 // Log the Supabase URL being used for debugging
 console.log(`Using Supabase URL: ${SUPABASE_URL}`);
