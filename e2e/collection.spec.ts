@@ -1,8 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { cleanupTestCollections } from './helpers/cleanup';
 
 // Generate unique names for each test run
 const timestamp = Date.now();
 const uniqueName = (base: string) => `${base} ${timestamp}`;
+
+test.afterAll(async () => { await cleanupTestCollections(timestamp); });
 
 test.describe('Collections', () => {
   test.beforeEach(async ({ page }) => {
