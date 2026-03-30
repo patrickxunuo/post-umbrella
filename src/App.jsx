@@ -1,33 +1,30 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Terminal, AlertTriangle, X, Shield, UserPlus, LogOut, ChevronDown, Monitor, Plus, Settings, Copy, Info, Folder, FolderOpen, Play } from 'lucide-react';
+import { AlertTriangle, X, Copy } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { EditorView } from '@codemirror/view';
-import { WindowControls } from './components/WindowControls';
 import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
 import { RequestEditor, generateCurl } from './components/RequestEditor';
 import { ResponseViewer } from './components/ResponseViewer';
-import { ImportDropdown } from './components/ImportDropdown';
 import { EnvironmentEditor } from './components/EnvironmentEditor';
-import { EnvironmentSelector } from './components/EnvironmentSelector';
-import { WorkspaceSelector } from './components/WorkspaceSelector';
-import { WorkspacePresenceAvatars } from './components/WorkspacePresenceAvatars';
 import { WorkspaceSettings } from './components/WorkspaceSettings';
 import { UserManagement } from './components/UserManagement';
 import { InviteUserModal } from './components/InviteUserModal';
 import { ImportCurlModal } from './components/ImportCurlModal';
-import { ThemeToggle } from './components/ThemeToggle';
 import { FolderPickerModal } from './components/FolderPicker';
 import { UnsavedChangesModal } from './components/UnsavedChangesModal';
 import { SettingsModal, syncCloseBehaviorToRust } from './components/SettingsModal';
 import { AboutModal } from './components/AboutModal';
 import { CloseToTrayModal } from './components/CloseToTrayModal';
 import { CollectionEditor } from './components/CollectionEditor';
+import { CollectionDocs } from './components/CollectionDocs';
 import { WorkflowEditor } from './components/WorkflowEditor';
 import { VariablePopoverProvider } from './components/VariablePopover';
+import { AppHeader } from './components/AppHeader';
+import { TabBar } from './components/TabBar';
 import { useToast } from './components/Toast';
 import { useConfirm } from './components/ConfirmModal';
 import { usePrompt } from './components/PromptModal';
@@ -39,11 +36,17 @@ import { useLayoutState } from './hooks/useLayoutState';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import * as data from './data/index.js';
 import './App.css';
+import './styles/sidebar.css';
+import './styles/request-editor.css';
+import './styles/response-viewer.css';
+import './styles/variables.css';
+import './styles/modals.css';
 import './styles/workspace-settings.css';
 import './styles/user-management.css';
 import './styles/environment-editor.css';
 import './styles/presence-avatars.css';
 import './styles/workflow-editor.css';
+import './styles/collection-docs.css';
 
 import { METHOD_COLORS } from './constants/methodColors';
 
@@ -202,9 +205,6 @@ const shellLang = StreamLanguage.define(shell);
 function AppContent() {
   const [showEnvEditor, setShowEnvEditor] = useState(false);
   const [showImportCurl, setShowImportCurl] = useState(false);
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
-  const [draggingTabId, setDraggingTabId] = useState(null);
-  const [dragOverTabId, setDragOverTabId] = useState(null);
   const [draftSavePending, setDraftSavePending] = useState(null);
   const [tempCloseTabId, setTempCloseTabId] = useState(null);
   const [dirtyCloseTabId, setDirtyCloseTabId] = useState(null);
@@ -380,6 +380,7 @@ function AppContent() {
     workflows,
     loadWorkflows,
     openWorkflowInTab,
+    openDocsInTab,
     updateTabWorkflow,
     handleSaveWorkflow,
   } = useWorkbench();
@@ -818,43 +819,6 @@ function AppContent() {
 
   useWebSocket(handleWebSocketMessage);
 
-  // Tab drag handlers
-  const handleTabDragStart = (e, tabId) => {
-    setDraggingTabId(tabId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleTabDragEnd = () => {
-    setDraggingTabId(null);
-    setDragOverTabId(null);
-  };
-
-  const handleTabDragOver = (e, tabId) => {
-    e.preventDefault();
-    if (draggingTabId && draggingTabId !== tabId) {
-      setDragOverTabId(tabId);
-    }
-  };
-
-  const handleTabDrop = (e, targetTabId) => {
-    e.preventDefault();
-    if (!draggingTabId || draggingTabId === targetTabId) return;
-
-    setOpenTabs(prev => {
-      const tabs = [...prev];
-      const dragIndex = tabs.findIndex(t => t.id === draggingTabId);
-      const dropIndex = tabs.findIndex(t => t.id === targetTabId);
-
-      const [draggedTab] = tabs.splice(dragIndex, 1);
-      tabs.splice(dropIndex, 0, draggedTab);
-
-      return tabs;
-    });
-
-    setDraggingTabId(null);
-    setDragOverTabId(null);
-  };
-
   // Hide the initial HTML loader once auth is checked
   useEffect(() => {
     if (authChecked) {
@@ -929,120 +893,33 @@ function AppContent() {
           )}
         </div>
       )}
-      <header className="app-header" data-tauri-drag-region>
-        <div className="header-left">
-          <div className="app-title">
-            <img src="/umbrella.svg" alt="" className="app-logo" />
-            <h1>Post Umbrella</h1>
-          </div>
-          <WorkspaceSelector
-            workspaces={workspaces}
-            activeWorkspace={activeWorkspace}
-            onWorkspaceChange={handleWorkspaceChange}
-            onCreateWorkspace={handleCreateWorkspace}
-            onOpenSettings={handleOpenWorkspaceSettings}
-            canCreateWorkspace={['system', 'admin'].includes(userProfile?.role)}
-            canOpenSettings={['system', 'admin'].includes(userProfile?.role)}
-            loading={workspacesLoading}
-          />
-        </div>
-        <div className="header-right">
-          <ThemeToggle theme={theme} onToggle={(t) => {
-            handleThemeChange(t);
-            if (user) {
-              const next = { ...userConfig, theme: t };
-              setUserConfig(next);
-              data.updateUserConfig({ theme: t }).catch(() => {});
-            }
-          }} />
-          <EnvironmentSelector
-            environments={environments}
-            activeEnvironment={activeEnvironment}
-            onEnvironmentChange={() => activeWorkspace?.id && loadEnvironments(activeWorkspace.id)}
-            onOpenEditor={() => setShowEnvEditor(true)}
-            workspaceId={activeWorkspace?.id}
-          />
-          {canEdit && (
-            <ImportDropdown
-              onImportCurl={() => setShowImportCurl(true)}
-              onImportFile={handleImport}
-              disabled={!activeWorkspace}
-            />
-          )}
-          <div className="header-presence-group">
-            {canEdit && (
-              <button
-                className="btn-admin"
-                onClick={() => setShowUserManagement(true)}
-                title={userProfile?.role === 'system' ? 'User Management' : 'Invite Users'}
-              >
-                {userProfile?.role === 'system' ? <Shield size={16} /> : <UserPlus size={16} />}
-              </button>
-            )}
-            <WorkspacePresenceAvatars
-              user={user}
-              activeWorkspace={activeWorkspace}
-              userProfile={userProfile}
-            />
-          </div>
-          <div className="user-menu">
-            <button className="user-menu-trigger" onClick={() => setShowUserDropdown(prev => !prev)}>
-              <span className="user-email">{user.email}</span>
-              <ChevronDown size={12} />
-            </button>
-            {showUserDropdown && (
-              <>
-                <div className="dropdown-backdrop" onClick={() => setShowUserDropdown(false)} />
-                <div className="user-dropdown">
-                  <div className="user-dropdown-header">
-                    <span className="user-dropdown-email">{user.email}</span>
-                    {userProfile?.role && <span className="user-dropdown-role">{userProfile.role}</span>}
-                  </div>
-                  {!('__TAURI_INTERNALS__' in window) && (
-                    <button className="user-dropdown-item" onClick={async () => {
-                      setShowUserDropdown(false);
-                      const tabIds = openTabs.filter(t => t.type === 'request').map(t => t.entityId || t.request?.id).filter(Boolean);
-                      const expandedC = JSON.parse(localStorage.getItem('expandedCollections') || '[]');
-                      const expandedR = JSON.parse(localStorage.getItem('expandedRequests') || '[]');
-                      const link = await data.getDesktopDeepLink({
-                        tabIds,
-                        activeTabId: activeTab?.entityId || activeTab?.request?.id,
-                        expandedCollections: expandedC,
-                        expandedRequests: expandedR,
-                      });
-                      if (link) {
-                        const a = document.createElement('a');
-                        a.href = link;
-                        a.style.display = 'none';
-                        document.body.appendChild(a);
-                        a.click();
-                        a.remove();
-                      }
-                    }}>
-                      <Monitor size={14} />
-                      Open in Desktop App
-                    </button>
-                  )}
-                  <button className="user-dropdown-item" onClick={() => { setShowUserDropdown(false); setShowSettings(true); }}>
-                    <Settings size={14} />
-                    Settings
-                  </button>
-                  <button className="user-dropdown-item" onClick={() => { setShowUserDropdown(false); setShowAbout(true); }}>
-                    <Info size={14} />
-                    About
-                  </button>
-                  <div className="user-dropdown-divider" />
-                  <button className="user-dropdown-item danger" onClick={() => { setShowUserDropdown(false); handleLogout(); }}>
-                    <LogOut size={14} />
-                    Sign Out
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-        <WindowControls />
-      </header>
+      <AppHeader
+        user={user}
+        userProfile={userProfile}
+        userConfig={userConfig}
+        setUserConfig={setUserConfig}
+        theme={theme}
+        handleThemeChange={handleThemeChange}
+        workspaces={workspaces}
+        activeWorkspace={activeWorkspace}
+        workspacesLoading={workspacesLoading}
+        handleWorkspaceChange={handleWorkspaceChange}
+        handleCreateWorkspace={handleCreateWorkspace}
+        handleOpenWorkspaceSettings={handleOpenWorkspaceSettings}
+        environments={environments}
+        activeEnvironment={activeEnvironment}
+        loadEnvironments={loadEnvironments}
+        canEdit={canEdit}
+        handleImport={handleImport}
+        openTabs={openTabs}
+        activeTab={activeTab}
+        setShowEnvEditor={setShowEnvEditor}
+        setShowImportCurl={setShowImportCurl}
+        setShowUserManagement={setShowUserManagement}
+        setShowSettings={setShowSettings}
+        setShowAbout={setShowAbout}
+        handleLogout={handleLogout}
+      />
 
       <div className="app-body">
         <Sidebar
@@ -1124,131 +1001,42 @@ function AppContent() {
               t.id === `workflow-${wf.id}` ? { ...t, pendingRun: true } : t
             ));
           }}
+          onViewDocs={(collection) => openDocsInTab(collection)}
         />
         <div
           className="sidebar-resize-handle"
           onMouseDown={startResizing}
         />
         <main className="main-content" ref={mainContentRef}>
-          <div className="open-tabs-bar" onWheel={handleTabsWheel}>
-            {openTabs.length === 0 ? (
-              <div className="open-tabs-empty">No open requests</div>
-            ) : (
-              openTabs.map(tab => {
-                const isExample = tab.type === 'example';
-                const isCollection = tab.type === 'collection';
-                const isWorkflow = tab.type === 'workflow';
-                const name = isWorkflow ? tab.workflow?.name : isCollection ? tab.collection?.name : (isExample ? tab.example?.name : tab.request?.name);
-                const method = isExample ? tab.example?.request_data?.method : tab.request?.method;
-                const isConflicted = !!conflictedTabs[tab.id];
-                const isDeleted = deletedTabs.has(tab.id);
+          <TabBar
+            openTabs={openTabs}
+            activeTabId={activeTabId}
+            setActiveTabId={setActiveTabId}
+            setOpenTabs={setOpenTabs}
+            previewTabId={previewTabId}
+            conflictedTabs={conflictedTabs}
+            deletedTabs={deletedTabs}
+            closeTab={closeTab}
+            canEdit={canEdit}
+            activeWorkspace={activeWorkspace}
+            userConfig={userConfig}
+            setTempCloseTabId={setTempCloseTabId}
+            setDirtyCloseTabId={setDirtyCloseTabId}
+            onWheel={handleTabsWheel}
+          />
 
-                // Build tooltip showing name with status
-                let tooltip = `${isWorkflow ? '[Workflow] ' : isCollection ? '[Collection] ' : isExample ? '[Example] ' : ''}${name || 'Untitled'}`;
-                if (isDeleted) tooltip += ' [deleted]';
-                else if (isConflicted) tooltip += ' [conflicted]';
-
-                return (
-                <div
-                  key={tab.id}
-                  className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isCollection ? 'collection-tab' : ''} ${isWorkflow ? 'workflow-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
-                  onClick={() => setActiveTabId(tab.id)}
-                  draggable
-                  onDragStart={(e) => handleTabDragStart(e, tab.id)}
-                  onDragEnd={handleTabDragEnd}
-                  onDragOver={(e) => handleTabDragOver(e, tab.id)}
-                  onDrop={(e) => handleTabDrop(e, tab.id)}
-                  title={tooltip}
-                >
-                  {isWorkflow ? (
-                    <span className="tab-workflow-badge"><Play size={10} /></span>
-                  ) : isCollection ? (
-                    <span className="tab-collection-badge">{tab.collection?.parent_id ? <Folder size={10} /> : <FolderOpen size={10} />}</span>
-                  ) : isExample ? (
-                    <span className="tab-example-badge">EX</span>
-                  ) : (
-                    <span
-                      className="tab-method"
-                      style={{ color: METHOD_COLORS[method] || '#888' }}
-                    >
-                      {method}
-                    </span>
-                  )}
-                  <span className="tab-name">
-                    {tab.isTemporary && <Terminal size={12} />}
-                    {name}
-                  </span>
-                  {isDeleted && <span className="tab-status deleted">[deleted]</span>}
-                  {isConflicted && !isDeleted && <span className="tab-status conflicted">[conflicted]</span>}
-                  {tab.dirty && <span className="tab-dirty" title="Unsaved changes (Ctrl+S to save)" />}
-                  <span
-                    className="tab-close"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (userConfig.skipCloseConfirm) {
-                        closeTab(tab.id, e, { force: true });
-                      } else if (tab.isTemporary) {
-                        const r = tab.request || {};
-                        const isEmpty = !r.url && !r.body && (!r.headers || r.headers.length === 0) && (!r.params || r.params.length === 0) && (!r.form_data || r.form_data.length === 0) && (!r.auth_token);
-                        if (isEmpty) {
-                          closeTab(tab.id, e);
-                        } else {
-                          setTempCloseTabId(tab.id);
-                        }
-                      } else if (tab.dirty) {
-                        setDirtyCloseTabId(tab.id);
-                      } else {
-                        closeTab(tab.id, e);
-                      }
-                    }}
-                    title="Close"
-                  >
-                    ×
-                  </span>
-                </div>
-              );})
-            )}
-            {canEdit && (
-              <button
-                className="tab-add-btn"
-                onClick={() => {
-                  const tempId = `temp-${Date.now()}`;
-                  const tempRequest = {
-                    id: tempId,
-                    name: 'New Request',
-                    method: 'GET',
-                    url: '',
-                    headers: [],
-                    body: '',
-                    body_type: 'none',
-                    form_data: [],
-                    params: [],
-                    auth_type: 'none',
-                    auth_token: '',
-                    pre_script: '',
-                    post_script: '',
-                    isTemporary: true,
-                  };
-                  setOpenTabs(prev => [...prev, {
-                    id: tempId,
-                    type: 'request',
-                    request: tempRequest,
-                    dirty: false,
-                    response: null,
-                    isTemporary: true,
-                    activeDetailTab: 'params',
-                  }]);
-                  setActiveTabId(tempId);
-                }}
-                title="New Request"
-                disabled={!activeWorkspace}
-              >
-                <Plus size={14} />
-              </button>
-            )}
-          </div>
-
-          {activeTab?.type === 'workflow' ? (
+          {activeTab?.type === 'docs' ? (
+            <CollectionDocs
+              collectionId={activeTab.docs?.collectionId}
+              collectionName={activeTab.docs?.collectionName}
+              cachedData={activeTab.docsCache}
+              onCacheUpdate={(cache) => {
+                setOpenTabs(prev => prev.map(t =>
+                  t.id === activeTabId ? { ...t, docsCache: cache } : t
+                ));
+              }}
+            />
+          ) : activeTab?.type === 'workflow' ? (
             <WorkflowEditor
               workflow={activeTab.workflow}
               onWorkflowChange={(updates) => updateTabWorkflow(updates)}

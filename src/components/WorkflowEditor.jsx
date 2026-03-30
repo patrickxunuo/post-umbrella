@@ -37,6 +37,32 @@ export function WorkflowEditor({
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [bottomTab, setBottomTab] = useState('report');
   const stepsRef = useRef(null);
+  const dragPreviewRef = useRef(null);
+
+  const setDragPreview = useCallback((e, label, color) => {
+    let el = dragPreviewRef.current;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sidebar-drag-preview';
+      document.body.appendChild(el);
+      dragPreviewRef.current = el;
+    }
+    el.innerHTML = color
+      ? `<span style="color:${color};font-weight:700;font-size:10px;margin-right:4px">${label.split(' ')[0] || ''}</span>${label.includes(' ') ? label.slice(label.indexOf(' ') + 1) : label}`
+      : label;
+    el.style.display = 'block';
+    e.dataTransfer.setDragImage(el, 12, 12);
+    requestAnimationFrame(() => { if (el) el.style.display = 'none'; });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (dragPreviewRef.current) {
+        document.body.removeChild(dragPreviewRef.current);
+        dragPreviewRef.current = null;
+      }
+    };
+  }, []);
 
   const { runState: hookRunState, runWorkflow, stopWorkflow, clearRunState: hookClearRunState } = useWorkflowExecution({
     activeEnvironment,
@@ -106,31 +132,42 @@ export function WorkflowEditor({
     onWorkflowChange({ steps: newSteps });
   }, [onWorkflowChange, runState, clearRunState]);
 
-  const handleDrop = useCallback((e) => {
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = useCallback((e) => {
+    if (!e.dataTransfer.types.includes('text/x-request-id')) return;
     e.preventDefault();
-    const requestId = e.dataTransfer.getData('text/x-request-id');
-    if (requestId) {
-      if (!isRequestAllowed(requestId)) {
-        e.currentTarget.classList.remove('drag-over');
-        return;
-      }
-      updateSteps([...steps, requestId]);
-    }
-    e.currentTarget.classList.remove('drag-over');
-  }, [steps, updateSteps, isRequestAllowed]);
+    dragCounterRef.current++;
+    stepsRef.current?.classList.add('drag-over');
+  }, []);
 
   const handleDragOver = useCallback((e) => {
-    const hasRequest = e.dataTransfer.types.includes('text/x-request-id');
-    if (hasRequest) {
+    if (e.dataTransfer.types.includes('text/x-request-id')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      e.currentTarget.classList.add('drag-over');
     }
   }, []);
 
-  const handleDragLeave = useCallback((e) => {
-    e.currentTarget.classList.remove('drag-over');
+  const handleDragLeave = useCallback(() => {
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      stepsRef.current?.classList.remove('drag-over');
+      setDragOverIndex(null);
+    }
   }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    stepsRef.current?.classList.remove('drag-over');
+    setDragOverIndex(null);
+    const requestId = e.dataTransfer.getData('text/x-request-id');
+    if (requestId) {
+      if (!isRequestAllowed(requestId)) return;
+      updateSteps([...steps, requestId]);
+    }
+  }, [steps, updateSteps, isRequestAllowed]);
 
   const removeStep = useCallback((index) => {
     updateSteps(steps.filter((_, i) => i !== index));
@@ -141,7 +178,11 @@ export function WorkflowEditor({
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
-  }, []);
+    const req = requestMap[steps[index]];
+    if (req) {
+      setDragPreview(e, `${req.method} ${req.name}`, METHOD_COLORS[req.method]);
+    }
+  }, [steps, requestMap, setDragPreview]);
 
   const handleStepDragOver = useCallback((e, index) => {
     e.preventDefault();
@@ -257,9 +298,10 @@ export function WorkflowEditor({
           <div
             className="workflow-steps"
             ref={stepsRef}
-            onDrop={handleDrop}
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             {steps.length === 0 ? (
               <div className="workflow-empty">

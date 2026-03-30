@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Copy, Search, Plus, FolderPlus, X, Folder, Crosshair, ChevronsDownUp, ChevronsUpDown, Download, Link, Play } from 'lucide-react';
 import * as data from '../../data/index.js';
 import { useConfirm } from '../ConfirmModal';
@@ -46,6 +46,7 @@ export function Sidebar({
   onRenameWorkflow,
   onDuplicateWorkflow,
   onRunWorkflow,
+  onViewDocs,
 }) {
   const confirm = useConfirm();
   const toast = useToast();
@@ -77,6 +78,35 @@ export function Sidebar({
   const collectionMenuRef = useRef(null);
   const exampleMenuRef = useRef(null);
   const collectionsRef = useRef(collections);
+  const dragPreviewRef = useRef(null);
+
+  // Custom drag image helper
+  const setDragPreview = useCallback((e, label, color) => {
+    let el = dragPreviewRef.current;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sidebar-drag-preview';
+      document.body.appendChild(el);
+      dragPreviewRef.current = el;
+    }
+    el.innerHTML = color
+      ? `<span style="color:${color};font-weight:700;font-size:10px;margin-right:4px">${label.split(' ')[0] || ''}</span>${label.includes(' ') ? label.slice(label.indexOf(' ') + 1) : label}`
+      : label;
+    el.style.display = 'block';
+    e.dataTransfer.setDragImage(el, 12, 12);
+    // Hide after browser captures it
+    requestAnimationFrame(() => { if (el) el.style.display = 'none'; });
+  }, []);
+
+  // Cleanup drag preview on unmount
+  useEffect(() => {
+    return () => {
+      if (dragPreviewRef.current) {
+        document.body.removeChild(dragPreviewRef.current);
+        dragPreviewRef.current = null;
+      }
+    };
+  }, []);
 
   // Reposition menus that overflow the available space
   useEffect(() => {
@@ -404,6 +434,9 @@ export function Sidebar({
       case 'export':
         onExportCollection?.(collection);
         break;
+      case 'view-docs':
+        onViewDocs?.(collection);
+        break;
       case 'copy-link':
         onCopyLink?.(collection.parent_id ? 'folder' : 'collection', collection.id);
         break;
@@ -528,6 +561,7 @@ export function Sidebar({
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', request.id);
     e.dataTransfer.setData('text/x-request-id', request.id);
+    setDragPreview(e, `${request.method} ${request.name}`, METHOD_COLORS[request.method]);
   };
 
   const handleDragEnd = () => {
@@ -749,6 +783,7 @@ export function Sidebar({
     setDraggedFolder(collection);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', collection.id);
+    setDragPreview(e, `📁 ${collection.name}`);
   };
 
   const handleFolderDragEnd = () => {
@@ -764,6 +799,7 @@ export function Sidebar({
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', example.id);
     e.stopPropagation();
+    setDragPreview(e, `📄 ${example.name}`);
   };
 
   const handleExampleDragEnd = () => {
@@ -1047,13 +1083,22 @@ export function Sidebar({
                   </>
                 )}
                 {!collection.parent_id && (
-                  <button
-                    className="request-menu-item"
-                    onClick={(e) => handleCollectionMenuAction('export', collection, e)}
-                  >
-                    <Download size={14} />
-                    Export
-                  </button>
+                  <>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('export', collection, e)}
+                    >
+                      <Download size={14} />
+                      Export
+                    </button>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('view-docs', collection, e)}
+                    >
+                      <FileText size={14} />
+                      View Docs
+                    </button>
+                  </>
                 )}
                 <button
                   className="request-menu-item"
