@@ -963,6 +963,22 @@
   min-height: 100%;
 }
 
+/* Lint tooltip animation */
+.json-codemirror .cm-tooltip-lint {
+  animation: lintTooltipIn 0.12s ease-out;
+}
+
+@keyframes lintTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Request JSON Editor - in body tab */
 .request-json-editor {
   flex: 1;
