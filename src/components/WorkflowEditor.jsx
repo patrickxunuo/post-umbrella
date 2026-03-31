@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Play, Square, Trash2, GripVertical, CheckCircle2, XCircle, Loader2, Circle, Clock, RotateCcw, Save } from 'lucide-react';
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution';
-
+import { useDragPreview } from '../hooks/useDragPreview';
 import { METHOD_COLORS } from '../constants/methodColors';
 
 function StepStatusIcon({ status, size = 14 }) {
@@ -37,32 +37,7 @@ export function WorkflowEditor({
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [bottomTab, setBottomTab] = useState('report');
   const stepsRef = useRef(null);
-  const dragPreviewRef = useRef(null);
-
-  const setDragPreview = useCallback((e, label, color) => {
-    let el = dragPreviewRef.current;
-    if (!el) {
-      el = document.createElement('div');
-      el.className = 'sidebar-drag-preview';
-      document.body.appendChild(el);
-      dragPreviewRef.current = el;
-    }
-    el.innerHTML = color
-      ? `<span style="color:${color};font-weight:700;font-size:10px;margin-right:4px">${label.split(' ')[0] || ''}</span>${label.includes(' ') ? label.slice(label.indexOf(' ') + 1) : label}`
-      : label;
-    el.style.display = 'block';
-    e.dataTransfer.setDragImage(el, 12, 12);
-    requestAnimationFrame(() => { if (el) el.style.display = 'none'; });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (dragPreviewRef.current) {
-        document.body.removeChild(dragPreviewRef.current);
-        dragPreviewRef.current = null;
-      }
-    };
-  }, []);
+  const setDragPreview = useDragPreview();
 
   const { runState: hookRunState, runWorkflow, stopWorkflow, clearRunState: hookClearRunState } = useWorkflowExecution({
     activeEnvironment,
