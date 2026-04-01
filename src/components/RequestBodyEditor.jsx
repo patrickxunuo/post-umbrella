@@ -69,7 +69,7 @@ export function RequestBodyEditor({
 
   return (
     <div className="body-editor">
-      <div className="body-type-selector">
+      <div className="option-selector body-type-selector">
         {['none', 'form-data', 'json', 'raw'].map(type => (
           <label key={type}>
             <input

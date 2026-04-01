@@ -700,7 +700,7 @@ export function RequestEditor({
 
         {activeDetailTab === 'auth' && (
           <div className="auth-editor">
-            <div className="auth-type-selector">
+            <div className="option-selector auth-type-selector">
               <label>
                 <input
                   type="radio"

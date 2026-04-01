@@ -188,6 +188,21 @@
   color: var(--text-primary);
 }
 
+/* HTML Preview Toggle */
+.html-view-toggle {
+  margin-bottom: var(--space-3);
+}
+
+/* HTML Preview iframe */
+.html-preview-frame {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: #ffffff;
+}
+
 /* Desktop Agent Banner (shown when local URL fails on web) */
 .desktop-agent-banner {
   display: flex;

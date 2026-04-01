@@ -239,7 +239,7 @@ function AuthTab({ authType, authToken, onChange, canEdit, isFolder, activeEnvir
 
   return (
     <div className="auth-editor">
-      <div className="auth-type-selector">
+      <div className="option-selector auth-type-selector">
         <label>
           <input
             type="radio"

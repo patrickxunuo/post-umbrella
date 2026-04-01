@@ -45,6 +45,9 @@ Desktop.ini
 dev-start.*
 dev-stop.*
 
+# Active task state (per-developer)
+memory-bank/activeTask.md
+
 # Supabase local
 supabase/.temp
 supabase/.branches
