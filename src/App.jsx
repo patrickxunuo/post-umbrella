@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { AlertTriangle, X, Copy } from 'lucide-react';
+import { isEqual, pick } from 'lodash-es';
+import { Copy, X } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { shell } from '@codemirror/legacy-modes/mode/shell';
@@ -9,16 +10,7 @@ import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
 import { RequestEditor, generateCurl } from './components/RequestEditor';
 import { ResponseViewer } from './components/ResponseViewer';
-import { EnvironmentEditor } from './components/EnvironmentEditor';
-import { WorkspaceSettings } from './components/WorkspaceSettings';
-import { UserManagement } from './components/UserManagement';
-import { InviteUserModal } from './components/InviteUserModal';
-import { ImportCurlModal } from './components/ImportCurlModal';
-import { FolderPickerModal } from './components/FolderPicker';
-import { UnsavedChangesModal } from './components/UnsavedChangesModal';
-import { SettingsModal, syncCloseBehaviorToRust } from './components/SettingsModal';
-import { AboutModal } from './components/AboutModal';
-import { CloseToTrayModal } from './components/CloseToTrayModal';
+import { AppModals } from './components/AppModals';
 import { CollectionEditor } from './components/CollectionEditor';
 import { CollectionDocs } from './components/CollectionDocs';
 import { WorkflowEditor } from './components/WorkflowEditor';
@@ -566,11 +558,19 @@ function AppContent() {
         // Check if this request is open in any tab (means user is working on it)
         const openTab = openTabs.find(t => t.id === tabId);
         if (openTab) {
-          // Mark as conflicted - someone else updated while we have it open
-          setConflictedTabs(prev => ({
-            ...prev,
-            [tabId]: payload
-          }));
+          // Only mark conflicted if content fields actually changed (not just sort_order/updated_at)
+          // Normalize JSON-string fields from Realtime payload to match parsed arrays in tab state
+          const parseJson = (v) => typeof v === 'string' ? JSON.parse(v || '[]') : (v || []);
+          const normalized = { ...payload, headers: parseJson(payload.headers), params: parseJson(payload.params), form_data: parseJson(payload.form_data) };
+          const requestContentFields = ['name', 'method', 'url', 'body', 'body_type', 'auth_type', 'auth_token', 'pre_script', 'post_script', 'headers', 'params', 'form_data'];
+          const contentChanged = openTab.request && !isEqual(pick(normalized, requestContentFields), pick(openTab.request, requestContentFields));
+
+          if (contentChanged) {
+            setConflictedTabs(prev => ({
+              ...prev,
+              [tabId]: payload
+            }));
+          }
         }
       }
 
@@ -591,10 +591,15 @@ function AppContent() {
         // Check if this example is open in any tab
         const openTab = openTabs.find(t => t.id === tabId);
         if (openTab) {
-          setConflictedTabs(prev => ({
-            ...prev,
-            [tabId]: payload
-          }));
+          const exampleContentFields = ['name', 'request_data', 'response_data'];
+          const contentChanged = openTab.example && !isEqual(pick(payload, exampleContentFields), pick(openTab.example, exampleContentFields));
+
+          if (contentChanged) {
+            setConflictedTabs(prev => ({
+              ...prev,
+              [tabId]: payload
+            }));
+          }
         }
       }
 
@@ -1212,254 +1217,34 @@ function AppContent() {
 
       </div>
 
-      {showEnvEditor && (
-        <EnvironmentEditor
-          onClose={() => {
-            setShowEnvEditor(false);
-            if (activeWorkspace?.id) {
-              loadEnvironments(activeWorkspace.id);
-            }
-          }}
-          workspaceId={activeWorkspace?.id}
-          workspaceName={activeWorkspace?.name}
-          canEdit={canEdit}
-        />
-      )}
-
-      {showWorkspaceSettings && activeWorkspace && (
-        <WorkspaceSettings
-          workspace={activeWorkspace}
-          onClose={() => setShowWorkspaceSettings(false)}
-          onUpdateWorkspace={handleUpdateWorkspace}
-          onDeleteWorkspace={handleDeleteWorkspace}
-          isAdmin={['system', 'admin'].includes(userProfile?.role)}
-        />
-      )}
-
-      {showUserManagement && userProfile?.role === 'developer' ? (
-        <InviteUserModal
-          workspaceName={activeWorkspace?.name || 'Workspace'}
-          userRole={userProfile?.role}
-          onInvite={async (email, role) => {
-            await handleInviteUser(email, role, [activeWorkspace?.id]);
-          }}
-          onClose={() => setShowUserManagement(false)}
-        />
-      ) : showUserManagement && (
-        <UserManagement
-          users={allUsers}
-          allWorkspaces={allWorkspaces}
-          activeWorkspace={activeWorkspace}
-          currentUserId={user?.id}
-          userRole={userProfile?.role}
-          onClose={() => setShowUserManagement(false)}
-          onInviteUser={handleInviteUser}
-          onUpdateUser={handleUpdateUser}
-          onUpdateUserWorkspaces={handleUpdateUserWorkspaces}
-          onDeleteUser={handleDeleteUser}
-          loading={usersLoading}
-          isSystem={userProfile?.role === 'system'}
-        />
-      )}
-
-      {showCloseModal && (
-        <CloseToTrayModal
-          onHideToTray={async (remember) => {
-            setShowCloseModal(false);
-            if (remember) {
-              syncCloseBehaviorToRust('tray');
-              data.updateUserConfig({ closeBehavior: 'tray' }).then(setUserConfig).catch(() => {});
-            }
-            const { invoke } = await import('@tauri-apps/api/core');
-            await invoke('hide_window');
-          }}
-          onClose={async (remember) => {
-            setShowCloseModal(false);
-            if (remember) {
-              syncCloseBehaviorToRust('close');
-              data.updateUserConfig({ closeBehavior: 'close' }).then(setUserConfig).catch(() => {});
-            }
-            const { invoke } = await import('@tauri-apps/api/core');
-            await invoke('close_app');
-          }}
-          onCancel={() => setShowCloseModal(false)}
-        />
-      )}
-
-      {showAbout && (
-        <AboutModal
-          onClose={() => setShowAbout(false)}
-          updateAvailable={updateAvailable}
-          tauriUpdate={tauriUpdate}
-          downloading={downloading}
-          downloadProgress={downloadProgress}
-          installUpdate={installUpdate}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsModal
-          config={userConfig}
-          onClose={() => setShowSettings(false)}
-          onSave={async (patch) => {
-            const updated = await data.updateUserConfig(patch);
-            setUserConfig(updated);
-            if (patch.theme) {
-              handleThemeChange(patch.theme);
-            }
-            if (patch.closeBehavior) {
-              syncCloseBehaviorToRust(patch.closeBehavior);
-            }
-            toast.success('Settings saved');
-          }}
-        />
-      )}
-
-      {showImportCurl && (
-        <ImportCurlModal
-          onImport={handleImportCurl}
-          onClose={() => setShowImportCurl(false)}
-        />
-      )}
-
-      {draftSavePending && (
-        <FolderPickerModal
-          title="Save Request to..."
-          collections={collections}
-          onConfirm={async (folderId) => {
-            const { tabId, requestData } = draftSavePending;
-            try {
-              const requestPayload = {
-                collection_id: folderId,
-                name: requestData.name || 'New Request',
-                method: requestData.method || 'GET',
-                url: requestData.url || '',
-                headers: requestData.headers || [],
-                body: requestData.body || '',
-                body_type: requestData.body_type || 'none',
-                form_data: requestData.form_data || [],
-                params: requestData.params || [],
-                auth_type: requestData.auth_type || 'none',
-                auth_token: requestData.auth_token || '',
-                pre_script: requestData.pre_script || '',
-                post_script: requestData.post_script || '',
-              };
-              const created = await data.createRequest(requestPayload);
-              setCollections((prev) => prev.map((c) => (
-                c.id === folderId
-                  ? { ...c, requests: [...(c.requests || []), { ...created, example_count: 0 }] }
-                  : c
-              )));
-              // Remove the temp tab and open the real one
-              setOpenTabs(prev => prev.filter(t => t.id !== tabId));
-              openRequestInTab(created);
-            } catch (err) {
-              toast.error(err.message || 'Failed to create request');
-            }
-            setDraftSavePending(null);
-          }}
-          onCancel={() => setDraftSavePending(null)}
-          confirmText="Save"
-        />
-      )}
-
-      {tempCloseTabId && (
-        <UnsavedChangesModal
-          showRemember
-          onCancel={() => setTempCloseTabId(null)}
-          onSave={() => {
-            const tab = openTabs.find(t => t.id === tempCloseTabId);
-            if (tab) {
-              setDraftSavePending({
-                tabId: tempCloseTabId,
-                requestData: tab.request || {},
-              });
-            }
-            setTempCloseTabId(null);
-          }}
-          onDontSave={(remember) => {
-            if (remember) {
-              const next = { ...userConfig, skipCloseConfirm: true };
-              setUserConfig(next);
-              data.updateUserConfig({ skipCloseConfirm: true }).catch(() => {});
-            }
-            const tabId = tempCloseTabId;
-            setOpenTabs(prev => {
-              const newTabs = prev.filter(t => t.id !== tabId);
-              if (activeTabId === tabId && newTabs.length > 0) {
-                setActiveTabId(newTabs[newTabs.length - 1].id);
-              } else if (newTabs.length === 0) {
-                setActiveTabId(null);
-              }
-              return newTabs;
-            });
-            setTempCloseTabId(null);
-          }}
-        />
-      )}
-
-      {dirtyCloseTabId && (
-        <UnsavedChangesModal
-          showRemember
-          onCancel={() => setDirtyCloseTabId(null)}
-          onSave={() => {
-            const tab = openTabs.find(t => t.id === dirtyCloseTabId);
-            if (tab) {
-              const saveData = tab.type === 'example'
-                ? { name: tab.example?.name, request_data: tab.example?.request_data, response_data: tab.example?.response_data }
-                : { method: tab.request?.method, url: tab.request?.url, headers: tab.request?.headers, body: tab.request?.body, body_type: tab.request?.body_type, auth_type: tab.request?.auth_type, auth_token: tab.request?.auth_token, params: tab.request?.params, pre_script: tab.request?.pre_script, post_script: tab.request?.post_script };
-              const saveFn = tab.type === 'example' ? handleSaveExample : handleSaveRequest;
-              saveFn(saveData);
-            }
-            closeTab(dirtyCloseTabId, null, { force: true });
-            setDirtyCloseTabId(null);
-          }}
-          onDontSave={(remember) => {
-            if (remember) {
-              const next = { ...userConfig, skipCloseConfirm: true };
-              setUserConfig(next);
-              data.updateUserConfig({ skipCloseConfirm: true }).catch(() => {});
-            }
-            closeTab(dirtyCloseTabId, null, { force: true });
-            setDirtyCloseTabId(null);
-          }}
-        />
-      )}
-
-      {showConflictModal && (() => {
-        const isDeletedModal = deletedTabs.has(pendingSaveTabId);
-        return (
-          <div className="modal-overlay" onClick={() => setShowConflictModal(false)}>
-            <div className="modal conflict-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h2><AlertTriangle size={18} /> {isDeletedModal ? 'Item Deleted' : 'Conflict Detected'}</h2>
-                <button className="modal-close" onClick={() => setShowConflictModal(false)}>
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="modal-body">
-                <p className="modal-hint">
-                  {isDeletedModal
-                    ? 'This item has been deleted by someone else while you were editing it. You can create a new item with your changes or close this tab.'
-                    : 'Someone else has modified this request while you were editing it. Choose how you want to resolve this conflict.'
-                  }
-                </p>
-              </div>
-              <div className="modal-footer conflict-footer">
-                <button className="btn-secondary" onClick={() => setShowConflictModal(false)}>
-                  Cancel
-                </button>
-                <button className="btn-secondary" onClick={handleDiscardChanges}>
-                  {isDeletedModal ? 'Close Tab' : 'Discard'}
-                </button>
-                <button className={isDeletedModal ? 'btn-primary' : 'btn-danger'} onClick={handleOverwriteConflict}>
-                  {isDeletedModal ? 'Create New' : 'Overwrite'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <AppModals
+        showEnvEditor={showEnvEditor} setShowEnvEditor={setShowEnvEditor}
+        activeWorkspace={activeWorkspace} loadEnvironments={loadEnvironments} canEdit={canEdit}
+        showWorkspaceSettings={showWorkspaceSettings} setShowWorkspaceSettings={setShowWorkspaceSettings}
+        handleUpdateWorkspace={handleUpdateWorkspace} handleDeleteWorkspace={handleDeleteWorkspace} userProfile={userProfile}
+        showUserManagement={showUserManagement} setShowUserManagement={setShowUserManagement}
+        allUsers={allUsers} allWorkspaces={allWorkspaces} user={user}
+        handleInviteUser={handleInviteUser} handleUpdateUser={handleUpdateUser}
+        handleUpdateUserWorkspaces={handleUpdateUserWorkspaces} handleDeleteUser={handleDeleteUser} usersLoading={usersLoading}
+        showCloseModal={showCloseModal} setShowCloseModal={setShowCloseModal}
+        userConfig={userConfig} setUserConfig={setUserConfig}
+        showAbout={showAbout} setShowAbout={setShowAbout}
+        updateAvailable={updateAvailable} tauriUpdate={tauriUpdate}
+        downloading={downloading} downloadProgress={downloadProgress} installUpdate={installUpdate}
+        showSettings={showSettings} setShowSettings={setShowSettings}
+        handleThemeChange={handleThemeChange} toast={toast}
+        showImportCurl={showImportCurl} setShowImportCurl={setShowImportCurl} handleImportCurl={handleImportCurl}
+        draftSavePending={draftSavePending} setDraftSavePending={setDraftSavePending}
+        collections={collections} setCollections={setCollections}
+        openTabs={openTabs} setOpenTabs={setOpenTabs} activeTabId={activeTabId} setActiveTabId={setActiveTabId}
+        openRequestInTab={openRequestInTab}
+        tempCloseTabId={tempCloseTabId} setTempCloseTabId={setTempCloseTabId}
+        dirtyCloseTabId={dirtyCloseTabId} setDirtyCloseTabId={setDirtyCloseTabId}
+        closeTab={closeTab} handleSaveRequest={handleSaveRequest} handleSaveExample={handleSaveExample}
+        showConflictModal={showConflictModal} setShowConflictModal={setShowConflictModal}
+        pendingSaveTabId={pendingSaveTabId} deletedTabs={deletedTabs}
+        handleDiscardChanges={handleDiscardChanges} handleOverwriteConflict={handleOverwriteConflict}
+      />
     </div>
     </VariablePopoverProvider>
   );

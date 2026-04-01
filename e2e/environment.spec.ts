@@ -18,6 +18,11 @@ async function waitForAppReady(page) {
   await expect(page.locator('.workspace-selector-label')).not.toHaveText('No Workspace', { timeout: 10000 });
   await expect(page.locator('.sidebar')).toBeVisible();
   await expect(page.locator('.sidebar .loading-spinner')).not.toBeVisible({ timeout: 10000 });
+  // Hide version toast so it doesn't block interactions (its Refresh button reloads the page)
+  await page.evaluate(() => {
+    const toast = document.querySelector('.version-toast');
+    if (toast) toast.style.display = 'none';
+  });
 }
 
 // Helper to open Environment Editor
@@ -100,7 +105,6 @@ test.describe('Environments', () => {
     await page.screenshot({ path: 'e2e/screenshots/env-created.png' });
   });
 
-  // Flaky: save button sometimes not found in drawer (scroll/visibility issue)
   test('user can edit environment variables', async ({ page }) => {
     const envName = uniqueName('Vars Env');
 
@@ -146,13 +150,6 @@ test.describe('Environments', () => {
     await key2.type('API_KEY', { delay: 10 });
     await val2.click();
     await val2.type('secret123', { delay: 10 });
-
-    // Dismiss version toast if visible (it can block the save button)
-    const versionToast = page.locator('.version-toast');
-    if (await versionToast.isVisible({ timeout: 500 }).catch(() => false)) {
-      await versionToast.locator('button').click().catch(() => {});
-      await page.waitForTimeout(300);
-    }
 
     // Wait for React state to settle after fills
     await page.waitForTimeout(500);
