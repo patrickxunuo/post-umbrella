@@ -124,6 +124,7 @@ Common rules:
 - Put AI names (Claude, eFrank, etc.) in git commits, PR descriptions, or code comments
 
 ## Available Commands
+- `/ef-feature [github-issue-url]` — End-to-end feature workflow: fetch GitHub issue → understand context → plan → implement (with design quality) → evaluate E2E test needs
 - `/ef-dev [action]` — Start dev environment, or explore and record setup steps. Actions: `start` (default), `setup`, `explore`, `stop`
 - `/ef-plan [module-name]` — Break a module into features, set priorities and dependencies
 - `/ef-implement [feature-name]` — Full TDD workflow: acceptance spec → tests → implementation

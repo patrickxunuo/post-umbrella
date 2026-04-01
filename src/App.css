@@ -1453,18 +1453,23 @@ body {
 }
 
 .auth-type-selector {
+  margin-bottom: 16px;
+}
+
+/* Shared option selector (pill-style radio/button group) */
+.option-selector {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.auth-type-selector label {
+.option-selector label,
+.option-selector button {
   position: relative;
   display: flex;
   align-items: center;
-  padding: 6px 14px;
+  padding: 4px 14px;
   background: transparent;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
@@ -1476,25 +1481,28 @@ body {
   user-select: none;
 }
 
-.auth-type-selector label:hover {
+.option-selector label:hover,
+.option-selector button:hover {
   background: var(--bg-hover);
   border-color: var(--border-secondary);
   color: var(--text-primary);
 }
 
-.auth-type-selector label:has(input:checked) {
+.option-selector label:has(input:checked),
+.option-selector button.active {
   background: var(--accent-primary);
   border-color: var(--accent-primary);
   color: white;
   box-shadow: 0 1px 3px rgba(14, 165, 233, 0.3);
 }
 
-.auth-type-selector label:has(input:checked):hover {
+.option-selector label:has(input:checked):hover,
+.option-selector button.active:hover {
   background: var(--accent-primary-hover);
   border-color: var(--accent-primary-hover);
 }
 
-.auth-type-selector input[type="radio"] {
+.option-selector input[type="radio"] {
   position: absolute;
   opacity: 0;
   width: 0;
