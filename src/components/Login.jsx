@@ -122,7 +122,7 @@ export function Login({ onLogin }) {
     const timer = setTimeout(() => {
       setWaitingForBrowser(false);
       setError('Sign in timed out. Please try again.');
-    }, 60000);
+    }, 120000);
     return () => clearTimeout(timer);
   }, [waitingForBrowser]);
 

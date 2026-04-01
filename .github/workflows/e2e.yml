@@ -20,7 +20,13 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci || (rm -rf node_modules && npm install)
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
@@ -30,19 +36,33 @@ jobs:
         with:
           version: latest
 
+      - name: Cache Supabase Docker images
+        id: supabase-cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/supabase-docker-images.tar
+          key: supabase-docker-${{ hashFiles('supabase/config.toml') }}
+
+      - name: Load cached Docker images
+        if: steps.supabase-cache.outputs.cache-hit == 'true'
+        run: docker load -i /tmp/supabase-docker-images.tar
+
       - name: Start Supabase
         run: supabase start
+
+      - name: Save Docker images to cache
+        if: steps.supabase-cache.outputs.cache-hit != 'true'
+        run: |
+          IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'supabase|postgres|kong|gotrue|postgrest|realtime|storage|imgproxy|deno' | grep -v '<none>')
+          docker save $IMAGES -o /tmp/supabase-docker-images.tar
 
       - name: Write .env from Supabase status
         run: |
           eval "$(supabase status -o env)"
-          cat > .env <<EOF
-          VITE_SUPABASE_URL=http://127.0.0.1:54321
-          VITE_SUPABASE_ANON_KEY=${ANON_KEY}
-          SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}
-          EOF
-          # Remove leading whitespace from heredoc
-          sed -i 's/^[[:space:]]*//' .env
+          echo "VITE_SUPABASE_URL=http://127.0.0.1:54321" > .env
+          echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> .env
+          cat .env
 
       - name: Serve Edge Functions
         run: supabase functions serve --no-verify-jwt &
@@ -51,7 +71,7 @@ jobs:
         run: npm run dev &
 
       - name: Wait for dev server
-        run: npx wait-on http://127.0.0.1:5173 --timeout 30000
+        run: npx wait-on http-get://127.0.0.1:5173 --timeout 60000
 
       - name: Run Playwright tests
         id: tests
@@ -73,7 +93,6 @@ jobs:
             echo "|------|-----------|" >> $GITHUB_STEP_SUMMARY
             for png in test-results/*/test-failed-*.png; do
               [ -f "$png" ] || continue
-              # Extract test name from directory path
               dir=$(dirname "$png" | xargs basename)
               test_name=$(echo "$dir" | sed 's/-chromium$//' | tr '-' ' ')
               echo "| $test_name | 📎 See artifact |" >> $GITHUB_STEP_SUMMARY
