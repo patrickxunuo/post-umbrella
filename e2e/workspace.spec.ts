@@ -84,33 +84,34 @@ test.describe('Workspace', () => {
     await page.screenshot({ path: 'e2e/screenshots/session-persisted.png' });
   });
 
-  test('user can logout', async ({ page }) => {
-    // Look for user avatar/presence area and click it
-    const presenceArea = page.locator('.header-presence-group, .user-menu, .avatar-button').first();
+  test('user can logout', async ({ browser }) => {
+    // Use a fresh context + intercept logout API to avoid invalidating shared auth
+    const context = await browser.newContext({ storageState: 'e2e/.auth/user.json' });
+    const page = await context.newPage();
+    await page.route('**/auth/v1/logout**', (route) => route.fulfill({ status: 204 }));
 
-    // If there's a clickable avatar, click it to open menu
-    const avatar = page.locator('.presence-avatar, .user-avatar').first();
-    if (await avatar.isVisible()) {
-      await avatar.click();
-      await page.waitForTimeout(500);
-    }
+    await page.goto('/');
+    await expect(page.locator('.workspace-selector-trigger:not([disabled])')).toBeVisible({ timeout: 10000 });
 
-    // Look for logout button - might be in a dropdown or directly visible
-    const logoutButton = page.locator('button:has-text("Logout"), button:has-text("Sign out"), button:has-text("Log out")').first();
+    // Open user dropdown
+    const userMenuTrigger = page.locator('.user-menu-trigger');
+    await expect(userMenuTrigger).toBeVisible();
+    await userMenuTrigger.click();
 
-    if (await logoutButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await logoutButton.click();
+    // Verify dropdown shows Sign Out option
+    const dropdown = page.locator('.user-dropdown');
+    await expect(dropdown).toBeVisible({ timeout: 3000 });
+    const signOutBtn = dropdown.locator('.user-dropdown-item.danger');
+    await expect(signOutBtn).toBeVisible();
+    await expect(signOutBtn).toContainText('Sign Out');
 
-      // Should redirect to login page
-      await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
-      await page.screenshot({ path: 'e2e/screenshots/logged-out.png' });
-    } else {
-      // Take screenshot to see current state
-      await page.screenshot({ path: 'e2e/screenshots/logout-not-found.png' });
+    // Click Sign Out
+    await signOutBtn.click();
 
-      // Check if there's a settings or menu button
-      console.log('Logout button not directly visible, checking for menu...');
-      test.skip(true, 'Logout button not found - need to identify correct UI flow');
-    }
+    // Should show login page
+    await expect(page.locator('input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await page.screenshot({ path: 'e2e/screenshots/logged-out.png' });
+
+    await context.close();
   });
 });

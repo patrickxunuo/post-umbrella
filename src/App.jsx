@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { isEqual, pick } from 'lodash-es';
 import { Copy, X } from 'lucide-react';
 import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
@@ -557,11 +558,19 @@ function AppContent() {
         // Check if this request is open in any tab (means user is working on it)
         const openTab = openTabs.find(t => t.id === tabId);
         if (openTab) {
-          // Mark as conflicted - someone else updated while we have it open
-          setConflictedTabs(prev => ({
-            ...prev,
-            [tabId]: payload
-          }));
+          // Only mark conflicted if content fields actually changed (not just sort_order/updated_at)
+          // Normalize JSON-string fields from Realtime payload to match parsed arrays in tab state
+          const parseJson = (v) => typeof v === 'string' ? JSON.parse(v || '[]') : (v || []);
+          const normalized = { ...payload, headers: parseJson(payload.headers), params: parseJson(payload.params), form_data: parseJson(payload.form_data) };
+          const requestContentFields = ['name', 'method', 'url', 'body', 'body_type', 'auth_type', 'auth_token', 'pre_script', 'post_script', 'headers', 'params', 'form_data'];
+          const contentChanged = openTab.request && !isEqual(pick(normalized, requestContentFields), pick(openTab.request, requestContentFields));
+
+          if (contentChanged) {
+            setConflictedTabs(prev => ({
+              ...prev,
+              [tabId]: payload
+            }));
+          }
         }
       }
 
@@ -582,10 +591,15 @@ function AppContent() {
         // Check if this example is open in any tab
         const openTab = openTabs.find(t => t.id === tabId);
         if (openTab) {
-          setConflictedTabs(prev => ({
-            ...prev,
-            [tabId]: payload
-          }));
+          const exampleContentFields = ['name', 'request_data', 'response_data'];
+          const contentChanged = openTab.example && !isEqual(pick(payload, exampleContentFields), pick(openTab.example, exampleContentFields));
+
+          if (contentChanged) {
+            setConflictedTabs(prev => ({
+              ...prev,
+              [tabId]: payload
+            }));
+          }
         }
       }
 
