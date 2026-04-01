@@ -17,9 +17,7 @@ function createJsonLinter() {
     if (!text.trim()) return [];
 
     const envVarRegex = /"?\{\{([^}]+)\}\}"?/g;
-    const envVarRanges = [];
-    const safeText = text.replace(envVarRegex, (match, _varName, offset) => {
-      envVarRanges.push({ from: offset, to: offset + match.length });
+    const safeText = text.replace(envVarRegex, (match) => {
       const len = match.length;
       if (len < 2) return match;
       return '"' + 'a'.repeat(len - 2) + '"';
@@ -40,9 +38,30 @@ function createJsonLinter() {
       const ptrLine = lines.find(l => l.includes('^'));
       const errorCol = ptrLine ? ptrLine.indexOf('^') : 0;
 
-      let message = expectingLine
-        ? expectingLine.replace(/'EOF',?\s*/g, '').trim()
-        : errMsg.split('\n')[0];
+      let message = errMsg.split('\n')[0];
+      if (expectingLine) {
+        const gotMatch = expectingLine.match(/got\s+'([^']+)'/);
+        const got = gotMatch ? gotMatch[1] : '';
+        const tokenNames = { STRING: 'string', NUMBER: 'number', NULL: 'null', TRUE: 'true', FALSE: 'false', EOF: 'end of input', undefined: 'unexpected token' };
+        const gotLabel = tokenNames[got] || `'${got}'`;
+        const expected = [];
+        const tokenRegex = /'([^']*)'/g;
+        const expectPart = expectingLine.replace(/,\s*got\s+.*$/, '');
+        let m;
+        while ((m = tokenRegex.exec(expectPart)) !== null) {
+          if (m[1] !== 'EOF') expected.push(m[1]);
+        }
+        const isValue = (t) => ['STRING', 'NUMBER', 'NULL', 'TRUE', 'FALSE', '{', '['].includes(t);
+        const has = (t) => expected.includes(t);
+
+        if (has(',') && has(':')) message = got === 'STRING' ? 'Expected comma' : "Expected ':' after property name";
+        else if (has(',')) message = 'Expected comma';
+        else if (has(':')) message = "Expected ':' after property name";
+        else if (has('STRING') && has('}') && !has('NUMBER')) message = got === ',' ? 'Unexpected comma' : `Expected property name or '}'`;
+        else if (expected.some(isValue) && (got === '}' || got === ']')) message = 'Trailing comma is not allowed';
+        else if (expected.some(isValue)) message = `Expected a value, got ${gotLabel}`;
+        else message = `Unexpected ${gotLabel}`;
+      }
 
       if (!lineMatch) return [];
       const errorLine = parseInt(lineMatch[1], 10);
@@ -57,11 +76,6 @@ function createJsonLinter() {
 
       const line = doc.line(errorLine);
       const from = line.from + Math.min(errorCol, line.length);
-
-      const overlapsEnvVar = envVarRanges.some(
-        (range) => from >= range.from && from < range.to
-      );
-      if (overlapsEnvVar) return [];
 
       let to = line.from + line.text.trimEnd().length;
       if (to <= from) to = Math.min(from + 1, line.to);
