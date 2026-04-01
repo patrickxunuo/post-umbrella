@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -36,13 +38,15 @@
     "form-data": "^4.0.5",
     "json5": "^2.2.3",
     "jsonlint-mod": "^1.7.6",
+    "lodash-es": "^4.17.23",
     "lucide-react": "^0.576.0",
     "mysql2": "^3.18.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "supabase": "^2.77.0",
     "uuid": "^9.0.1",
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
@@ -50,7 +54,8 @@
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
     "dotenv": "^17.3.1",
-    "vite": "^5.4.2"
+    "vite": "^5.4.2",
+    "wait-on": "^9.0.4"
   },
   "optionalDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.59.0",

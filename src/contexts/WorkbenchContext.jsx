@@ -1,10 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { useWorkspace } from './WorkspaceContext';
-import { useCollectionData } from '../hooks/useCollectionData';
 import { useConflictResolution } from '../hooks/useConflictResolution';
 import { useRequestActions } from '../hooks/useRequestActions';
 import { useResponseExecution } from '../hooks/useResponseExecution';
+import useWorkbenchStore from '../stores/workbenchStore';
+import useCollectionStore from '../stores/collectionStore';
 import * as data from '../data/index.js';
 
 const WorkbenchContext = createContext(null);
@@ -19,100 +20,157 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     workspaceBootstrapComplete,
     userProfile,
   } = useWorkspace();
-  const [openTabs, setOpenTabs] = useState(() => {
-    const saved = localStorage.getItem('openTabs');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [activeTabId, setActiveTabId] = useState(() => localStorage.getItem('activeTabId') || null);
-  const [conflictedTabs, setConflictedTabs] = useState({});
-  const [deletedTabs, setDeletedTabs] = useState(new Set());
-  const [previewTabId, setPreviewTabId] = useState(null);
-  const [workflows, setWorkflows] = useState([]);
-  const [pendingRequestIds, setPendingRequestIds] = useState(new Set());
-  const [pendingExampleIds, setPendingExampleIds] = useState(new Set());
-  const [pendingExampleListRequestIds, setPendingExampleListRequestIds] = useState(new Set());
-  const [pendingCollectionIds, setPendingCollectionIds] = useState(new Set());
-  const [revealRequestId, setRevealRequestId] = useState(null);
-  const [revealCollectionId, setRevealCollectionId] = useState(null);
-  const recentlyModifiedRef = useRef(new Map());
-  const previousWorkspaceIdRef = useRef(null);
-  const originalRequestsRef = useRef({});
-  const handleCollectionsLoadedRef = useRef(null);
+
+  // Read tab state from workbench store
+  const openTabs = useWorkbenchStore((s) => s.openTabs);
+  const activeTabId = useWorkbenchStore((s) => s.activeTabId);
+  const previewTabId = useWorkbenchStore((s) => s.previewTabId);
+  const conflictedTabs = useWorkbenchStore((s) => s.conflictedTabs);
+  const deletedTabs = useWorkbenchStore((s) => s.deletedTabs);
+  const pendingRequestIds = useWorkbenchStore((s) => s.pendingRequestIds);
+  const pendingExampleIds = useWorkbenchStore((s) => s.pendingExampleIds);
+  const pendingExampleListRequestIds = useWorkbenchStore((s) => s.pendingExampleListRequestIds);
+  const pendingCollectionIds = useWorkbenchStore((s) => s.pendingCollectionIds);
+  const workflows = useWorkbenchStore((s) => s.workflows);
+  const setOpenTabs = useWorkbenchStore((s) => s.setOpenTabs);
+  const setActiveTabId = useWorkbenchStore((s) => s.setActiveTabId);
+  const setPreviewTabId = useWorkbenchStore((s) => s.setPreviewTabId);
+  const setConflictedTabs = useWorkbenchStore((s) => s.setConflictedTabs);
+  const setDeletedTabs = useWorkbenchStore((s) => s.setDeletedTabs);
+  const setPendingRequestIds = useWorkbenchStore((s) => s.setPendingRequestIds);
+  const setPendingExampleIds = useWorkbenchStore((s) => s.setPendingExampleIds);
+  const setPendingExampleListRequestIds = useWorkbenchStore((s) => s.setPendingExampleListRequestIds);
+  const setPendingCollectionIds = useWorkbenchStore((s) => s.setPendingCollectionIds);
+  const setRevealRequestId = useWorkbenchStore((s) => s.setRevealRequestId);
+  const setRevealCollectionId = useWorkbenchStore((s) => s.setRevealCollectionId);
+  const setWorkflows = useWorkbenchStore((s) => s.setWorkflows);
+  const markAsRecentlyModified = useWorkbenchStore((s) => s.markAsRecentlyModified);
+  const loadWorkflows = useWorkbenchStore((s) => s.loadWorkflows);
+  const resetTabs = useWorkbenchStore((s) => s.resetTabs);
+
+  // Read collection state from collection store
+  const collections = useCollectionStore((s) => s.collections);
+  const collectionsLoading = useCollectionStore((s) => s.collectionsLoading);
+  const examples = useCollectionStore((s) => s.examples);
+  const environments = useCollectionStore((s) => s.environments);
+  const activeEnvironment = useCollectionStore((s) => s.activeEnvironment);
+  const currentRootCollectionId = useCollectionStore((s) => s.currentRootCollectionId);
+  const setCollections = useCollectionStore((s) => s.setCollections);
+  const setExamples = useCollectionStore((s) => s.setExamples);
+  const setEnvironments = useCollectionStore((s) => s.setEnvironments);
+  const setActiveEnvironment = useCollectionStore((s) => s.setActiveEnvironment);
+  const setCurrentRootCollectionId = useCollectionStore((s) => s.setCurrentRootCollectionId);
+  const getRootCollectionId = useCollectionStore((s) => s.getRootCollectionId);
+  const resetCollections = useCollectionStore((s) => s.reset);
+
+  // Derived tab state
   const activeTab = openTabs.find((tab) => tab.id === activeTabId);
   const selectedRequest = activeTab?.type === 'request' ? activeTab.request : null;
   const selectedExample = activeTab?.type === 'example' ? activeTab.example : null;
   const response = activeTab?.response || null;
 
-  const markAsRecentlyModified = useCallback((tabId) => {
-    recentlyModifiedRef.current.set(tabId, Date.now());
-    setTimeout(() => {
-      recentlyModifiedRef.current.delete(tabId);
-    }, 5000);
+  // Ref for original requests — proxy to store's mutable data
+  const originalRequestsRef = useRef(useWorkbenchStore.getState()._originalRequests);
+
+  const previousWorkspaceIdRef = useRef(null);
+  const handleCollectionsLoadedRef = useRef(null);
+
+  // Wrapper callbacks that close over user/workspace for hooks
+  const onCollectionsLoaded = useCallback((nextCollections, workspaceId) => {
+    handleCollectionsLoadedRef.current?.(nextCollections, workspaceId);
   }, []);
 
-  const wasRecentlyModified = useCallback((tabId) => {
-    const timestamp = recentlyModifiedRef.current.get(tabId);
-    if (!timestamp) return false;
-    return Date.now() - timestamp < 5000;
-  }, []);
+  const loadCollections = useCallback(() => {
+    return useCollectionStore.getState().loadCollections(user, activeWorkspace, onCollectionsLoaded);
+  }, [user, activeWorkspace, onCollectionsLoaded]);
 
-  const {
-    collections,
-    setCollections,
-    collectionsLoading,
-    examples,
-    setExamples,
-    environments,
-    setEnvironments,
-    activeEnvironment,
-    setActiveEnvironment,
-    setCurrentRootCollectionId,
-    loadCollections,
-    loadEnvironments,
-  } = useCollectionData({
-    user,
-    activeWorkspace,
-    activeTab,
-    selectedRequest,
-    selectedExample,
-    onCollectionsLoaded: useCallback((nextCollections, workspaceId) => {
-      handleCollectionsLoadedRef.current?.(nextCollections, workspaceId);
-    }, []),
-  });
+  const loadEnvironments = useCallback((workspaceId) => {
+    return useCollectionStore.getState().loadEnvironments(user, workspaceId);
+  }, [user]);
 
+  const loadExamples = useCallback((requestId) => {
+    return useCollectionStore.getState().loadExamples(user, requestId);
+  }, [user]);
+
+  // --- Effects (formerly in useCollectionData) ---
+
+  // Load collections + environments when user/workspace changes
+  useEffect(() => {
+    if (!user) {
+      resetCollections();
+      return;
+    }
+    if (activeWorkspace) {
+      loadCollections();
+      loadEnvironments(activeWorkspace.id);
+    }
+  }, [user, activeWorkspace, loadCollections, loadEnvironments, resetCollections]);
+
+  // Load examples when selected request changes
+  useEffect(() => {
+    loadExamples(selectedRequest?.id);
+  }, [selectedRequest?.id, loadExamples]);
+
+  // Track current root collection for realtime updates
+  useEffect(() => {
+    let collectionId = null;
+    if (selectedRequest?.collection_id) {
+      collectionId = selectedRequest.collection_id;
+    } else if (selectedExample) {
+      const parentRequestId = activeTab?.parentRequestId || selectedExample.request_id;
+      if (parentRequestId && collections.length > 0) {
+        for (const collection of collections) {
+          const foundRequest = collection.requests?.find((r) => r.id === parentRequestId);
+          if (foundRequest) {
+            collectionId = foundRequest.collection_id;
+            break;
+          }
+        }
+      }
+    }
+
+    if (collectionId && collections.length > 0) {
+      const rootId = getRootCollectionId(collectionId);
+      if (rootId !== currentRootCollectionId) {
+        setCurrentRootCollectionId(rootId);
+      }
+    } else if (!selectedRequest && !selectedExample) {
+      setCurrentRootCollectionId(null);
+    }
+  }, [
+    selectedRequest?.collection_id, selectedExample, activeTab?.parentRequestId,
+    collections, getRootCollectionId, currentRootCollectionId, setCurrentRootCollectionId,
+  ]);
+
+  // --- Tab effects ---
+
+  // Workspace switch — clear tabs + collection data
   useEffect(() => {
     const workspaceId = activeWorkspace?.id || null;
-
     if (previousWorkspaceIdRef.current === null) {
       previousWorkspaceIdRef.current = workspaceId;
       return;
     }
-
     if (previousWorkspaceIdRef.current !== workspaceId) {
-      setOpenTabs([]);
-      setActiveTabId(null);
+      resetTabs();
       setExamples([]);
       setEnvironments([]);
       setActiveEnvironment(null);
       setCurrentRootCollectionId(null);
-      setWorkflows([]);
       previousWorkspaceIdRef.current = workspaceId;
     }
-  }, [activeWorkspace?.id, setActiveEnvironment, setCurrentRootCollectionId, setEnvironments, setExamples]);
+  }, [activeWorkspace?.id, resetTabs, setActiveEnvironment, setCurrentRootCollectionId, setEnvironments, setExamples]);
 
+  // Logout — clear everything
   useEffect(() => {
     if (authChecked && !user) {
-      setCollections([]);
-      setOpenTabs([]);
-      setActiveTabId(null);
-      setExamples([]);
-      setEnvironments([]);
-      setActiveEnvironment(null);
-      setCurrentRootCollectionId(null);
+      resetCollections();
+      resetTabs();
       setActiveWorkspace(null);
     }
-  }, [authChecked, setActiveWorkspace, setActiveEnvironment, setCollections, setCurrentRootCollectionId, setEnvironments, setExamples, user]);
+  }, [authChecked, resetCollections, resetTabs, setActiveWorkspace, user]);
 
+  // Persist tabs to localStorage
   useEffect(() => {
     const persistentTabs = openTabs.filter((tab) => !tab.isTemporary).map(tab => {
       const { runState, docsCache, ...rest } = tab;
@@ -129,50 +187,36 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     }
   }, [activeTabId, openTabs]);
 
-  // Load all workflows (RLS scopes to user's workspace collections)
-  const loadWorkflows = useCallback(async () => {
-    try {
-      const wfs = await data.getWorkflows();
-      setWorkflows(wfs);
-    } catch { setWorkflows([]); }
-  }, []);
-
+  // Load workflows
   useEffect(() => {
     if (activeWorkspace?.id) loadWorkflows();
   }, [activeWorkspace?.id, loadWorkflows]);
 
+  // Track original request state for dirty detection
   useEffect(() => {
+    const originals = originalRequestsRef.current;
     openTabs.forEach((tab) => {
-      if (originalRequestsRef.current[tab.id]) return;
+      if (originals[tab.id]) return;
       if (tab.type === 'request' && tab.request) {
-        originalRequestsRef.current[tab.id] = JSON.stringify({
-          method: tab.request.method,
-          url: tab.request.url,
-          headers: tab.request.headers,
-          body: tab.request.body,
-          body_type: tab.request.body_type,
-          form_data: tab.request.form_data,
-          auth_type: tab.request.auth_type,
-          auth_token: tab.request.auth_token,
-          pre_script: tab.request.pre_script,
-          post_script: tab.request.post_script,
+        originals[tab.id] = JSON.stringify({
+          method: tab.request.method, url: tab.request.url, headers: tab.request.headers,
+          body: tab.request.body, body_type: tab.request.body_type, form_data: tab.request.form_data,
+          auth_type: tab.request.auth_type, auth_token: tab.request.auth_token,
+          pre_script: tab.request.pre_script, post_script: tab.request.post_script,
         });
       } else if (tab.type === 'example' && tab.example) {
-        originalRequestsRef.current[tab.id] = JSON.stringify({
-          name: tab.example.name,
-          request_data: tab.example.request_data,
-          response_data: tab.example.response_data,
+        originals[tab.id] = JSON.stringify({
+          name: tab.example.name, request_data: tab.example.request_data, response_data: tab.example.response_data,
         });
       } else if (tab.type === 'workflow' && tab.workflow) {
-        originalRequestsRef.current[tab.id] = JSON.stringify({
-          name: tab.workflow.name,
-          steps: tab.workflow.steps,
+        originals[tab.id] = JSON.stringify({
+          name: tab.workflow.name, steps: tab.workflow.steps,
         });
       }
     });
   }, [openTabs]);
 
-  // Apply UI state transferred from web via "Open in App" deep link
+  // Desktop transfer handler
   const transferHandledRef = useRef(false);
   useEffect(() => {
     if (transferHandledRef.current || collectionsLoading || !user) return;
@@ -188,17 +232,14 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     toast.action('Restore browser session?', {
       label: 'Restore',
       onClick: async () => {
-        // Restore expanded state
         if (transfer.expandedCollections.length) {
           localStorage.setItem('expandedCollections', JSON.stringify(transfer.expandedCollections));
         }
         if (transfer.expandedRequests.length) {
           localStorage.setItem('expandedRequests', JSON.stringify(transfer.expandedRequests));
         }
-        // Dispatch event so Sidebar picks up new expanded state without reload
         window.dispatchEvent(new CustomEvent('expanded-state-updated'));
 
-        // Fetch and open transferred tabs
         if (transfer.tabIds.length === 0) return;
         const newTabs = (await Promise.all(
           transfer.tabIds.map(async (id) => {
@@ -206,17 +247,11 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
               const fullRequest = await data.getRequest(id);
               const hasBody = fullRequest.body_type && fullRequest.body_type !== 'none';
               return {
-                id: `request-${id}`,
-                type: 'request',
-                entityId: id,
-                request: fullRequest,
-                dirty: false,
-                response: null,
+                id: `request-${id}`, type: 'request', entityId: id,
+                request: fullRequest, dirty: false, response: null,
                 activeDetailTab: hasBody ? 'body' : 'params',
               };
-            } catch {
-              return null;
-            }
+            } catch { return null; }
           })
         )).filter(Boolean);
 
@@ -229,56 +264,26 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     });
   }, [collectionsLoading, toast, setOpenTabs, setActiveTabId, user]);
 
+  // --- Hook composition ---
+
   const {
-    openCollectionInTab,
-    openRequestInTab,
-    openExampleInTab,
-    closeTab,
-    handleCreateCollection,
-    handleCreateSubCollection,
-    handleCreateRequest,
-    handleDeleteCollection,
-    handleDeleteRequest,
-    handleDuplicateRequest,
-    handleRenameCollection,
-    handleRenameRequest,
-    handleCreateExample,
-    handleDuplicateExample,
-    handleSaveAsExample,
-    handleRenameExample,
-    handleSelectRequest,
-    handleOpenExample,
-    handleSidebarDeleteExample,
-    handleImport,
-    handleExportCollection,
-    handleImportCurl,
-    handleTryExample,
-    openWorkflowInTab,
-    openDocsInTab,
+    openCollectionInTab, openRequestInTab, openExampleInTab, closeTab,
+    handleCreateCollection, handleCreateSubCollection, handleCreateRequest,
+    handleDeleteCollection, handleDeleteRequest, handleDuplicateRequest,
+    handleRenameCollection, handleRenameRequest,
+    handleCreateExample, handleDuplicateExample, handleSaveAsExample,
+    handleRenameExample, handleSelectRequest, handleOpenExample,
+    handleSidebarDeleteExample, handleImport, handleExportCollection,
+    handleImportCurl, handleTryExample, openWorkflowInTab, openDocsInTab,
   } = useRequestActions({
-    prompt,
-    confirm,
-    toast,
-    activeWorkspace,
-    selectedRequest,
-    openTabs,
-    activeTabId,
-    previewTabId,
-    collections,
-    setCollections,
-    setPendingRequestIds,
-    setPendingExampleIds,
-    setPendingExampleListRequestIds,
-    setPendingCollectionIds,
-    setOpenTabs,
-    setActiveTabId,
-    setPreviewTabId,
-    setConflictedTabs,
-    setDeletedTabs,
-    originalRequestsRef,
-    markAsRecentlyModified,
+    prompt, confirm, toast, activeWorkspace, selectedRequest,
+    openTabs, activeTabId, previewTabId, collections, setCollections,
+    setPendingRequestIds, setPendingExampleIds, setPendingExampleListRequestIds,
+    setPendingCollectionIds, setOpenTabs, setActiveTabId, setPreviewTabId,
+    setConflictedTabs, setDeletedTabs, originalRequestsRef, markAsRecentlyModified,
   });
 
+  // Shared link handler
   handleCollectionsLoadedRef.current = async (nextCollections, workspaceId) => {
     if (!workspaceBootstrapComplete || !pendingSharedLink || !activeWorkspace?.id || workspaceId !== activeWorkspace.id) {
       return;
@@ -306,7 +311,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
           consumePendingSharedLink();
           return;
         }
-
         await openRequestInTab(request, { replacePreview: false });
         setRevealRequestId(request.id);
         consumePendingSharedLink();
@@ -322,7 +326,6 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
           consumePendingSharedLink();
           return;
         }
-
         await openExampleInTab(example, parentRequest, { replacePreview: false });
         setRevealRequestId(parentRequest.id);
         consumePendingSharedLink();
@@ -335,191 +338,38 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   };
 
   const {
-    showConflictModal,
-    setShowConflictModal,
-    pendingSaveTabId,
-    handleOverwriteConflict,
-    handleDiscardChanges,
-    handleSaveRequest,
-    handleSaveExample,
+    showConflictModal, setShowConflictModal, pendingSaveTabId,
+    handleOverwriteConflict, handleDiscardChanges, handleSaveRequest, handleSaveExample,
   } = useConflictResolution({
-    toast,
-    openTabs,
-    activeTabId,
-    conflictedTabs,
-    setConflictedTabs,
-    deletedTabs,
-    setDeletedTabs,
-    setPendingRequestIds,
-    setPendingExampleIds,
-    setOpenTabs,
-    setActiveTabId,
-    originalRequestsRef,
-    markAsRecentlyModified,
-    openRequestInTab,
-    openExampleInTab,
+    toast, openTabs, activeTabId, conflictedTabs,
+    setConflictedTabs, deletedTabs, setDeletedTabs,
+    setPendingRequestIds, setPendingExampleIds,
+    setOpenTabs, setActiveTabId, originalRequestsRef,
+    markAsRecentlyModified, openRequestInTab, openExampleInTab,
   });
 
   const {
-    loading,
-    handleSendRequest,
-    cancelRequest,
+    loading, handleSendRequest, cancelRequest,
   } = useResponseExecution({
-    toast,
-    activeTabId,
-    activeEnvironment,
+    toast, activeTabId, activeEnvironment,
     activeWorkspaceId: activeWorkspace?.id,
-    collections,
-    loadEnvironments,
-    setActiveEnvironment,
-    setOpenTabs,
+    collections, loadEnvironments, setActiveEnvironment, setOpenTabs,
   });
 
-  const updateTabRequest = useCallback((updates) => {
-    if (!activeTabId) return;
+  // Read store operations
+  const updateTabRequest = useWorkbenchStore((s) => s.updateTabRequest);
+  const updateTabExample = useWorkbenchStore((s) => s.updateTabExample);
+  const initCollectionTab = useWorkbenchStore((s) => s.initCollectionTab);
+  const updateTabCollection = useWorkbenchStore((s) => s.updateTabCollection);
+  const updateTabWorkflow = useWorkbenchStore((s) => s.updateTabWorkflow);
+  const updateActiveDetailTab = useWorkbenchStore((s) => s.updateActiveDetailTab);
+  const handleSaveCollection = useWorkbenchStore((s) => s.handleSaveCollection);
+  const handleSaveWorkflow = useWorkbenchStore((s) => s.handleSaveWorkflow);
+  const wasRecentlyModified = useWorkbenchStore((s) => s.wasRecentlyModified);
+  const revealRequestId = useWorkbenchStore((s) => s.revealRequestId);
+  const revealCollectionId = useWorkbenchStore((s) => s.revealCollectionId);
 
-    setOpenTabs((prev) => prev.map((tab) => {
-      if (tab.id !== activeTabId) return tab;
-
-      const request = { ...tab.request, ...updates };
-      const current = JSON.stringify({
-        method: request.method,
-        url: request.url,
-        headers: request.headers,
-        body: request.body,
-        body_type: request.body_type,
-        form_data: request.form_data,
-        auth_type: request.auth_type,
-        auth_token: request.auth_token,
-        pre_script: request.pre_script,
-        post_script: request.post_script,
-      });
-      const dirty = current !== originalRequestsRef.current[tab.id];
-
-      if (dirty && previewTabId === tab.id) {
-        setPreviewTabId(null);
-      }
-
-      return { ...tab, request, dirty };
-    }));
-  }, [activeTabId, previewTabId]);
-
-  const updateTabExample = useCallback((updates) => {
-    if (!activeTabId) return;
-
-    setOpenTabs((prev) => prev.map((tab) => {
-      if (tab.id !== activeTabId) return tab;
-
-      const example = { ...tab.example, ...updates };
-      const current = JSON.stringify({
-        name: example.name,
-        request_data: example.request_data,
-        response_data: example.response_data,
-      });
-      const dirty = current !== originalRequestsRef.current[tab.id];
-
-      if (dirty && previewTabId === tab.id) {
-        setPreviewTabId(null);
-      }
-
-      return { ...tab, example, dirty };
-    }));
-  }, [activeTabId, previewTabId]);
-
-  const initCollectionTab = useCallback((tabId, collectionData) => {
-    originalRequestsRef.current[tabId] = JSON.stringify({
-      auth_type: collectionData.auth_type,
-      auth_token: collectionData.auth_token,
-      pre_script: collectionData.pre_script,
-      post_script: collectionData.post_script,
-    });
-    setOpenTabs((prev) => prev.map((tab) =>
-      tab.id === tabId ? { ...tab, collection: { ...tab.collection, ...collectionData } } : tab
-    ));
-  }, []);
-
-  const updateTabCollection = useCallback((updates) => {
-    if (!activeTabId) return;
-    setOpenTabs((prev) => prev.map((tab) => {
-      if (tab.id !== activeTabId || tab.type !== 'collection') return tab;
-      const collection = { ...tab.collection, ...updates };
-      const current = JSON.stringify({
-        auth_type: collection.auth_type,
-        auth_token: collection.auth_token,
-        pre_script: collection.pre_script,
-        post_script: collection.post_script,
-      });
-      const dirty = current !== originalRequestsRef.current[tab.id];
-
-      if (dirty && previewTabId === tab.id) {
-        setPreviewTabId(null);
-      }
-
-      return { ...tab, collection, dirty };
-    }));
-  }, [activeTabId, previewTabId]);
-
-  const updateTabWorkflow = useCallback((updates) => {
-    if (!activeTabId) return;
-    setOpenTabs(prev => prev.map(tab => {
-      if (tab.id !== activeTabId || tab.type !== 'workflow') return tab;
-      const workflow = { ...tab.workflow, ...updates };
-      const current = JSON.stringify({ name: workflow.name, steps: workflow.steps });
-      const dirty = current !== originalRequestsRef.current[tab.id];
-      if (dirty && previewTabId === tab.id) setPreviewTabId(null);
-      return { ...tab, workflow, dirty };
-    }));
-  }, [activeTabId, previewTabId]);
-
-  const handleSaveWorkflow = useCallback(async () => {
-    if (!activeTabId) return;
-    const tab = openTabs.find(t => t.id === activeTabId);
-    if (!tab || tab.type !== 'workflow') return;
-    const wf = tab.workflow;
-    try {
-      await data.updateWorkflow(wf.id, { name: wf.name, steps: wf.steps });
-      originalRequestsRef.current[activeTabId] = JSON.stringify({ name: wf.name, steps: wf.steps });
-      setOpenTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, dirty: false } : t));
-      loadWorkflows();
-      return { success: true };
-    } catch (err) { throw err; }
-  }, [activeTabId, openTabs, activeWorkspace?.id, loadWorkflows]);
-
-  const handleSaveCollection = useCallback(async () => {
-    if (!activeTabId) return;
-    const tab = openTabs.find(t => t.id === activeTabId);
-    if (!tab || tab.type !== 'collection') return;
-
-    const col = tab.collection;
-    try {
-      await data.updateCollection(col.id, {
-        auth_type: col.auth_type || 'none',
-        auth_token: col.auth_token || '',
-        pre_script: col.pre_script || '',
-        post_script: col.post_script || '',
-      });
-      originalRequestsRef.current[activeTabId] = JSON.stringify({
-        auth_type: col.auth_type || 'none',
-        auth_token: col.auth_token || '',
-        pre_script: col.pre_script || '',
-        post_script: col.post_script || '',
-      });
-      setOpenTabs(prev => prev.map(t =>
-        t.id === activeTabId ? { ...t, dirty: false } : t
-      ));
-      return { success: true };
-    } catch (err) {
-      throw err;
-    }
-  }, [activeTabId, openTabs]);
-
-  const updateActiveDetailTab = useCallback((tabName) => {
-    if (!activeTabId) return;
-    setOpenTabs((prev) => prev.map((tab) => (
-      tab.id === activeTabId ? { ...tab, activeDetailTab: tabName } : tab
-    )));
-  }, [activeTabId]);
-
+  // --- Ctrl+S handler ---
   const saveStateRef = useRef({ activeTab, selectedRequest, selectedExample });
   useEffect(() => {
     saveStateRef.current = { activeTab, selectedRequest, selectedExample };
@@ -539,31 +389,24 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     const handleKeyDown = (event) => {
       if (!(event.ctrlKey || event.metaKey) || event.key !== 's') return;
       event.preventDefault();
-
-      // Readers cannot save
       if (!canEditRef.current) return;
 
       const currentSaveState = saveStateRef.current;
       const currentSaveFunctions = saveFunctionsRef.current;
 
-      // Temporary tabs can always be saved (triggers folder picker)
       if (currentSaveState.activeTab?.isTemporary && currentSaveFunctions.handleSaveTempRequest) {
         currentSaveFunctions.handleSaveTempRequest(currentSaveState.activeTab);
         return;
       }
-
       if (!currentSaveState.activeTab?.dirty) return;
-
       if (currentSaveState.activeTab.type === 'collection' && currentSaveFunctions.handleSaveCollection) {
         currentSaveFunctions.handleSaveCollection();
         return;
       }
-
       if (currentSaveState.activeTab.type === 'workflow' && currentSaveFunctions.handleSaveWorkflow) {
         currentSaveFunctions.handleSaveWorkflow();
         return;
       }
-
       if (currentSaveState.activeTab.type === 'example' && currentSaveState.selectedExample && currentSaveFunctions.handleSaveExample) {
         currentSaveFunctions.handleSaveExample({
           name: currentSaveState.selectedExample.name,
@@ -572,107 +415,45 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
         });
         return;
       }
-
       if (currentSaveState.selectedRequest && !currentSaveState.activeTab?.isTemporary && currentSaveFunctions.handleSaveRequest) {
         currentSaveFunctions.handleSaveRequest({
-          method: currentSaveState.selectedRequest.method,
-          url: currentSaveState.selectedRequest.url,
-          headers: currentSaveState.selectedRequest.headers,
-          body: currentSaveState.selectedRequest.body,
-          body_type: currentSaveState.selectedRequest.body_type,
-          auth_type: currentSaveState.selectedRequest.auth_type,
-          auth_token: currentSaveState.selectedRequest.auth_token,
-          params: currentSaveState.selectedRequest.params,
-          pre_script: currentSaveState.selectedRequest.pre_script,
-          post_script: currentSaveState.selectedRequest.post_script,
+          method: currentSaveState.selectedRequest.method, url: currentSaveState.selectedRequest.url,
+          headers: currentSaveState.selectedRequest.headers, body: currentSaveState.selectedRequest.body,
+          body_type: currentSaveState.selectedRequest.body_type, auth_type: currentSaveState.selectedRequest.auth_type,
+          auth_token: currentSaveState.selectedRequest.auth_token, params: currentSaveState.selectedRequest.params,
+          pre_script: currentSaveState.selectedRequest.pre_script, post_script: currentSaveState.selectedRequest.post_script,
         });
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const value = {
-    openTabs,
-    setOpenTabs,
-    activeTabId,
-    setActiveTabId,
-    conflictedTabs,
-    setConflictedTabs,
-    deletedTabs,
-    setDeletedTabs,
-    previewTabId,
-    pendingRequestIds,
-    pendingExampleIds,
-    pendingExampleListRequestIds,
-    pendingCollectionIds,
-    revealRequestId,
-    setRevealRequestId,
-    revealCollectionId,
-    setRevealCollectionId,
-    activeTab,
-    selectedRequest,
-    selectedExample,
-    response,
-    collections,
-    setCollections,
-    collectionsLoading,
-    examples,
-    setExamples,
-    environments,
-    activeEnvironment,
-    setActiveEnvironment,
-    loadCollections,
-    loadEnvironments,
-    loading,
-    openCollectionInTab,
-    openRequestInTab,
-    openExampleInTab,
-    saveFunctionsRef,
-    closeTab,
-    handleCreateCollection,
-    handleCreateSubCollection,
-    handleCreateRequest,
-    handleDeleteCollection,
-    handleDeleteRequest,
-    handleDuplicateRequest,
-    handleRenameCollection,
-    handleRenameRequest,
-    handleCreateExample,
-    handleDuplicateExample,
-    handleSaveAsExample,
-    handleRenameExample,
-    handleSelectRequest,
-    handleOpenExample,
-    handleSidebarDeleteExample,
-    handleImport,
-    handleExportCollection,
-    handleImportCurl,
-    handleTryExample,
-    showConflictModal,
-    setShowConflictModal,
-    pendingSaveTabId,
-    handleOverwriteConflict,
-    handleDiscardChanges,
-    handleSaveRequest,
-    handleSaveExample,
-    handleSendRequest,
-    cancelRequest,
-    updateTabRequest,
-    updateTabExample,
-    initCollectionTab,
-    updateTabCollection,
-    handleSaveCollection,
-    updateActiveDetailTab,
-    wasRecentlyModified,
-    workflows,
-    setWorkflows,
-    loadWorkflows,
-    openWorkflowInTab,
-    openDocsInTab,
-    updateTabWorkflow,
-    handleSaveWorkflow,
+    openTabs, setOpenTabs, activeTabId, setActiveTabId,
+    conflictedTabs, setConflictedTabs, deletedTabs, setDeletedTabs,
+    previewTabId, pendingRequestIds, pendingExampleIds,
+    pendingExampleListRequestIds, pendingCollectionIds,
+    revealRequestId, setRevealRequestId, revealCollectionId, setRevealCollectionId,
+    activeTab, selectedRequest, selectedExample, response,
+    collections, setCollections, collectionsLoading,
+    examples, setExamples, environments, activeEnvironment, setActiveEnvironment,
+    loadCollections, loadEnvironments, loading,
+    openCollectionInTab, openRequestInTab, openExampleInTab, saveFunctionsRef, closeTab,
+    handleCreateCollection, handleCreateSubCollection, handleCreateRequest,
+    handleDeleteCollection, handleDeleteRequest, handleDuplicateRequest,
+    handleRenameCollection, handleRenameRequest,
+    handleCreateExample, handleDuplicateExample, handleSaveAsExample,
+    handleRenameExample, handleSelectRequest, handleOpenExample,
+    handleSidebarDeleteExample, handleImport, handleExportCollection,
+    handleImportCurl, handleTryExample,
+    showConflictModal, setShowConflictModal, pendingSaveTabId,
+    handleOverwriteConflict, handleDiscardChanges,
+    handleSaveRequest, handleSaveExample, handleSendRequest, cancelRequest,
+    updateTabRequest, updateTabExample, initCollectionTab, updateTabCollection,
+    handleSaveCollection, updateActiveDetailTab, wasRecentlyModified,
+    workflows, setWorkflows, loadWorkflows, openWorkflowInTab, openDocsInTab,
+    updateTabWorkflow, handleSaveWorkflow,
   };
 
   return <WorkbenchContext.Provider value={value}>{children}</WorkbenchContext.Provider>;

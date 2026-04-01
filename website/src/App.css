@@ -354,6 +354,12 @@ a:hover { color: var(--accent-hover); }
   transition: all 0.2s ease;
 }
 
+.btn-primary,
+.btn-primary:visited,
+.btn-primary:hover {
+  color: #fff;
+}
+
 .btn-primary:hover {
   background: var(--accent-hover);
   transform: translateY(-1px);
