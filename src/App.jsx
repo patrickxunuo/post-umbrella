@@ -205,7 +205,7 @@ function AppContent() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [userConfig, setUserConfig] = useState({});
   const toast = useToast();
-  const { updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, isTauri } = useVersionCheck();
+  const { updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, checkForUpdate, checking, isTauri } = useVersionCheck();
 
   const {
     theme,
@@ -1231,6 +1231,7 @@ function AppContent() {
         showAbout={showAbout} setShowAbout={setShowAbout}
         updateAvailable={updateAvailable} tauriUpdate={tauriUpdate}
         downloading={downloading} downloadProgress={downloadProgress} installUpdate={installUpdate}
+        checkForUpdate={checkForUpdate} checking={checking}
         showSettings={showSettings} setShowSettings={setShowSettings}
         handleThemeChange={handleThemeChange} toast={toast}
         showImportCurl={showImportCurl} setShowImportCurl={setShowImportCurl} handleImportCurl={handleImportCurl}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, RefreshCw } from 'lucide-react';
 
-export function AboutModal({ onClose, updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate }) {
+export function AboutModal({ onClose, updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, checkForUpdate, checking }) {
   const [appVersion, setAppVersion] = useState(null);
 
   useEffect(() => {
@@ -40,7 +40,14 @@ export function AboutModal({ onClose, updateAvailable, tauriUpdate, downloading,
                 </button>
               )
             ) : (
-              <span className="about-up-to-date">Up to date</span>
+              <span className="about-up-to-date">
+                Up to date
+                {checkForUpdate && (
+                  <button className="btn-icon about-refresh" onClick={checkForUpdate} disabled={checking}>
+                    <RefreshCw size={13} className={checking ? 'spinning' : ''} />
+                  </button>
+                )}
+              </span>
             )}
           </div>
         </div>
