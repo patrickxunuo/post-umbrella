@@ -3,8 +3,11 @@ import { ChevronDown, ChevronRight, Trash2, FileText, MoreHorizontal, Edit2, Cop
 import * as data from '../../data/index.js';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
-
+import { useLocalStorageSet } from '../../hooks/useLocalStorage';
+import { useInlineRename } from '../../hooks/useInlineRename';
+import { useDragPreview } from '../../hooks/useDragPreview';
 import { METHOD_COLORS } from '../../constants/methodColors';
+import { RequestItem } from './RequestItem';
 
 export function Sidebar({
   collections,
@@ -46,21 +49,16 @@ export function Sidebar({
   onRenameWorkflow,
   onDuplicateWorkflow,
   onRunWorkflow,
+  onViewDocs,
 }) {
   const confirm = useConfirm();
   const toast = useToast();
-  const [expandedCollections, setExpandedCollections] = useState(() => {
-    const saved = localStorage.getItem('expandedCollections');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
-  const [expandedRequests, setExpandedRequests] = useState(() => {
-    const saved = localStorage.getItem('expandedRequests');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
-  });
+  const [expandedCollections, setExpandedCollections] = useLocalStorageSet('expandedCollections');
+  const [expandedRequests, setExpandedRequests] = useLocalStorageSet('expandedRequests');
   const [requestExamples, setRequestExamples] = useState({});
-  const [loadingExamples, setLoadingExamples] = useState({}); // Track which requests are loading examples
-  const [editingId, setEditingId] = useState(null);
-  const [editingName, setEditingName] = useState('');
+  const [loadingExamples, setLoadingExamples] = useState({});
+  const { editingId, editingName, setEditingName, startEditing, finishEditing } = useInlineRename();
+  const setDragPreview = useDragPreview();
   const [showWorkflowsOnly, setShowWorkflowsOnly] = useState(false);
   const [menuOpen, setMenuOpen] = useState(null);
   const [collectionMenuOpen, setCollectionMenuOpen] = useState(null);
@@ -102,15 +100,6 @@ export function Sidebar({
       }
     }
   }, [menuOpen, collectionMenuOpen, exampleMenuOpen]);
-
-  // Save expanded state to localStorage
-  useEffect(() => {
-    localStorage.setItem('expandedCollections', JSON.stringify([...expandedCollections]));
-  }, [expandedCollections]);
-
-  useEffect(() => {
-    localStorage.setItem('expandedRequests', JSON.stringify([...expandedRequests]));
-  }, [expandedRequests]);
 
   // Listen for expanded state updates from "Open in App" transfer
   useEffect(() => {
@@ -313,7 +302,7 @@ export function Sidebar({
     }
   };
 
-  const handleRename = (type, id) => {
+  const handleRenameItem = (type, id) => {
     if (editingName.trim()) {
       if (type === 'collection') {
         onRenameCollection(id, editingName);
@@ -321,24 +310,14 @@ export function Sidebar({
         onRenameRequest(id, editingName);
       }
     }
-    setEditingId(null);
-    setEditingName('');
+    finishEditing();
   };
 
   const handleWorkflowRename = (wfId) => {
     if (editingName.trim()) {
       onRenameWorkflow?.(wfId, editingName);
     }
-    setEditingId(null);
-    setEditingName('');
-  };
-
-  const getStatusClass = (status) => {
-    if (status >= 200 && status < 300) return 'success';
-    if (status >= 300 && status < 400) return 'redirect';
-    if (status >= 400 && status < 500) return 'client-error';
-    if (status >= 500) return 'server-error';
-    return 'error';
+    finishEditing();
   };
 
   // Close menu when clicking outside
@@ -398,11 +377,13 @@ export function Sidebar({
         setExpandedCollections(prev => new Set([...prev, collection.id]));
         break;
       case 'rename':
-        setEditingId(collection.id);
-        setEditingName(collection.name);
+        startEditing(collection.id, collection.name);
         break;
       case 'export':
         onExportCollection?.(collection);
+        break;
+      case 'view-docs':
+        onViewDocs?.(collection);
         break;
       case 'copy-link':
         onCopyLink?.(collection.parent_id ? 'folder' : 'collection', collection.id);
@@ -428,8 +409,7 @@ export function Sidebar({
 
     switch (action) {
       case 'rename':
-        setEditingId(request.id);
-        setEditingName(request.name);
+        startEditing(request.id, request.name);
         break;
       case 'duplicate':
         onDuplicateRequest?.(request);
@@ -470,8 +450,7 @@ export function Sidebar({
 
     switch (action) {
       case 'rename':
-        setEditingId(`example-${example.id}`);
-        setEditingName(example.name);
+        startEditing(`example-${example.id}`, example.name);
         break;
       case 'duplicate':
         {
@@ -518,8 +497,7 @@ export function Sidebar({
         }));
       }
     }
-    setEditingId(null);
-    setEditingName('');
+    finishEditing();
   };
 
   // Drag and drop handlers
@@ -528,6 +506,7 @@ export function Sidebar({
     e.dataTransfer.effectAllowed = 'copyMove';
     e.dataTransfer.setData('text/plain', request.id);
     e.dataTransfer.setData('text/x-request-id', request.id);
+    setDragPreview(e, `${request.method} ${request.name}`, METHOD_COLORS[request.method]);
   };
 
   const handleDragEnd = () => {
@@ -749,6 +728,7 @@ export function Sidebar({
     setDraggedFolder(collection);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', collection.id);
+    setDragPreview(e, `📁 ${collection.name}`);
   };
 
   const handleFolderDragEnd = () => {
@@ -764,6 +744,7 @@ export function Sidebar({
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', example.id);
     e.stopPropagation();
+    setDragPreview(e, `📄 ${example.name}`);
   };
 
   const handleExampleDragEnd = () => {
@@ -985,10 +966,10 @@ export function Sidebar({
               className="rename-input"
               value={editingName}
               onChange={(e) => setEditingName(e.target.value)}
-              onBlur={() => handleRename('collection', collection.id)}
+              onBlur={() => handleRenameItem('collection', collection.id)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleRename('collection', collection.id);
-                if (e.key === 'Escape') setEditingId(null);
+                if (e.key === 'Enter') handleRenameItem('collection', collection.id);
+                if (e.key === 'Escape') finishEditing();
               }}
               onClick={(e) => e.stopPropagation()}
               autoFocus
@@ -1047,13 +1028,22 @@ export function Sidebar({
                   </>
                 )}
                 {!collection.parent_id && (
-                  <button
-                    className="request-menu-item"
-                    onClick={(e) => handleCollectionMenuAction('export', collection, e)}
-                  >
-                    <Download size={14} />
-                    Export
-                  </button>
+                  <>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('export', collection, e)}
+                    >
+                      <Download size={14} />
+                      Export
+                    </button>
+                    <button
+                      className="request-menu-item"
+                      onClick={(e) => handleCollectionMenuAction('view-docs', collection, e)}
+                    >
+                      <FileText size={14} />
+                      View Docs
+                    </button>
+                  </>
                 )}
                 <button
                   className="request-menu-item"
@@ -1087,236 +1077,54 @@ export function Sidebar({
             {/* Render requests (skip in workflows-only mode) */}
             {!showWorkflowsOnly && filteredReqs?.length > 0 ? (
               <div className="collection-requests" style={{ paddingLeft: `${20 + depth * 16}px` }}>
-                {filteredReqs.map((request) => {
-                  const isSelected = selectedRequest?.id === request.id;
-                  const isRequestExpanded = expandedRequests.has(request.id);
-                  const examples = requestExamples[request.id] || [];
-                  const hasExamples = request.example_count > 0 || examples.length > 0;
-                  const requestPending = pendingRequestIds.has(request.id) || pendingExampleListRequestIds.has(request.id);
-
-                  return (
-                    <div key={request.id} className="request-wrapper">
-                      <div
-                        className={`request-item ${isSelected ? 'selected' : ''} ${draggedRequest?.id === request.id ? 'dragging' : ''} ${dragOverRequest === request.id ? 'drag-over' : ''}`}
-                        data-request-id={request.id}
-                        onClick={() => onSelectRequest(request)}
-                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleMenu(request.id, e); }}
-                        draggable={canEdit}
-                        onDragStart={canEdit ? (e) => handleDragStart(e, request, collection.id) : undefined}
-                        onDragEnd={canEdit ? handleDragEnd : undefined}
-                        onDragOver={canEdit ? (e) => handleDragOver(e, request, collection.id) : undefined}
-                        onDragLeave={canEdit ? handleDragLeave : undefined}
-                        onDrop={canEdit ? (e) => handleDrop(e, request, collection.id, collection.requests) : undefined}
-                      >
-                        {hasExamples ? (
-                          <span
-                            className="request-expand"
-                            onClick={(e) => toggleRequest(request.id, e)}
-                          >
-                            {isRequestExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          </span>
-                        ) : (
-                          <span className="request-expand-placeholder" />
-                        )}
-                        <span
-                          className="request-method"
-                          style={{ color: METHOD_COLORS[request.method] || '#999' }}
-                        >
-                          {request.method}
-                        </span>
-                        {editingId === request.id ? (
-                          <input
-                            className="rename-input"
-                            value={editingName}
-                            onChange={(e) => setEditingName(e.target.value)}
-                            onBlur={() => handleRename('request', request.id)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleRename('request', request.id);
-                              if (e.key === 'Escape') setEditingId(null);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        ) : (
-                          <span className="request-name">{request.name}</span>
-                        )}
-                        <div className="request-actions">
-                          {requestPending ? (
-                            <span className="sidebar-inline-spinner" title="Updating request">
-                              <span className="loading-spinner small" />
-                            </span>
-                          ) : (
-                            <button
-                              onClick={(e) => toggleMenu(request.id, e)}
-                              className="btn-icon small btn-menu"
-                              title="More actions"
-                            >
-                              <MoreHorizontal size={14} />
-                            </button>
-                          )}
-                          {menuOpen === request.id && (
-                            <div className="request-menu" ref={menuRef}>
-                              {canEdit && (
-                                <>
-                                  <button
-                                    className="request-menu-item"
-                                    onClick={(e) => handleMenuAction('add-example', request, e)}
-                                  >
-                                    <Plus size={14} />
-                                    Add Example
-                                  </button>
-                                  <button
-                                    className="request-menu-item"
-                                    onClick={(e) => handleMenuAction('rename', request, e)}
-                                  >
-                                    <Edit2 size={14} />
-                                    Rename
-                                  </button>
-                                  <button
-                                    className="request-menu-item"
-                                    onClick={(e) => handleMenuAction('duplicate', request, e)}
-                                  >
-                                    <Copy size={14} />
-                                    Duplicate
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                className="request-menu-item"
-                                onClick={(e) => handleMenuAction('copy-link', request, e)}
-                              >
-                                <Link size={14} />
-                                Copy Link
-                              </button>
-                              {canEdit && (
-                                <>
-                                  <div className="request-menu-divider" />
-                                  <button
-                                    className="request-menu-item danger"
-                                    onClick={(e) => handleMenuAction('delete', request, e)}
-                                  >
-                                    <Trash2 size={14} />
-                                    Delete
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Examples as children */}
-                      {isRequestExpanded && loadingExamples[request.id] && (
-                        <div className="examples-list-sidebar examples-loading">
-                          <div className="loading-spinner small" />
-                          <span className="loading-text">Loading...</span>
-                        </div>
-                      )}
-                      {isRequestExpanded && pendingExampleListRequestIds.has(request.id) && !loadingExamples[request.id] && (
-                        <div className="examples-list-sidebar examples-loading">
-                          <div className="loading-spinner small" />
-                          <span className="loading-text">Updating...</span>
-                        </div>
-                      )}
-                      {isRequestExpanded && !loadingExamples[request.id] && examples.length > 0 && (
-                        <div className="examples-list-sidebar">
-                          {examples.map((example) => (
-                            <div
-                              key={example.id}
-                              className={`example-item-sidebar ${selectedExample?.id === example.id ? 'selected' : ''} ${draggedExample?.id === example.id ? 'dragging' : ''} ${dragOverExample === example.id ? 'drag-over' : ''}`}
-                              data-example-id={example.id}
-                              onClick={() => onOpenExample?.(example, request)}
-                              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); toggleExampleMenu(example.id, e); }}
-                              draggable={canEdit}
-                              onDragStart={canEdit ? (e) => handleExampleDragStart(e, example, request.id) : undefined}
-                              onDragEnd={canEdit ? handleExampleDragEnd : undefined}
-                              onDragOver={canEdit ? (e) => handleExampleDragOver(e, example) : undefined}
-                              onDragLeave={canEdit ? handleExampleDragLeave : undefined}
-                              onDrop={canEdit ? (e) => handleExampleDrop(e, example, request.id, examples) : undefined}
-                            >
-                              <FileText size={12} className="example-icon" />
-                              {editingId === `example-${example.id}` ? (
-                                <input
-                                  className="rename-input example-rename"
-                                  value={editingName}
-                                  onChange={(e) => setEditingName(e.target.value)}
-                                  onBlur={() => handleExampleRename(example.id)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleExampleRename(example.id);
-                                    if (e.key === 'Escape') setEditingId(null);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  autoFocus
-                                />
-                              ) : (
-                                <span className="example-name">{example.name}</span>
-                              )}
-                              <span className={`example-status ${getStatusClass(example.response_data?.status)}`}>
-                                {example.response_data?.status || '---'}
-                              </span>
-                              <div className="example-actions">
-                                {pendingExampleIds.has(example.id) ? (
-                                  <span className="sidebar-inline-spinner" title="Updating example">
-                                    <span className="loading-spinner small" />
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={(e) => toggleExampleMenu(example.id, e)}
-                                    className="btn-icon small btn-menu"
-                                    title="More actions"
-                                  >
-                                    <MoreHorizontal size={12} />
-                                  </button>
-                                )}
-                                {exampleMenuOpen === example.id && (
-                                  <div className="request-menu example-menu" ref={exampleMenuRef}>
-                                    {canEdit && (
-                                      <>
-                                        <button
-                                          className="request-menu-item"
-                                          onClick={(e) => handleExampleMenuAction('rename', example, request, e)}
-                                        >
-                                          <Edit2 size={14} />
-                                          Rename
-                                        </button>
-                                        <button
-                                          className="request-menu-item"
-                                          onClick={(e) => handleExampleMenuAction('duplicate', example, request, e)}
-                                        >
-                                          <Copy size={14} />
-                                          Duplicate
-                                        </button>
-                                      </>
-                                    )}
-                                    <button
-                                      className="request-menu-item"
-                                      onClick={(e) => handleExampleMenuAction('copy-link', example, request, e)}
-                                    >
-                                      <Link size={14} />
-                                      Copy Link
-                                    </button>
-                                    {canEdit && (
-                                      <>
-                                        <div className="request-menu-divider" />
-                                        <button
-                                          className="request-menu-item danger"
-                                          onClick={(e) => handleExampleMenuAction('delete', example, request, e)}
-                                        >
-                                          <Trash2 size={14} />
-                                          Delete
-                                        </button>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {filteredReqs.map((request) => (
+                  <RequestItem
+                    key={request.id}
+                    request={request}
+                    collection={collection}
+                    isSelected={selectedRequest?.id === request.id}
+                    canEdit={canEdit}
+                    editingId={editingId}
+                    editingName={editingName}
+                    setEditingName={setEditingName}
+                    onRename={handleRenameItem}
+                    finishEditing={finishEditing}
+                    isExpanded={expandedRequests.has(request.id)}
+                    hasExamples={request.example_count > 0 || (requestExamples[request.id] || []).length > 0}
+                    examples={requestExamples[request.id] || []}
+                    loadingExamples={loadingExamples[request.id]}
+                    pendingExampleListRequestIds={pendingExampleListRequestIds}
+                    onToggleExpand={(e) => toggleRequest(request.id, e)}
+                    selectedExample={selectedExample}
+                    onOpenExample={onOpenExample}
+                    isDragging={draggedRequest?.id === request.id}
+                    isDragOver={dragOverRequest === request.id}
+                    onDragStart={(e) => handleDragStart(e, request, collection.id)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => handleDragOver(e, request, collection.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, request, collection.id, collection.requests)}
+                    menuOpen={menuOpen}
+                    menuRef={menuRef}
+                    onToggleMenu={toggleMenu}
+                    onMenuAction={handleMenuAction}
+                    exampleMenuOpen={exampleMenuOpen}
+                    exampleMenuRef={exampleMenuRef}
+                    onToggleExampleMenu={toggleExampleMenu}
+                    onExampleMenuAction={handleExampleMenuAction}
+                    onExampleRename={handleExampleRename}
+                    draggedExample={draggedExample}
+                    dragOverExample={dragOverExample}
+                    onExampleDragStart={handleExampleDragStart}
+                    onExampleDragEnd={handleExampleDragEnd}
+                    onExampleDragOver={handleExampleDragOver}
+                    onExampleDragLeave={handleExampleDragLeave}
+                    onExampleDrop={handleExampleDrop}
+                    requestPending={pendingRequestIds.has(request.id) || pendingExampleListRequestIds.has(request.id)}
+                    pendingExampleIds={pendingExampleIds}
+                    onClick={() => onSelectRequest(request)}
+                  />
+                ))}
               </div>
             ) : (
               !showWorkflowsOnly && childCollections.length === 0 && !collection.parent_id && collectionWorkflows.length === 0 && (
@@ -1344,7 +1152,7 @@ export function Sidebar({
                         onBlur={() => handleWorkflowRename(wf.id)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleWorkflowRename(wf.id);
-                          if (e.key === 'Escape') setEditingId(null);
+                          if (e.key === 'Escape') finishEditing();
                         }}
                         onClick={(e) => e.stopPropagation()}
                         autoFocus
@@ -1361,7 +1169,7 @@ export function Sidebar({
                           <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); onRunWorkflow?.(wf); }} title="Run">
                             <Play size={11} />
                           </button>
-                          <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); setEditingId(`workflow-${wf.id}`); setEditingName(wf.name); }} title="Rename">
+                          <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); startEditing(`workflow-${wf.id}`, wf.name); }} title="Rename">
                             <Edit2 size={11} />
                           </button>
                           <button className="btn-icon small" onClick={(e) => { e.stopPropagation(); onDuplicateWorkflow?.(wf); }} title="Duplicate">

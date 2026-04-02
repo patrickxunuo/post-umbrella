@@ -1,17 +1,24 @@
-import { createContext, useContext } from 'react';
-import { useAuthSession } from '../hooks/useAuthSession';
+import { useEffect } from 'react';
+import useAuthStore from '../stores/authStore';
 
-const AuthContext = createContext(null);
+// Initialize auth on first import — runs once
+let initialized = false;
 
 export function AuthProvider({ children }) {
-  const value = useAuthSession();
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  useEffect(() => {
+    if (!initialized) {
+      initialized = true;
+      useAuthStore.getState().initialize();
+    }
+  }, []);
+
+  return children;
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const user = useAuthStore((s) => s.user);
+  const authChecked = useAuthStore((s) => s.authChecked);
+  const handleLogin = useAuthStore((s) => s.handleLogin);
+  const handleLogout = useAuthStore((s) => s.handleLogout);
+  return { user, authChecked, handleLogin, handleLogout };
 }

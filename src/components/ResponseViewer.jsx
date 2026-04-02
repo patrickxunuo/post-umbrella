@@ -1,7 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Monitor, Download, Terminal } from 'lucide-react';
 import JsonView from '@uiw/react-json-view';
 import { JsonEditor } from './JsonEditor';
+
+const isHtmlResponse = (headers) => {
+  if (!Array.isArray(headers)) return false;
+  return headers.some(
+    (h) => h.key?.toLowerCase() === 'content-type' && h.value?.includes('text/html')
+  );
+};
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
 
@@ -29,9 +36,15 @@ const isLocalOrPrivateUrl = (url) => {
 
 export function ResponseViewer({ response, loading, isExample, example, onExampleChange, requestUrl }) {
   const [activeTab, setActiveTab] = useState('body');
+  const [htmlViewMode, setHtmlViewMode] = useState('preview');
 
   // For examples, use example.response_data
   const displayResponse = isExample ? example?.response_data : response;
+
+  // Reset htmlViewMode to 'preview' when displayResponse changes
+  useEffect(() => {
+    setHtmlViewMode('preview');
+  }, [displayResponse]);
 
   // Parse JSON body - must be before any early returns!
   const jsonBody = useMemo(() => {
@@ -48,6 +61,10 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   }, [displayResponse?.body]);
 
   const isJsonBody = jsonBody !== null;
+
+  const isHtmlBody = useMemo(() => {
+    return !isExample && !isJsonBody && isHtmlResponse(displayResponse?.headers);
+  }, [isExample, isJsonBody, displayResponse?.headers]);
 
   if (loading) {
     return (
@@ -225,6 +242,36 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               showBeautify={true}
               className="response-json-editor"
             />
+          ) : isHtmlBody ? (
+            <>
+              <div className="option-selector html-view-toggle" data-testid="html-view-toggle">
+                <button
+                  className={htmlViewMode === 'preview' ? 'active' : ''}
+                  onClick={() => setHtmlViewMode('preview')}
+                  data-testid="html-preview-btn"
+                >
+                  Preview
+                </button>
+                <button
+                  className={htmlViewMode === 'raw' ? 'active' : ''}
+                  onClick={() => setHtmlViewMode('raw')}
+                  data-testid="html-raw-btn"
+                >
+                  Raw
+                </button>
+              </div>
+              {htmlViewMode === 'preview' ? (
+                <iframe
+                  className="html-preview-frame"
+                  srcDoc={displayResponse?.body}
+                  sandbox=""
+                  data-testid="html-preview-frame"
+                  title="HTML Preview"
+                />
+              ) : (
+                <pre className="response-body" data-testid="html-raw-body">{displayResponse?.body}</pre>
+              )}
+            </>
           ) : isJsonBody ? (
             <div className="json-view-wrapper">
               <JsonView
@@ -252,8 +299,6 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                   '--w-rjv-copied-success-color': 'var(--accent-success)',
                   fontSize: '12px',
                   padding: 'var(--space-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-primary)',
                 }}
               />
             </div>

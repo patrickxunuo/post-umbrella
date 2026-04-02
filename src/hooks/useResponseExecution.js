@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
+import useWorkbenchStore from '../stores/workbenchStore';
 
 // Convert JSON5 (with comments) to standard JSON
 function stripJsonComments(text) {
@@ -307,6 +308,10 @@ export function useResponseExecution({
       setOpenTabs((prev) => prev.map((tab) => (
         tab.id === activeTabId ? { ...tab, response: { ...result, resolvedUrl, scriptLogs, consoleLogs } } : tab
       )));
+      // Pin the tab so clicking another request doesn't replace it
+      if (useWorkbenchStore.getState().previewTabId === activeTabId) {
+        useWorkbenchStore.getState().setPreviewTabId(null);
+      }
     } catch (error) {
       if (error.name === 'AbortError' || controller.signal.aborted) {
         // Cancelled — keep previous response as-is

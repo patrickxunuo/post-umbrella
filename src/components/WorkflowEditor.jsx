@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Play, Square, Trash2, GripVertical, CheckCircle2, XCircle, Loader2, Circle, Clock, RotateCcw, Save } from 'lucide-react';
 import { useWorkflowExecution } from '../hooks/useWorkflowExecution';
-
+import { useDragPreview } from '../hooks/useDragPreview';
 import { METHOD_COLORS } from '../constants/methodColors';
 
 function StepStatusIcon({ status, size = 14 }) {
@@ -37,6 +37,7 @@ export function WorkflowEditor({
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [bottomTab, setBottomTab] = useState('report');
   const stepsRef = useRef(null);
+  const setDragPreview = useDragPreview();
 
   const { runState: hookRunState, runWorkflow, stopWorkflow, clearRunState: hookClearRunState } = useWorkflowExecution({
     activeEnvironment,
@@ -106,31 +107,42 @@ export function WorkflowEditor({
     onWorkflowChange({ steps: newSteps });
   }, [onWorkflowChange, runState, clearRunState]);
 
-  const handleDrop = useCallback((e) => {
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = useCallback((e) => {
+    if (!e.dataTransfer.types.includes('text/x-request-id')) return;
     e.preventDefault();
-    const requestId = e.dataTransfer.getData('text/x-request-id');
-    if (requestId) {
-      if (!isRequestAllowed(requestId)) {
-        e.currentTarget.classList.remove('drag-over');
-        return;
-      }
-      updateSteps([...steps, requestId]);
-    }
-    e.currentTarget.classList.remove('drag-over');
-  }, [steps, updateSteps, isRequestAllowed]);
+    dragCounterRef.current++;
+    stepsRef.current?.classList.add('drag-over');
+  }, []);
 
   const handleDragOver = useCallback((e) => {
-    const hasRequest = e.dataTransfer.types.includes('text/x-request-id');
-    if (hasRequest) {
+    if (e.dataTransfer.types.includes('text/x-request-id')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
-      e.currentTarget.classList.add('drag-over');
     }
   }, []);
 
-  const handleDragLeave = useCallback((e) => {
-    e.currentTarget.classList.remove('drag-over');
+  const handleDragLeave = useCallback(() => {
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      stepsRef.current?.classList.remove('drag-over');
+      setDragOverIndex(null);
+    }
   }, []);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    stepsRef.current?.classList.remove('drag-over');
+    setDragOverIndex(null);
+    const requestId = e.dataTransfer.getData('text/x-request-id');
+    if (requestId) {
+      if (!isRequestAllowed(requestId)) return;
+      updateSteps([...steps, requestId]);
+    }
+  }, [steps, updateSteps, isRequestAllowed]);
 
   const removeStep = useCallback((index) => {
     updateSteps(steps.filter((_, i) => i !== index));
@@ -141,7 +153,11 @@ export function WorkflowEditor({
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', index.toString());
-  }, []);
+    const req = requestMap[steps[index]];
+    if (req) {
+      setDragPreview(e, `${req.method} ${req.name}`, METHOD_COLORS[req.method]);
+    }
+  }, [steps, requestMap, setDragPreview]);
 
   const handleStepDragOver = useCallback((e, index) => {
     e.preventDefault();
@@ -257,9 +273,10 @@ export function WorkflowEditor({
           <div
             className="workflow-steps"
             ref={stepsRef}
-            onDrop={handleDrop}
+            onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             {steps.length === 0 ? (
               <div className="workflow-empty">

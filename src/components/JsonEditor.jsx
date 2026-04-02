@@ -3,10 +3,88 @@ import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
 import { EditorView } from '@codemirror/view';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { linter, lintGutter } from '@codemirror/lint';
 import { tags } from '@lezer/highlight';
 import JSON5 from 'json5';
+import jsonlint from 'jsonlint-mod';
 import { createEnvVariableExtensions } from '../utils/envVariableExtension';
 import { useVariablePopover } from './VariablePopover';
+
+function createJsonLinter() {
+  return linter((view) => {
+    const doc = view.state.doc;
+    const text = doc.toString();
+    if (!text.trim()) return [];
+
+    const envVarRegex = /"?\{\{([^}]+)\}\}"?/g;
+    const safeText = text.replace(envVarRegex, (match) => {
+      const len = match.length;
+      if (len < 2) return match;
+      return '"' + 'a'.repeat(len - 2) + '"';
+    });
+
+    try {
+      jsonlint.parse(safeText);
+      return [];
+    } catch (e) {
+      const errMsg = e.message || '';
+      const lines = errMsg.split('\n');
+
+      // Extract line number: "Parse error on line N:"
+      const lineMatch = errMsg.match(/line (\d+)/);
+      // Extract "Expecting ..., got ..." message
+      const expectingLine = lines.find(l => /^Expecting\s/.test(l));
+      // Extract column from caret pointer line
+      const ptrLine = lines.find(l => l.includes('^'));
+      const errorCol = ptrLine ? ptrLine.indexOf('^') : 0;
+
+      let message = errMsg.split('\n')[0];
+      if (expectingLine) {
+        const gotMatch = expectingLine.match(/got\s+'([^']+)'/);
+        const got = gotMatch ? gotMatch[1] : '';
+        const tokenNames = { STRING: 'string', NUMBER: 'number', NULL: 'null', TRUE: 'true', FALSE: 'false', EOF: 'end of input', undefined: 'unexpected token' };
+        const gotLabel = tokenNames[got] || `'${got}'`;
+        const expected = [];
+        const tokenRegex = /'([^']*)'/g;
+        const expectPart = expectingLine.replace(/,\s*got\s+.*$/, '');
+        let m;
+        while ((m = tokenRegex.exec(expectPart)) !== null) {
+          if (m[1] !== 'EOF') expected.push(m[1]);
+        }
+        const isValue = (t) => ['STRING', 'NUMBER', 'NULL', 'TRUE', 'FALSE', '{', '['].includes(t);
+        const has = (t) => expected.includes(t);
+
+        if (has(',') && has(':')) message = got === 'STRING' ? 'Expected comma' : "Expected ':' after property name";
+        else if (has(',')) message = 'Expected comma';
+        else if (has(':')) message = "Expected ':' after property name";
+        else if (has('STRING') && has('}') && !has('NUMBER')) message = got === ',' ? 'Unexpected comma' : `Expected property name or '}'`;
+        else if (expected.some(isValue) && (got === '}' || got === ']')) message = 'Trailing comma is not allowed';
+        else if (expected.some(isValue)) message = `Expected a value, got ${gotLabel}`;
+        else message = `Unexpected ${gotLabel}`;
+      }
+
+      if (!lineMatch) return [];
+      const errorLine = parseInt(lineMatch[1], 10);
+
+      if (errorLine < 1 || errorLine > doc.lines) {
+        const lastLine = doc.line(doc.lines);
+        const trimmed = lastLine.text.trimEnd();
+        const from = lastLine.from + Math.max(0, trimmed.length - 1);
+        const to = lastLine.from + Math.max(trimmed.length, 1);
+        return [{ from, to: Math.min(to, doc.length), severity: 'error', message }];
+      }
+
+      const line = doc.line(errorLine);
+      const from = line.from + Math.min(errorCol, line.length);
+
+      let to = line.from + line.text.trimEnd().length;
+      if (to <= from) to = Math.min(from + 1, line.to);
+      to = Math.min(to, doc.length);
+
+      return [{ from, to, severity: 'error', message }];
+    }
+  }, { delay: 300 });
+}
 
 // Custom theme that matches the app's design system using CSS variables
 const baseTheme = EditorView.theme({
@@ -30,7 +108,7 @@ const baseTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '&.cm-focused .cm-activeLine': {
-    backgroundColor: 'var(--bg-hover)',
+    backgroundColor: 'rgba(128, 128, 128, 0.08)',
   },
   '.cm-gutters': {
     backgroundColor: 'var(--bg-input)',
@@ -42,7 +120,7 @@ const baseTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
   '&.cm-focused .cm-activeLineGutter': {
-    backgroundColor: 'var(--bg-hover)',
+    backgroundColor: 'rgba(128, 128, 128, 0.08)',
   },
   '.cm-lineNumbers .cm-gutterElement': {
     padding: '0 8px 0 12px',
@@ -66,6 +144,36 @@ const baseTheme = EditorView.theme({
     color: 'var(--text-tertiary)',
     fontStyle: 'italic',
   },
+  // Lint error squiggly underline
+  '.cm-lintRange-error': {
+    backgroundImage: 'none',
+    textDecoration: 'underline wavy var(--accent-danger)',
+    textDecorationSkipInk: 'none',
+    textUnderlineOffset: '2px',
+  },
+  // Lint tooltip
+  '.cm-tooltip.cm-tooltip-lint': {
+    backgroundColor: 'var(--bg-elevated)',
+    border: '1px solid var(--border-primary)',
+    borderRadius: 'var(--radius-sm)',
+    boxShadow: 'var(--shadow-lg)',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '12px',
+    padding: '0',
+  },
+  '.cm-diagnostic-error': {
+    color: 'var(--accent-danger)',
+    borderLeft: '3px solid var(--accent-danger)',
+    padding: '6px 10px',
+    margin: '0',
+  },
+  // Lint gutter
+  '.cm-gutter-lint': {
+    width: '14px',
+  },
+  '.cm-gutter-lint .cm-gutterElement': {
+    padding: '0',
+  },
 });
 
 // Light theme syntax colors
@@ -82,10 +190,10 @@ const lightSyntaxHighlight = syntaxHighlighting(HighlightStyle.define([
 
 const lightSelection = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(37, 99, 235, 0.25) !important',
+    backgroundColor: 'rgba(37, 99, 235, 0.4) !important',
   },
   '.cm-line ::selection': {
-    backgroundColor: 'rgba(37, 99, 235, 0.35) !important',
+    backgroundColor: 'rgba(37, 99, 235, 0.45) !important',
     color: '#1e293b !important',
   },
   '.cm-content': {
@@ -107,10 +215,10 @@ const darkSyntaxHighlight = syntaxHighlighting(HighlightStyle.define([
 
 const darkSelection = EditorView.theme({
   '&.cm-focused .cm-selectionBackground, .cm-selectionBackground': {
-    backgroundColor: 'rgba(96, 165, 250, 0.3) !important',
+    backgroundColor: 'rgba(96, 165, 250, 0.45) !important',
   },
   '.cm-line ::selection': {
-    backgroundColor: 'rgba(96, 165, 250, 0.4) !important',
+    backgroundColor: 'rgba(96, 165, 250, 0.5) !important',
     color: '#f1f5f9 !important',
   },
 });
@@ -158,6 +266,10 @@ export function JsonEditor({
       isDark ? darkSelection : lightSelection,
       EditorView.lineWrapping,
     ];
+    if (!readOnly) {
+      exts.push(createJsonLinter());
+      exts.push(lintGutter());
+    }
     if (activeEnvironment || collectionVariables) {
       exts.push(...createEnvVariableExtensions({
         activeEnvironment,
@@ -167,7 +279,7 @@ export function JsonEditor({
       }));
     }
     return exts;
-  }, [isDark, activeEnvironment, collectionVariables, variablePopover]);
+  }, [isDark, readOnly, activeEnvironment, collectionVariables, variablePopover]);
 
   const handleChange = useCallback((val) => {
     onChange?.(val);

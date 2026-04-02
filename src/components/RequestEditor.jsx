@@ -3,8 +3,7 @@ import { ExternalLink, Upload, X, ChevronDown, Play, Code } from 'lucide-react';
 import { Checkbox } from './Checkbox';
 import { EnvVariableInput } from './EnvVariableInput';
 import { MethodSelector } from './MethodSelector';
-import { TypeSelector } from './TypeSelector';
-import { JsonEditor } from './JsonEditor';
+import { RequestBodyEditor } from './RequestBodyEditor';
 import { ScriptEditor } from './ScriptEditor';
 import { parseCurl } from './ImportCurlModal';
 import { useToast } from './Toast';
@@ -134,7 +133,6 @@ export function RequestEditor({
   const [showSaveDropdown, setShowSaveDropdown] = useState(false);
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [exampleName, setExampleName] = useState('');
-  const fileInputRefs = useRef({});
   const lastUrlRef = useRef(url);
   const saveDropdownRef = useRef(null);
 
@@ -320,63 +318,6 @@ export function RequestEditor({
   const handleFormDataChange = (newFormData) => {
     setFormData(newFormData);
     notifyChange({ form_data: newFormData });
-  };
-
-  const updateFormDataField = (index, field, value) => {
-    const newFormData = [...formData];
-    newFormData[index] = { ...newFormData[index], [field]: value };
-    handleFormDataChange(newFormData);
-  };
-
-  const handleFileSelect = async (index, file) => {
-    // In Tauri, use native dialog to get full file path
-    if ('__TAURI_INTERNALS__' in window) {
-      try {
-        const { open } = await import('@tauri-apps/plugin-dialog');
-        const { invoke } = await import('@tauri-apps/api/core');
-        const selected = await open({ multiple: false });
-        if (!selected) return;
-        const filePath = typeof selected === 'string' ? selected : selected.path;
-        const info = await invoke('read_file_at_path', { path: filePath });
-        const newFormData = [...formData];
-        newFormData[index] = {
-          ...newFormData[index],
-          value: info.base64,
-          fileName: info.name,
-          filePath,
-          fileType: info.mime_type,
-          fileSize: info.size,
-        };
-        handleFormDataChange(newFormData);
-        return;
-      } catch {
-        // Fall through to browser file input
-      }
-    }
-
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1];
-      const newFormData = [...formData];
-      newFormData[index] = {
-        ...newFormData[index],
-        value: base64,
-        fileName: file.name,
-        fileType: file.type,
-        fileSize: file.size,
-      };
-      handleFormDataChange(newFormData);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const removeFormDataField = (index) => {
-    const newFormData = formData.filter((_, i) => i !== index);
-    if (newFormData.length === 0) {
-      newFormData.push({ key: '', value: '', type: 'text', enabled: true });
-    }
-    handleFormDataChange(newFormData);
   };
 
   const addFormDataField = () => {
@@ -759,7 +700,7 @@ export function RequestEditor({
 
         {activeDetailTab === 'auth' && (
           <div className="auth-editor">
-            <div className="auth-type-selector">
+            <div className="option-selector auth-type-selector">
               <label>
                 <input
                   type="radio"
@@ -878,211 +819,18 @@ export function RequestEditor({
         )}
 
         {activeDetailTab === 'body' && (
-          <div className="body-editor">
-            <div className="body-type-selector">
-              <label>
-                <input
-                  type="radio"
-                  name="bodyType"
-                  value="none"
-                  checked={bodyType === 'none'}
-                  onChange={() => handleBodyTypeChange('none')}
-                />
-                none
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="bodyType"
-                  value="form-data"
-                  checked={bodyType === 'form-data'}
-                  onChange={() => handleBodyTypeChange('form-data')}
-                />
-                form-data
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="bodyType"
-                  value="json"
-                  checked={bodyType === 'json'}
-                  onChange={() => handleBodyTypeChange('json')}
-                />
-                JSON
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  name="bodyType"
-                  value="raw"
-                  checked={bodyType === 'raw'}
-                  onChange={() => handleBodyTypeChange('raw')}
-                />
-                Raw
-              </label>
-            </div>
-
-            {bodyType === 'form-data' && (
-              <div className="form-data-editor">
-                <table>
-                  <thead>
-                    <tr>
-                      <th style={{ width: '30px' }}></th>
-                      <th>Key</th>
-                      <th style={{ width: '80px' }}>Type</th>
-                      <th>Value</th>
-                      <th style={{ width: '40px' }}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.map((field, index) => (
-                      <tr key={index}>
-                        <td>
-                          <Checkbox
-                            checked={field.enabled !== false}
-                            onChange={(e) => updateFormDataField(index, 'enabled', e.target.checked)}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            placeholder="Key"
-                            value={field.key}
-                            onChange={(e) => {
-                              const newFormData = [...formData];
-                              newFormData[index] = { ...newFormData[index], key: e.target.value };
-                              // Add empty row if editing last row
-                              if (index === formData.length - 1 && e.target.value) {
-                                newFormData.push({ key: '', value: '', type: 'text', enabled: true });
-                              }
-                              handleFormDataChange(newFormData);
-                            }}
-                          />
-                        </td>
-                        <td>
-                          <TypeSelector
-                            value={field.type || 'text'}
-                            onChange={(newType) => {
-                              updateFormDataField(index, 'type', newType);
-                              // Clear file data when switching to text
-                              if (newType === 'text') {
-                                const newFormData = [...formData];
-                                newFormData[index] = {
-                                  ...newFormData[index],
-                                  type: 'text',
-                                  value: '',
-                                  fileName: undefined,
-                                  fileType: undefined,
-                                  fileSize: undefined,
-                                };
-                                handleFormDataChange(newFormData);
-                              }
-                            }}
-                          />
-                        </td>
-                        <td>
-                          {field.type === 'file' ? (
-                            <div className="file-input-wrapper">
-                              <input
-                                type="file"
-                                ref={(el) => (fileInputRefs.current[index] = el)}
-                                onChange={(e) => handleFileSelect(index, e.target.files[0])}
-                                style={{ display: 'none' }}
-                              />
-                              {field.fileName ? (
-                                <div className="file-selected">
-                                  <span className="file-name">{field.fileName}</span>
-                                  {field.fileSize > 0 && (
-                                    <span className="file-size">
-                                      ({(field.fileSize / 1024).toFixed(1)} KB)
-                                    </span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="btn-icon small"
-                                    onClick={() => {
-                                      const newFormData = [...formData];
-                                      newFormData[index] = {
-                                        ...newFormData[index],
-                                        value: '',
-                                        fileName: undefined,
-                                        filePath: undefined,
-                                        fileType: undefined,
-                                        fileSize: undefined,
-                                      };
-                                      handleFormDataChange(newFormData);
-                                    }}
-                                  >
-                                    <X size={12} />
-                                  </button>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="btn-select-file"
-                                  onClick={() => {
-                                    if ('__TAURI_INTERNALS__' in window) {
-                                      handleFileSelect(index, null);
-                                    } else {
-                                      fileInputRefs.current[index]?.click();
-                                    }
-                                  }}
-                                >
-                                  <Upload size={14} />
-                                  Select File
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            <EnvVariableInput
-                              value={field.value || ''}
-                              onChange={(e) => updateFormDataField(index, 'value', e.target.value)}
-                              placeholder="Value"
-                              activeEnvironment={activeEnvironment}
-                              collectionVariables={collectionVariables}
-                              rootCollectionId={rootCollectionId}
-                              onEnvironmentUpdate={onEnvironmentUpdate}
-                            />
-                          )}
-                        </td>
-                        <td>
-                          {field.key && (
-                            <button
-                              className="btn-icon small danger"
-                              onClick={() => removeFormDataField(index)}
-                            >
-                              ×
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {bodyType === 'json' && (
-              <JsonEditor
-                value={body}
-                onChange={handleBodyChange}
-                placeholder='{\n  "key": "value"\n}'
-                showBeautify={true}
-                className="request-json-editor"
-                activeEnvironment={activeEnvironment}
-                collectionVariables={collectionVariables}
-              />
-            )}
-
-            {bodyType === 'raw' && (
-              <textarea
-                className="body-textarea"
-                placeholder="Enter request body"
-                value={body}
-                onChange={(e) => handleBodyChange(e.target.value)}
-              />
-            )}
-          </div>
+          <RequestBodyEditor
+            bodyType={bodyType}
+            body={body}
+            formData={formData}
+            onBodyTypeChange={handleBodyTypeChange}
+            onBodyChange={handleBodyChange}
+            onFormDataChange={handleFormDataChange}
+            activeEnvironment={activeEnvironment}
+            collectionVariables={collectionVariables}
+            rootCollectionId={rootCollectionId}
+            onEnvironmentUpdate={onEnvironmentUpdate}
+          />
         )}
 
         {activeDetailTab === 'pre-script' && (
