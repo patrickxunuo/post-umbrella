@@ -5,7 +5,8 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useLocalStorageSet } from '../../hooks/useLocalStorage';
 import { useInlineRename } from '../../hooks/useInlineRename';
-import { useDragPreview } from '../../hooks/useDragPreview';
+import { useSidebarDragDrop } from '../../hooks/useSidebarDragDrop';
+import useCollectionStore from '../../stores/collectionStore';
 import { METHOD_COLORS } from '../../constants/methodColors';
 import { RequestItem } from './RequestItem';
 
@@ -53,24 +54,17 @@ export function Sidebar({
 }) {
   const confirm = useConfirm();
   const toast = useToast();
+  const setCollections = useCollectionStore((s) => s.setCollections);
   const [expandedCollections, setExpandedCollections] = useLocalStorageSet('expandedCollections');
   const [expandedRequests, setExpandedRequests] = useLocalStorageSet('expandedRequests');
   const [requestExamples, setRequestExamples] = useState({});
   const [loadingExamples, setLoadingExamples] = useState({});
   const { editingId, editingName, setEditingName, startEditing, finishEditing } = useInlineRename();
-  const setDragPreview = useDragPreview();
   const [showWorkflowsOnly, setShowWorkflowsOnly] = useState(false);
   const [menuOpen, setMenuOpen] = useState(null);
   const [collectionMenuOpen, setCollectionMenuOpen] = useState(null);
-  const [draggedRequest, setDraggedRequest] = useState(null);
-  const [dragOverRequest, setDragOverRequest] = useState(null);
-  const [draggedFolder, setDraggedFolder] = useState(null);
-  const [dragOverFolder, setDragOverFolder] = useState(null);
-  const [draggedExample, setDraggedExample] = useState(null);
-  const [dragOverExample, setDragOverExample] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [exampleMenuOpen, setExampleMenuOpen] = useState(null);
-  const [dragOverCollection, setDragOverCollection] = useState(null);
   const menuRef = useRef(null);
   const collectionMenuRef = useRef(null);
   const exampleMenuRef = useRef(null);
@@ -222,6 +216,17 @@ export function Sidebar({
         return (a.created_at || 0) - (b.created_at || 0);
       });
   };
+
+  const {
+    draggedRequest, dragOverRequest, draggedFolder, dragOverFolder,
+    draggedExample, dragOverExample, dragOverCollection, folderDropZone,
+    handleDragStart, handleDragEnd, handleDragOver, handleDragLeave, handleDrop,
+    handleCollectionDragOver, handleCollectionDragLeave, handleCollectionDrop,
+    handleFolderDragStart, handleFolderDragEnd,
+    handleExampleDragStart, handleExampleDragEnd, handleExampleDragOver,
+    handleExampleDragLeave, handleExampleDrop,
+    isSameRootCollection,
+  } = useSidebarDragDrop(collections, getChildCollections, setCollections);
 
   // Filter requests based on search query
   const filterRequests = (requests) => {
@@ -498,294 +503,6 @@ export function Sidebar({
       }
     }
     finishEditing();
-  };
-
-  // Drag and drop handlers
-  const handleDragStart = (e, request, collectionId) => {
-    setDraggedRequest({ ...request, collectionId });
-    e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData('text/plain', request.id);
-    e.dataTransfer.setData('text/x-request-id', request.id);
-    setDragPreview(e, `${request.method} ${request.name}`, METHOD_COLORS[request.method]);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedRequest(null);
-    setDragOverRequest(null);
-  };
-
-  const handleDragOver = (e, request, collectionId) => {
-    if (!draggedRequest || draggedRequest.id === request.id) return;
-    if (!isSameRootCollection(draggedRequest.collectionId, collectionId)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (draggedRequest.id !== request.id) {
-      setDragOverRequest(request.id);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDragOverRequest(null);
-  };
-
-  const handleDrop = async (e, targetRequest, collectionId, requests) => {
-    e.preventDefault();
-    setDragOverRequest(null);
-    setDragOverCollection(null);
-
-    if (!draggedRequest || draggedRequest.id === targetRequest.id) return;
-    if (!isSameRootCollection(draggedRequest.collectionId, collectionId)) return;
-
-    // Cross-folder move: move then reorder in the target
-    if (draggedRequest.collectionId !== collectionId) {
-      try {
-        await data.moveRequest(draggedRequest.id, collectionId);
-        const targetIds = requests.map(r => r.id);
-        const targetIndex = targetIds.indexOf(targetRequest.id);
-        targetIds.splice(targetIndex, 0, draggedRequest.id);
-        await data.reorderRequests(collectionId, targetIds);
-        toast.success('Request moved');
-      } catch (err) {
-        toast.error('Failed to move request');
-      }
-      setDraggedRequest(null);
-      return;
-    }
-
-    // Same-collection reorder
-    const requestIds = requests.map(r => r.id);
-    const draggedIndex = requestIds.indexOf(draggedRequest.id);
-    const targetIndex = requestIds.indexOf(targetRequest.id);
-
-    requestIds.splice(draggedIndex, 1);
-    requestIds.splice(targetIndex, 0, draggedRequest.id);
-
-    try {
-      await data.reorderRequests(collectionId, requestIds);
-      toast.success('Request reordered');
-    } catch (err) {
-      toast.error('Failed to reorder requests');
-    }
-
-    setDraggedRequest(null);
-  };
-
-  // Drop onto a collection/folder header
-  // folderDropZone: 'before' | 'inside' | 'after' — determined by mouse Y position
-  const [folderDropZone, setFolderDropZone] = useState(null);
-
-  const getFolderDropZone = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const y = e.clientY - rect.top;
-    const ratio = y / rect.height;
-    if (ratio < 0.3) return 'before';
-    if (ratio > 0.7) return 'after';
-    return 'inside';
-  };
-
-  const handleCollectionDragOver = (e, collectionId) => {
-    if (!draggedRequest && !draggedFolder) return;
-    // Block cross-collection moves
-    const dragSourceId = draggedRequest?.collectionId || draggedFolder?.parent_id;
-    if (dragSourceId && !isSameRootCollection(dragSourceId, collectionId)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-
-    if (draggedFolder && draggedFolder.id !== collectionId) {
-      const zone = getFolderDropZone(e);
-      setFolderDropZone(zone);
-      if (zone === 'inside') {
-        setDragOverCollection(collectionId);
-        setDragOverFolder(null);
-      } else {
-        // Edge: show reorder line (works for siblings and non-siblings)
-        setDragOverFolder(collectionId);
-        setDragOverCollection(null);
-      }
-    } else {
-      setDragOverCollection(collectionId);
-    }
-  };
-
-  const handleCollectionDragLeave = () => {
-    setDragOverCollection(null);
-    setDragOverFolder(null);
-    setFolderDropZone(null);
-  };
-
-  const handleCollectionDrop = async (e, collectionId, siblingCollections) => {
-    e.preventDefault();
-    const zone = folderDropZone;
-    setDragOverCollection(null);
-    setDragOverFolder(null);
-    setFolderDropZone(null);
-
-    // Folder drag: reorder (edges) or reparent (center)
-    if (draggedFolder) {
-      if (draggedFolder.id === collectionId) return;
-
-      const targetCollection = collections.find(c => c.id === collectionId);
-      const isSibling = draggedFolder.parent_id === targetCollection?.parent_id;
-      const targetParentId = targetCollection?.parent_id;
-
-      // Edge drop → place beside the target (as sibling of target)
-      if (zone !== 'inside') {
-        if (isDescendant(draggedFolder.id, collectionId)) return;
-
-        // If not already a sibling, move to target's parent first
-        if (!isSibling) {
-          if (draggedFolder.parent_id === targetParentId) { setDraggedFolder(null); return; }
-          try {
-            await data.moveCollection(draggedFolder.id, targetParentId);
-          } catch (err) {
-            toast.error('Failed to move folder');
-            setDraggedFolder(null);
-            return;
-          }
-        }
-
-        // Reorder among the target's siblings
-        const newSiblings = isSibling
-          ? siblingCollections
-          : getChildCollections(targetParentId);
-        const ids = newSiblings.map(c => c.id);
-
-        // Remove dragged from current position (if present)
-        const draggedIndex = ids.indexOf(draggedFolder.id);
-        if (draggedIndex !== -1) ids.splice(draggedIndex, 1);
-
-        // Insert at target position
-        let targetIndex = ids.indexOf(collectionId);
-        if (targetIndex === -1) { setDraggedFolder(null); return; }
-        if (zone === 'after') targetIndex += 1;
-        ids.splice(targetIndex, 0, draggedFolder.id);
-
-        try {
-          await data.reorderCollections(targetParentId, ids);
-          toast.success(isSibling ? 'Folder reordered' : 'Folder moved');
-        } catch (err) {
-          toast.error('Failed to reorder folders');
-        }
-        setDraggedFolder(null);
-        return;
-      }
-
-      // Center drop → reparent (move into target)
-      if (draggedFolder.parent_id === collectionId) return;
-      if (isDescendant(draggedFolder.id, collectionId)) return;
-      try {
-        await data.moveCollection(draggedFolder.id, collectionId);
-        toast.success('Folder moved');
-      } catch (err) {
-        toast.error('Failed to move folder');
-      }
-      setDraggedFolder(null);
-      return;
-    }
-
-    // Dropping a request into a folder
-    if (!draggedRequest || draggedRequest.collectionId === collectionId) return;
-
-    try {
-      await data.moveRequest(draggedRequest.id, collectionId);
-      toast.success('Request moved');
-    } catch (err) {
-      toast.error('Failed to move request');
-    }
-
-    setDraggedRequest(null);
-  };
-
-  // Find the root (top-level) collection for any collection ID
-  const getRootCollectionId = (collectionId) => {
-    let current = collections.find(c => c.id === collectionId);
-    while (current?.parent_id) {
-      current = collections.find(c => c.id === current.parent_id);
-    }
-    return current?.id;
-  };
-
-  // Check if two collection IDs belong to the same top-level collection
-  const isSameRootCollection = (idA, idB) => {
-    return getRootCollectionId(idA) === getRootCollectionId(idB);
-  };
-
-  // Check if targetId is a descendant of parentId (prevent circular moves)
-  const isDescendant = (parentId, targetId) => {
-    const check = (id) => {
-      const children = collections.filter(c => c.parent_id === id);
-      for (const child of children) {
-        if (child.id === targetId) return true;
-        if (check(child.id)) return true;
-      }
-      return false;
-    };
-    return check(parentId);
-  };
-
-  // Folder drag handlers (only for folders, not top-level collections)
-  const handleFolderDragStart = (e, collection) => {
-    setDraggedFolder(collection);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', collection.id);
-    setDragPreview(e, `📁 ${collection.name}`);
-  };
-
-  const handleFolderDragEnd = () => {
-    setDraggedFolder(null);
-    setDragOverFolder(null);
-    setDragOverCollection(null);
-    setFolderDropZone(null);
-  };
-
-  // Example drag handlers
-  const handleExampleDragStart = (e, example, requestId) => {
-    setDraggedExample({ ...example, requestId });
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', example.id);
-    e.stopPropagation();
-    setDragPreview(e, `📄 ${example.name}`);
-  };
-
-  const handleExampleDragEnd = () => {
-    setDraggedExample(null);
-    setDragOverExample(null);
-  };
-
-  const handleExampleDragOver = (e, example) => {
-    if (!draggedExample || draggedExample.id === example.id) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverExample(example.id);
-  };
-
-  const handleExampleDragLeave = () => {
-    setDragOverExample(null);
-  };
-
-  const handleExampleDrop = async (e, targetExample, requestId, examples) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverExample(null);
-
-    if (!draggedExample || draggedExample.id === targetExample.id) return;
-    if (draggedExample.requestId !== requestId) return;
-
-    const ids = examples.map(ex => ex.id);
-    const draggedIndex = ids.indexOf(draggedExample.id);
-    const targetIndex = ids.indexOf(targetExample.id);
-    if (draggedIndex === -1 || targetIndex === -1) return;
-
-    ids.splice(draggedIndex, 1);
-    ids.splice(targetIndex, 0, draggedExample.id);
-
-    try {
-      await data.reorderExamples(requestId, ids);
-    } catch (err) {
-      console.error('Failed to reorder examples:', err);
-    }
-
-    setDraggedExample(null);
   };
 
   // Expand all folders

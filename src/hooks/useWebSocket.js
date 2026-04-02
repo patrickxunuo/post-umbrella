@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { providerName, subscribeToChanges } from '../data/index.js';
 
 export function useWebSocket(onMessage) {
@@ -6,6 +6,8 @@ export function useWebSocket(onMessage) {
   const reconnectTimeoutRef = useRef(null);
   const onMessageRef = useRef(onMessage);
   const unsubscribeRef = useRef(null);
+  const [connected, setConnected] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   // Keep the callback ref updated without triggering reconnects
   useEffect(() => {
@@ -29,6 +31,7 @@ export function useWebSocket(onMessage) {
         const event = `${table}:${normalizedEventType}`;
         onMessageRef.current({ event, data });
       });
+      setConnected(true);
 
       return () => {
         if (unsubscribeRef.current) {
@@ -46,6 +49,8 @@ export function useWebSocket(onMessage) {
 
       ws.onopen = () => {
         console.log('WebSocket connected');
+        setConnected(true);
+        setReconnecting(false);
       };
 
       ws.onmessage = (event) => {
@@ -60,6 +65,8 @@ export function useWebSocket(onMessage) {
 
       ws.onclose = () => {
         console.log('WebSocket disconnected, reconnecting...');
+        setConnected(false);
+        setReconnecting(true);
         reconnectTimeoutRef.current = setTimeout(connect, 2000);
       };
 
@@ -82,5 +89,5 @@ export function useWebSocket(onMessage) {
     };
   }, []); // Empty deps - only connect once on mount
 
-  return wsRef;
+  return { wsRef, connected, reconnecting };
 }
