@@ -1,16 +1,64 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { cleanupTestCollections } from './helpers/cleanup';
 
-// Generate unique names for each test run
 const timestamp = Date.now();
 const uniqueName = (base: string) => `${base} ${timestamp}`;
 
 test.afterAll(async () => { await cleanupTestCollections(timestamp); });
 
+// Run tests serially — drag-and-drop is sensitive to sidebar element positions
+test.describe.configure({ mode: 'serial' });
+
+/** Create a collection via sidebar and return its header locator */
+async function createCollection(page: Page, name: string) {
+  const addBtn = page.locator('.sidebar-toolbar .btn-icon').last();
+  await addBtn.click();
+  const modal = page.locator('.prompt-modal');
+  await expect(modal).toBeVisible();
+  await modal.locator('.prompt-input').fill(name);
+  await modal.locator('.prompt-btn-confirm').click();
+  await expect(modal).not.toBeVisible();
+  const header = page.locator('.collection-header').filter({ hasText: name });
+  await expect(header).toBeVisible({ timeout: 5000 });
+  return header;
+}
+
+/** Add a request to a collection via context menu */
+async function addRequest(page: Page, collectionHeader: ReturnType<Page['locator']>) {
+  await collectionHeader.hover();
+  await collectionHeader.locator('.btn-menu').click();
+  const menu = page.locator('.collection-menu');
+  await expect(menu).toBeVisible();
+  await menu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
+  await page.waitForTimeout(500);
+}
+
+/** Get ordered request names inside a collection */
+async function getRequestNames(page: Page, collectionName: string): Promise<string[]> {
+  const collection = page.locator('.collection').filter({
+    has: page.locator('.collection-header').filter({ hasText: collectionName }),
+  });
+  const names = await collection.locator('.request-item .request-name').allTextContents();
+  return names;
+}
+
+/** Rename the currently selected request via its tab */
+async function renameRequestViaMenu(page: Page, requestItem: ReturnType<Page['locator']>, newName: string) {
+  await requestItem.hover();
+  await requestItem.locator('.btn-menu').click();
+  const menu = page.locator('.request-menu').last();
+  await expect(menu).toBeVisible();
+  await menu.locator('.request-menu-item').filter({ hasText: 'Rename' }).click();
+  const input = requestItem.locator('.rename-input');
+  await expect(input).toBeVisible();
+  await input.fill(newName);
+  await input.press('Enter');
+  await page.waitForTimeout(300);
+}
+
 test.describe('Advanced Operations', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // Wait for app to finish loading
     await expect(page.locator('.workspace-selector-trigger:not([disabled])')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.workspace-selector-label')).not.toHaveText('Loading...', { timeout: 10000 });
     await expect(page.locator('.workspace-selector-label')).not.toHaveText('No Workspace', { timeout: 10000 });
@@ -18,118 +66,106 @@ test.describe('Advanced Operations', () => {
     await expect(page.locator('.sidebar .loading-spinner')).not.toBeVisible({ timeout: 10000 });
   });
 
-  // "Move to" menu item was replaced by drag-and-drop in sidebar
-  test.fixme('user can move a request to a different collection', async ({ page }) => {
-    // Create two collections
-    const sourceCollectionName = uniqueName('Source Collection');
-    const targetCollectionName = uniqueName('Target Collection');
+  test('user can reorder requests via drag and drop', async ({ page }) => {
+    const collectionName = uniqueName('DnD Reorder');
+    const collectionHeader = await createCollection(page, collectionName);
 
-    // Create source collection
-    const addCollectionBtn = page.locator('.sidebar-toolbar .btn-icon').last();
-    await addCollectionBtn.click();
-    let promptModal = page.locator('.prompt-modal');
-    await expect(promptModal).toBeVisible();
-    await promptModal.locator('.prompt-input').fill(sourceCollectionName);
-    await promptModal.locator('.prompt-btn-confirm').click();
-    await expect(promptModal).not.toBeVisible();
+    // Create 3 requests
+    await addRequest(page, collectionHeader);
+    await addRequest(page, collectionHeader);
+    await addRequest(page, collectionHeader);
 
-    // Create target collection
-    await addCollectionBtn.click();
-    promptModal = page.locator('.prompt-modal');
-    await expect(promptModal).toBeVisible();
-    await promptModal.locator('.prompt-input').fill(targetCollectionName);
-    await promptModal.locator('.prompt-btn-confirm').click();
-    await expect(promptModal).not.toBeVisible();
+    // Rename them to A, B, C so we can track order
+    const collection = page.locator('.collection').filter({
+      has: page.locator('.collection-header').filter({ hasText: collectionName }),
+    });
+    const requests = collection.locator('.request-item');
+    await expect(requests).toHaveCount(3, { timeout: 5000 });
 
-    // Add a request to source collection
-    const sourceCollectionHeader = page.locator('.collection-header').filter({ hasText: sourceCollectionName });
-    await expect(sourceCollectionHeader).toBeVisible({ timeout: 5000 });
-    await sourceCollectionHeader.hover();
-    await sourceCollectionHeader.locator('.btn-menu').click();
+    await renameRequestViaMenu(page, requests.nth(0), 'Req-A');
+    await renameRequestViaMenu(page, requests.nth(1), 'Req-B');
+    await renameRequestViaMenu(page, requests.nth(2), 'Req-C');
 
-    let collectionMenu = page.locator('.collection-menu');
-    await expect(collectionMenu).toBeVisible();
-    await collectionMenu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
+    // Verify initial order
+    let names = await getRequestNames(page, collectionName);
+    expect(names).toEqual(['Req-A', 'Req-B', 'Req-C']);
 
-    // Wait for request to appear in source collection
-    const requestItem = page.locator('.request-item').filter({ hasText: 'New Request' }).first();
-    await expect(requestItem).toBeVisible({ timeout: 5000 });
+    // Drag C onto A (C should move before A → C, A, B)
+    const reqC = collection.locator('.request-item').filter({ hasText: 'Req-C' });
+    const reqA = collection.locator('.request-item').filter({ hasText: 'Req-A' });
+    await reqC.dragTo(reqA);
 
-    // Open request context menu and click "Move to..."
-    await requestItem.hover();
-    const requestMoreBtn = requestItem.locator('.btn-menu');
-    await expect(requestMoreBtn).toBeVisible();
-    await requestMoreBtn.click();
+    // Wait for optimistic update
+    await page.waitForTimeout(500);
 
-    const requestMenu = page.locator('.request-menu').filter({ has: page.locator('button').filter({ hasText: 'Move to' }) });
-    await expect(requestMenu).toBeVisible();
-    await requestMenu.locator('.request-menu-item').filter({ hasText: 'Move to' }).click();
+    // Verify new order
+    names = await getRequestNames(page, collectionName);
+    expect(names).toEqual(['Req-C', 'Req-A', 'Req-B']);
+  });
 
-    // Move modal should appear
-    const moveModal = page.locator('.move-to-modal');
-    await expect(moveModal).toBeVisible({ timeout: 5000 });
+  test('user can move request into a subfolder via drag and drop', async ({ page }) => {
+    const collectionName = uniqueName('DnD Move');
+    const folderName = uniqueName('DnD Subfolder');
 
-    // Select target collection
-    const targetFolder = moveModal.locator('.move-to-folder-item').filter({ hasText: targetCollectionName });
-    await expect(targetFolder).toBeVisible();
-    await targetFolder.click();
+    const collectionHeader = await createCollection(page, collectionName);
 
-    // Click Move button
-    await moveModal.locator('.btn-primary').filter({ hasText: 'Move' }).click();
+    // Add a request to the root collection
+    await addRequest(page, collectionHeader);
+    const rootCollection = page.locator('.collection').filter({
+      has: page.locator('.collection-header').filter({ hasText: collectionName }),
+    });
+    await expect(rootCollection.locator('.request-item')).toHaveCount(1, { timeout: 5000 });
 
-    // Modal should close
-    await expect(moveModal).not.toBeVisible({ timeout: 5000 });
+    // Create a subfolder via context menu
+    await collectionHeader.hover();
+    await collectionHeader.locator('.btn-menu').click();
+    const menu = page.locator('.collection-menu');
+    await expect(menu).toBeVisible();
+    await menu.locator('.request-menu-item').filter({ hasText: 'Add Folder' }).click();
+    const folderPrompt = page.locator('.prompt-modal');
+    await expect(folderPrompt).toBeVisible();
+    await folderPrompt.locator('.prompt-input').fill(folderName);
+    await folderPrompt.locator('.prompt-btn-confirm').click();
+    await expect(folderPrompt).not.toBeVisible();
 
-    // Expand target collection to see the moved request
-    const targetCollectionHeader = page.locator('.collection-header').filter({ hasText: targetCollectionName });
-    await targetCollectionHeader.click();
+    const folderHeader = page.locator('.collection-header').filter({ hasText: folderName });
+    await expect(folderHeader).toBeVisible({ timeout: 5000 });
 
-    // Verify request is now in target collection
-    // The request should be visible under the target collection
-    await expect(page.locator('.collection').filter({ has: targetCollectionHeader }).locator('.request-item').filter({ hasText: 'New Request' })).toBeVisible({ timeout: 5000 });
+    // Drag the request onto the subfolder header
+    const request = rootCollection.locator('.request-item').first();
+    await request.dragTo(folderHeader);
 
-    await page.screenshot({ path: 'e2e/screenshots/request-moved.png' });
+    await page.waitForTimeout(500);
+
+    // Request should appear inside the subfolder (expand it first)
+    await folderHeader.click();
+    const subfolder = page.locator('.collection').filter({
+      has: page.locator('.collection-header').filter({ hasText: folderName }),
+    });
+    await expect(subfolder.locator('.request-item')).toHaveCount(1, { timeout: 5000 });
   });
 
   test('user can create nested sub-collections', async ({ page }) => {
     const parentCollectionName = uniqueName('Parent Collection');
     const childCollectionName = uniqueName('Child Folder');
 
-    // Create parent collection
-    const addCollectionBtn = page.locator('.sidebar-toolbar .btn-icon').last();
-    await addCollectionBtn.click();
-    const promptModal = page.locator('.prompt-modal');
-    await expect(promptModal).toBeVisible();
-    await promptModal.locator('.prompt-input').fill(parentCollectionName);
-    await promptModal.locator('.prompt-btn-confirm').click();
-    await expect(promptModal).not.toBeVisible();
+    const parentCollectionHeader = await createCollection(page, parentCollectionName);
 
-    // Find parent collection and open context menu
-    const parentCollectionHeader = page.locator('.collection-header').filter({ hasText: parentCollectionName });
-    await expect(parentCollectionHeader).toBeVisible({ timeout: 5000 });
+    // Open context menu and add folder
     await parentCollectionHeader.hover();
     await parentCollectionHeader.locator('.btn-menu').click();
-
-    // Click "Add Folder" to create a sub-collection
     const collectionMenu = page.locator('.collection-menu');
     await expect(collectionMenu).toBeVisible();
     await collectionMenu.locator('.request-menu-item').filter({ hasText: 'Add Folder' }).click();
 
-    // Enter name for sub-collection
     const folderPrompt = page.locator('.prompt-modal');
     await expect(folderPrompt).toBeVisible({ timeout: 5000 });
     await folderPrompt.locator('.prompt-input').fill(childCollectionName);
     await folderPrompt.locator('.prompt-btn-confirm').click();
     await expect(folderPrompt).not.toBeVisible();
 
-    // Parent collection should now be expanded showing the child folder
-    // The child folder should have a folder icon and be indented
     const childCollectionHeader = page.locator('.collection-header').filter({ hasText: childCollectionName });
     await expect(childCollectionHeader).toBeVisible({ timeout: 5000 });
-
-    // Verify child has the folder icon (indicating it's a sub-folder)
     await expect(childCollectionHeader.locator('.folder-icon')).toBeVisible();
-
-    await page.screenshot({ path: 'e2e/screenshots/collection-nested.png' });
   });
 });

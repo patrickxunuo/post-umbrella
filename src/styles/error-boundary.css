@@ -1,0 +1,93 @@
+/* ErrorBoundary fallback */
+.error-boundary-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg-primary);
+  font-family: var(--font-sans);
+}
+
+.error-boundary-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 420px;
+  text-align: center;
+}
+
+.error-boundary-icon {
+  color: var(--accent-danger);
+}
+
+.error-boundary-heading {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.error-boundary-message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.error-boundary-reload {
+  padding: var(--space-2) var(--space-6);
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.error-boundary-reload:hover {
+  opacity: 0.85;
+}
+
+/* ConnectionStatus banner */
+.connection-status {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.connection-status--connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-success);
+}
+
+.connection-status--reconnecting {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-warning);
+  animation: connection-pulse 1.5s ease-in-out infinite;
+}
+
+.connection-status--lost {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-danger);
+}
+
+@keyframes connection-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
