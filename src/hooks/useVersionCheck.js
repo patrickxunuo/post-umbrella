@@ -7,6 +7,7 @@ export function useVersionCheck(intervalMs = 60000) {
   const [tauriUpdate, setTauriUpdate] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [checking, setChecking] = useState(false);
   const timerRef = useRef(null);
 
   // Web version check
@@ -35,26 +36,29 @@ export function useVersionCheck(intervalMs = 60000) {
   }, [intervalMs]);
 
   // Tauri updater check
+  const checkTauri = useCallback(async () => {
+    if (!isTauri()) return;
+    setChecking(true);
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater');
+      const update = await check();
+      if (update) {
+        setTauriUpdate(update);
+        setUpdateAvailable(true);
+      }
+    } catch {
+      // Updater check failed — ignore
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isTauri()) return;
-
-    const checkTauri = async () => {
-      try {
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const update = await check();
-        if (update) {
-          setTauriUpdate(update);
-          setUpdateAvailable(true);
-        }
-      } catch {
-        // Updater check failed — ignore
-      }
-    };
-
     checkTauri();
     timerRef.current = setInterval(checkTauri, 5 * 60 * 1000);
     return () => clearInterval(timerRef.current);
-  }, []);
+  }, [checkTauri]);
 
   const installUpdate = useCallback(async () => {
     if (!tauriUpdate) return;
@@ -93,6 +97,8 @@ export function useVersionCheck(intervalMs = 60000) {
     downloading,
     downloadProgress,
     installUpdate,
+    checkForUpdate: checkTauri,
+    checking,
     isTauri: isTauri(),
   };
 }

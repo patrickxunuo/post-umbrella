@@ -17,10 +17,17 @@ function createJsonLinter() {
     if (!text.trim()) return [];
 
     const envVarRegex = /"?\{\{([^}]+)\}\}"?/g;
-    const safeText = text.replace(envVarRegex, (match) => {
+    let safeText = text.replace(envVarRegex, (match) => {
       const len = match.length;
       if (len < 2) return match;
       return '"' + 'a'.repeat(len - 2) + '"';
+    });
+
+    // Strip comments (JSON5 supports them, but jsonlint doesn't)
+    // Match strings first to skip them, then replace comments with spaces to preserve positions
+    safeText = safeText.replace(/"(?:[^"\\]|\\.)*"|\/\/.*$|\/\*[\s\S]*?\*\//gm, (match) => {
+      if (match.startsWith('"')) return match;
+      return match.replace(/[^\n]/g, ' ');
     });
 
     try {
@@ -285,13 +292,60 @@ export function JsonEditor({
     onChange?.(val);
   }, [onChange]);
 
+  // Extract comments and return stripped text + comment associations
+  const extractComments = useCallback((text) => {
+    const comments = [];
+    const stripped = text.replace(/"(?:[^"\\]|\\.)*"|\/\/.*$|\/\*[\s\S]*?\*\//gm, (match, offset) => {
+      if (match.startsWith('"')) return match;
+      if (match.startsWith('//')) {
+        const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+        const before = text.substring(lineStart, offset);
+        // Find the JSON key this comment is associated with (nearest "key": on the same line)
+        const keyMatch = before.match(/"([^"]+)"\s*:/);
+        if (keyMatch) comments.push({ key: keyMatch[1], text: match.trim() });
+        return ' '.repeat(match.length);
+      }
+      return ' '.repeat(match.length);
+    });
+    return { stripped, comments };
+  }, []);
+
+  // Reinsert comments by matching key names in formatted output
+  const reinsertComments = useCallback((formatted, comments) => {
+    if (comments.length === 0) return formatted;
+    const lines = formatted.split('\n');
+    for (const { key, text } of comments) {
+      const keyPattern = `"${key}"`;
+      const idx = lines.findIndex(l => l.includes(keyPattern));
+      if (idx === -1) continue;
+      // Check if value opens an array/object on this line
+      const afterKey = lines[idx].substring(lines[idx].indexOf(keyPattern) + keyPattern.length);
+      const opensBlock = /:\s*[\[{]\s*$/.test(afterKey);
+      if (opensBlock) {
+        // Find the matching closing bracket/brace
+        const opener = afterKey.trim().slice(-1);
+        const closer = opener === '[' ? ']' : '}';
+        let depth = 1;
+        for (let i = idx + 1; i < lines.length && depth > 0; i++) {
+          for (const ch of lines[i]) {
+            if (ch === opener) depth++;
+            else if (ch === closer) depth--;
+            if (depth === 0) { lines[i] = lines[i] + ' ' + text; break; }
+          }
+        }
+      } else {
+        lines[idx] = lines[idx] + ' ' + text;
+      }
+    }
+    return lines.join('\n');
+  }, []);
+
   const handleBeautify = useCallback(() => {
     if (!value) return;
     try {
-      // Replace {{var}} with placeholders before parsing, then restore after
-      // Track whether each placeholder was originally quoted or bare
+      const { stripped, comments } = extractComments(value);
       const placeholders = [];
-      const safe = value.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
+      const safe = stripped.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
         const idx = placeholders.length;
         const wasQuoted = match.startsWith('"') && match.endsWith('"');
         placeholders.push({ original: `{{${varName.trim()}}}`, wasQuoted });
@@ -303,17 +357,18 @@ export function JsonEditor({
         const replacement = wasQuoted ? `"${original}"` : original;
         formatted = formatted.replace(`"__ENV_VAR_${i}__"`, replacement);
       });
-      onChange?.(formatted);
+      onChange?.(reinsertComments(formatted, comments));
     } catch (e) {
       console.warn('Cannot beautify invalid JSON:', e.message);
     }
-  }, [value, onChange]);
+  }, [value, onChange, extractComments, reinsertComments]);
 
   const handleMinify = useCallback(() => {
     if (!value) return;
     try {
+      const { stripped } = extractComments(value);
       const placeholders = [];
-      const safe = value.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
+      const safe = stripped.replace(/"?\{\{([^}]+)\}\}"?/g, (match, varName) => {
         const idx = placeholders.length;
         const wasQuoted = match.startsWith('"') && match.endsWith('"');
         placeholders.push({ original: `{{${varName.trim()}}}`, wasQuoted });
@@ -329,7 +384,7 @@ export function JsonEditor({
     } catch (e) {
       console.warn('Cannot minify invalid JSON:', e.message);
     }
-  }, [value, onChange]);
+  }, [value, onChange, extractComments]);
 
   // Check if JSON is valid for showing beautify button state
   // Uses JSON5 to allow comments and trailing commas

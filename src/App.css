@@ -2366,6 +2366,23 @@ body {
   font-size: 12px;
   color: var(--accent-success);
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.about-refresh {
+  color: var(--text-tertiary);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.about-refresh:hover {
+  color: var(--text-primary);
+}
+
+.about-refresh .spinning {
+  animation: spin 0.8s linear infinite;
 }
 
 .btn-update {

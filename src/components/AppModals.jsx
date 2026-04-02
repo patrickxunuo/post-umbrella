@@ -21,7 +21,7 @@ export function AppModals({
   // Close to tray
   showCloseModal, setShowCloseModal, userConfig, setUserConfig,
   // About
-  showAbout, setShowAbout, updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate,
+  showAbout, setShowAbout, updateAvailable, tauriUpdate, downloading, downloadProgress, installUpdate, checkForUpdate, checking,
   // Settings
   showSettings, setShowSettings, handleThemeChange, toast,
   // Import cURL
@@ -117,6 +117,8 @@ export function AppModals({
           downloading={downloading}
           downloadProgress={downloadProgress}
           installUpdate={installUpdate}
+          checkForUpdate={checkForUpdate}
+          checking={checking}
         />
       )}
 
