@@ -195,7 +195,7 @@ authRouter.get('/auth/redirect-info', (req: Request, res: Response) => {
 });
 
 // Token endpoint — exchanges auth code for access token
-authRouter.post('/token', (req: Request, res: Response) => {
+authRouter.post('/token', async (req: Request, res: Response) => {
   const { grant_type, code, code_verifier, redirect_uri, client_id } = req.body;
 
   if (grant_type !== 'authorization_code') {
@@ -234,7 +234,7 @@ authRouter.post('/token', (req: Request, res: Response) => {
   // Generate a long-lived MCP token that maps to the Supabase session
   const mcpToken = randomBytes(48).toString('hex');
 
-  storeSession(mcpToken, {
+  await storeSession(mcpToken, {
     supabaseRefreshToken: auth.supabaseRefreshToken!,
     cachedAccessToken: auth.supabaseAccessToken!,
     expiresAt: auth.supabaseExpiresAt || Math.floor(Date.now() / 1000) + 3600,
