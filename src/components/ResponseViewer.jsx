@@ -174,19 +174,7 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           >
             Headers
           </button>
-          {!isExample && (
-            <button
-              className={`${activeTab === 'console' ? 'active' : ''} ${displayResponse?.consoleLogs?.some(l => l.type === 'error') ? 'has-errors' : ''}`}
-              onClick={() => setActiveTab('console')}
-            >
-              Console
-              {displayResponse?.consoleLogs?.length > 0 && (
-                <span className={`console-badge ${displayResponse.consoleLogs.some(l => l.type === 'error') ? 'error' : ''}`}>
-                  {displayResponse.consoleLogs.length}
-                </span>
-              )}
-            </button>
-          )}
+          {/* Console tab moved to global bottom panel */}
         </div>
         <div className="response-meta">
           {isExample ? (
@@ -353,20 +341,7 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           </div>
         )}
 
-        {activeTab === 'console' && (
-          <div className="response-console">
-            {displayResponse?.consoleLogs?.length > 0 ? (
-              displayResponse.consoleLogs.map((log, i) => (
-                <div key={i} className={`console-line console-${log.type}`}>
-                  <span className="console-source">{log.source}</span>
-                  <span className="console-message">{log.message}</span>
-                </div>
-              ))
-            ) : (
-              <div className="console-empty">No console output</div>
-            )}
-          </div>
-        )}
+        {/* Console rendering moved to global ConsolePanel */}
       </div>
     </div>
   );

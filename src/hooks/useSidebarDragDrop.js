@@ -113,7 +113,9 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
     const draggedIndex = requestIds.indexOf(draggedRequest.id);
     const targetIndex = requestIds.indexOf(targetRequest.id);
     requestIds.splice(draggedIndex, 1);
-    requestIds.splice(targetIndex, 0, draggedRequest.id);
+    // When dragging forward, indices above the removed item shift down by 1
+    const insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    requestIds.splice(insertIndex, 0, draggedRequest.id);
 
     try {
       await data.reorderRequests(collectionId, requestIds);

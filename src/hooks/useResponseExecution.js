@@ -3,6 +3,7 @@ import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import useWorkbenchStore from '../stores/workbenchStore';
+import useConsoleStore from '../stores/consoleStore';
 
 // Convert JSON5 (with comments) to standard JSON
 function stripJsonComments(text) {
@@ -88,6 +89,10 @@ export function useResponseExecution({
     let scriptLogs = [];
     let consoleLogs = [];
     let currentEnv = activeEnvironment;
+
+    // Get request name for global console tagging
+    const activeTab = useWorkbenchStore.getState().openTabs.find(t => t.id === activeTabId);
+    const requestName = activeTab?.request?.name || activeTab?.workflow?.name || url || 'Request';
 
     // Resolve inherited auth
     let authType = rawAuthType;
@@ -312,6 +317,11 @@ export function useResponseExecution({
       if (useWorkbenchStore.getState().previewTabId === activeTabId) {
         useWorkbenchStore.getState().setPreviewTabId(null);
       }
+
+      // Push to global console
+      if (consoleLogs.length > 0) {
+        useConsoleStore.getState().addLogs(requestName, consoleLogs);
+      }
     } catch (error) {
       if (error.name === 'AbortError' || controller.signal.aborted) {
         // Cancelled — keep previous response as-is
@@ -334,6 +344,9 @@ export function useResponseExecution({
               }
             : tab
         )));
+
+        // Push error to global console
+        useConsoleStore.getState().addLogs(requestName, consoleLogs);
       }
     } finally {
       abortRef.current = null;

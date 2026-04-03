@@ -1,0 +1,300 @@
+/* Bottom Bar */
+.bottom-bar {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-primary);
+  padding: 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  z-index: 10;
+}
+
+.bottom-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.bottom-bar-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.bottom-bar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.bottom-bar-btn.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.bottom-bar-btn.has-errors {
+  color: var(--accent-danger);
+}
+
+.bottom-bar-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.bottom-bar-badge.error {
+  background: var(--accent-danger-subtle);
+  color: var(--accent-danger);
+}
+
+/* Bottom Panel Area (console or terminal) */
+.bottom-panel-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.bottom-panel-resize-handle {
+  height: 4px;
+  cursor: ns-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.bottom-panel-resize-handle:hover {
+  background: var(--accent-primary);
+  opacity: 0.3;
+}
+
+.bottom-panel-content {
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Console Panel */
+.console-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.console-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  height: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.console-panel-title {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.console-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.console-panel-body {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.console-panel-body .console-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 3px var(--space-3);
+  border-bottom: 1px solid var(--border-subtle, var(--border-primary));
+}
+
+.console-panel-body .console-line:last-child {
+  border-bottom: none;
+}
+
+.console-panel-body .console-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.console-panel-body .console-request-name {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--accent-primary-subtle, rgba(59, 130, 246, 0.1));
+  color: var(--accent-primary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-panel-body .console-source {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
+.console-panel-body .console-message {
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+.console-panel-body .console-warn {
+  background: var(--accent-warning-subtle);
+}
+
+.console-panel-body .console-warn .console-message {
+  color: var(--accent-warning);
+}
+
+.console-panel-body .console-error {
+  background: var(--accent-danger-subtle);
+}
+
+.console-panel-body .console-error .console-message {
+  color: var(--accent-danger);
+}
+
+.console-panel-body .console-empty {
+  padding: var(--space-4);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Terminal Panel */
+.terminal-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.terminal-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3);
+  height: 32px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+}
+
+.terminal-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.terminal-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.terminal-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.terminal-tab.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.terminal-tab-label {
+  pointer-events: none;
+}
+
+.terminal-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 1px;
+  border-radius: 3px;
+  opacity: 0;
+}
+
+.terminal-tab:hover .terminal-tab-close,
+.terminal-tab.active .terminal-tab-close {
+  opacity: 1;
+}
+
+.terminal-tab-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.terminal-panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.terminal-instance {
+  flex-direction: column;
+  overflow: hidden;
+}
