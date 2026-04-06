@@ -194,7 +194,7 @@ export function TerminalPanel() {
   return (
     <div className="terminal-panel" data-testid="terminal-panel">
       <div className="terminal-panel-header">
-        <span className="console-panel-title">Terminal</span>
+        <span className="terminal-panel-title">Terminal</span>
         <div className="terminal-panel-actions">
           <button className="btn-icon small panel-icon-btn" onClick={addSession} title="New terminal">
             <Plus size={14} />

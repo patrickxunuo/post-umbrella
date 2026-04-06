@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "skills": {
+    "adapt": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "334593237737dd79a883d53e60085fc333d7e73ce74f7d3a45e20f74b7ec6cdc"
+    },
+    "arrange": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "1a4bba315200d4e96f5f4b6da97b4c6ff6b5574aa1d390d2948a699d74d63ad8"
+    },
+    "colorize": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "fef9d58e68fe12bc891a16bd577b7039a150a5876ba101597fe60a6c17ad270e"
+    },
+    "critique": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "5ee54cf0fd97e208c1c34a8031d18c60e5512316ba5b289f9aa739d835e4d754"
+    },
+    "design-dna": {
+      "source": "zanwei/design-dna",
+      "sourceType": "github",
+      "computedHash": "b076f018c986e039bd256ae44975cd68db33f195bdd84a2a0c5c9198f56ae120"
+    },
+    "frontend-design": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "5773994279165697bfce414bc803d5c3f98d71b494f303adb1cec43711bf1547"
+    },
+    "optimize": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "2bf9726227fcfc9fdaf14799574feb3c551994146eb50bb4fecae45ace425eff"
+    },
+    "polish": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "computedHash": "8c5a862f8eef92a12b5e38a81e10f1c0998adf6559beb5b9b91e7bbbe54e3fef"
+    }
+  }
+}
