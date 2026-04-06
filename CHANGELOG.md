@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.11
+
+### New
+
+- **Global Console Panel** — Console logs are now a persistent bottom panel instead of a per-request tab in the Response Viewer. Logs from all request executions are collected globally, tagged with request name and timestamp. Includes clear and close buttons. (#18)
+- **Embedded Terminal** — Full interactive terminal (PowerShell on Windows, bash on Mac/Linux) embedded in the bottom panel. Supports multiple simultaneous terminals with tabs, restart, and theme-synced colors. Tauri desktop app only. (#18)
+- **Bottom Status Bar** — Persistent bar at the bottom of the window with Console and Terminal toggle buttons, log count badge, and error indicator.
+- **Global Error Boundary** — React error boundary wraps the app with a fallback UI ("Something went wrong" + Reload button). WebSocket connection status banner shows reconnecting/disconnected state. (#14)
+- **MCP Session Persistence** — MCP server sessions now survive server restarts. Tokens stored in a `mcp_sessions` Supabase table instead of in-memory. Users no longer need to re-authenticate after deployments. (#16)
+
+### Improved
+
+- **Code Architecture** — Major refactoring of the two largest files:
+  - `App.jsx` reduced from 1,270 to 619 lines — extracted `useRealtimeSync`, `useClipboardLinks`, `useCollectionVariables`, `useTauriClose` hooks, `CurlPanel` component, and `modalStore`
+  - `Sidebar.jsx` reduced from 1,275 to 995 lines — extracted `useSidebarDragDrop` hook with all drag-and-drop logic
+  - `JsonEditor.jsx` reduced from 473 to 183 lines — extracted `jsonLinter`, `jsonComments`, `jsonEditorTheme` utils
+- **Drag & Drop Reorder** — Fixed forward-drag placing items at wrong position (off by one). Added optimistic UI updates so reorder/move reflects immediately without waiting for WebSocket events.
+- **Sidebar Resize Handle** — Changed from 3px transparent gap to 1px border line for a cleaner look.
+
+### Fixed
+
+- **JSON Comment Preservation** — Comments on closing bracket lines (`}, // comment`) now survive beautify. Previously only inline comments on key-value lines were preserved. (#13)
+- **Drag Reorder Not Updating UI** — Reordering or moving requests via drag-and-drop now updates the sidebar immediately via optimistic state updates, independent of WebSocket/Realtime connection status.
+- **Missing Import** — Fixed `syncCloseBehaviorToRust` not imported in refactored `App.jsx`, which would crash Tauri desktop users with saved close behavior preferences.
+
 ## v0.1.10
 
 ### New
