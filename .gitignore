@@ -94,3 +94,5 @@ public/version.json
 
 /.claude/skills/
 /test-results*
+
+.agents/skills

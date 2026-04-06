@@ -93,7 +93,9 @@ test.describe('Advanced Operations', () => {
     // Drag C onto A (C should move before A → C, A, B)
     const reqC = collection.locator('.request-item').filter({ hasText: 'Req-C' });
     const reqA = collection.locator('.request-item').filter({ hasText: 'Req-A' });
-    await reqC.dragTo(reqA);
+    await reqC.scrollIntoViewIfNeeded();
+    await reqA.scrollIntoViewIfNeeded();
+    await reqC.dragTo(reqA, { timeout: 5000 });
 
     // Wait for optimistic update
     await page.waitForTimeout(500);

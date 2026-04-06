@@ -227,6 +227,10 @@
   opacity: 1;
 }
 
+.workflow-step-actions .btn-icon {
+  border-radius: var(--radius-xs);
+}
+
 /* Status Icons */
 .workflow-step-spinner {
   color: var(--accent-primary);

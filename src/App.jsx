@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AuthCallback } from './components/AuthCallback';
 import { Login } from './components/Login';
 import { Sidebar } from './components/Sidebar';
@@ -20,6 +20,11 @@ import { WorkbenchProvider, useWorkbench } from './contexts/WorkbenchContext';
 import { WorkspaceProvider, useWorkspace } from './contexts/WorkspaceContext';
 import { CurlPanel } from './components/CurlPanel';
 import { ConnectionStatus } from './components/ConnectionStatus';
+import { BottomBar } from './components/BottomBar';
+import { ConsolePanel } from './components/ConsolePanel';
+import useConsoleStore from './stores/consoleStore';
+
+const TerminalPanel = lazy(() => import('./components/TerminalPanel').then(m => ({ default: m.TerminalPanel })));
 import { useRealtimeSync } from './hooks/useRealtimeSync';
 import { useLayoutState } from './hooks/useLayoutState';
 import { useVersionCheck } from './hooks/useVersionCheck';
@@ -40,6 +45,7 @@ import './styles/presence-avatars.css';
 import './styles/workflow-editor.css';
 import './styles/collection-docs.css';
 import './styles/error-boundary.css';
+import './styles/bottom-bar.css';
 
 import useModalStore from './stores/modalStore';
 
@@ -199,6 +205,33 @@ function AppContent() {
   } = useWorkbench();
 
   useClipboardLinks();
+
+  const activePanel = useConsoleStore((s) => s.activePanel);
+  const panelHeight = useConsoleStore((s) => s.panelHeight);
+  const setPanelHeight = useConsoleStore((s) => s.setPanelHeight);
+  const [terminalMounted, setTerminalMounted] = useState(false);
+
+  // Once terminal is opened, keep it mounted to preserve state
+  useEffect(() => {
+    if (activePanel === 'terminal') setTerminalMounted(true);
+  }, [activePanel]);
+
+  const startResizingBottom = useCallback((e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = panelHeight;
+    const onMouseMove = (e) => {
+      const delta = startY - e.clientY;
+      const newHeight = Math.max(100, Math.min(startHeight + delta, window.innerHeight * 0.6));
+      setPanelHeight(newHeight);
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [panelHeight, setPanelHeight]);
 
   const canEdit = ['system', 'admin', 'developer'].includes(userProfile?.role);
 
@@ -553,6 +586,21 @@ function AppContent() {
               />
             </>
           )}
+          {(activePanel || terminalMounted) && (
+            <div className="bottom-panel-area" style={{ height: panelHeight, display: activePanel ? 'flex' : 'none' }}>
+              <div className="bottom-panel-resize-handle" onMouseDown={startResizingBottom} />
+              <div className="bottom-panel-content" style={{ display: activePanel === 'console' ? 'flex' : 'none' }}>
+                <ConsolePanel />
+              </div>
+              {terminalMounted && (
+                <div className="bottom-panel-content" style={{ display: activePanel === 'terminal' ? 'flex' : 'none' }}>
+                  <Suspense fallback={<div style={{ padding: 16, color: 'var(--text-tertiary)' }}>Loading terminal...</div>}>
+                    <TerminalPanel />
+                  </Suspense>
+                </div>
+              )}
+            </div>
+          )}
         </main>
 
         {showCurlPanel && (
@@ -565,6 +613,7 @@ function AppContent() {
         )}
 
       </div>
+      <BottomBar />
 
       <AppModals
         showEnvEditor={showEnvEditor} setShowEnvEditor={setShowEnvEditor}

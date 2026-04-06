@@ -18,6 +18,7 @@
     "dialog:default",
     "updater:default",
     "process:default",
+    "pty:default",
     "core:tray:default"
   ]
 }

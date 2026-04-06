@@ -2,7 +2,7 @@
 .request-editor {
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -19,8 +19,10 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-2);
+  padding: 10px 10px 8px;
   flex-shrink: 0;
+  border-bottom: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
 }
 
 /* ============================================
@@ -35,13 +37,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 36px;
+  height: 34px;
   padding: 0 10px 0 10px;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: background var(--transition-normal), border-color var(--transition-normal), color var(--transition-normal);
 }
 
 .method-selector-trigger:hover {
@@ -164,7 +166,7 @@
 
 .url-input {
   flex: 1;
-  height: 36px;
+  height: 34px;
   padding: 0 var(--space-3);
   background: var(--bg-input);
   border: 1px solid var(--border-primary);
@@ -186,7 +188,7 @@
 }
 
 .btn-send {
-  height: 36px;
+  height: 34px;
   width: 72px;
   justify-content: center;
   padding: 0;
@@ -215,7 +217,7 @@
 }
 
 .btn-cancel-request {
-  height: 36px;
+  height: 34px;
   width: 72px;
   justify-content: center;
   padding: 0;
@@ -527,19 +529,21 @@
   gap: 2px;
   border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
+  padding: 0 10px;
+  background: var(--bg-secondary);
 }
 
 .request-tabs button {
-  padding: 8px 16px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 1px solid transparent;
   margin-bottom: -1px;
   color: var(--text-tertiary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  transition: all 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -547,6 +551,7 @@
 
 .request-tabs button:hover {
   color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-hover) 65%, transparent);
 }
 
 .request-tabs button.active {
@@ -561,6 +566,7 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-3);
+  background: var(--bg-primary);
 }
 
 .request-content > div {
