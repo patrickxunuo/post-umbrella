@@ -8,7 +8,6 @@ export function ConsolePanel() {
   const setActivePanel = useConsoleStore((s) => s.setActivePanel);
   const scrollRef = useRef(null);
 
-  // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -21,7 +20,7 @@ export function ConsolePanel() {
         <span className="console-panel-title">Console</span>
         <div className="console-panel-actions">
           <button
-            className="btn-icon small"
+            className="btn-icon small panel-icon-btn"
             onClick={clearLogs}
             title="Clear console"
             data-testid="console-clear"
@@ -29,7 +28,7 @@ export function ConsolePanel() {
             <Trash2 size={14} />
           </button>
           <button
-            className="btn-icon small"
+            className="btn-icon small panel-icon-btn"
             onClick={() => setActivePanel(null)}
             title="Close panel"
           >
@@ -41,11 +40,13 @@ export function ConsolePanel() {
         {logs.length > 0 ? (
           logs.map((log, i) => (
             <div key={i} className={`console-line console-${log.type}`}>
-              <span className="console-time">
-                {new Date(log.timestamp).toLocaleTimeString()}
-              </span>
-              <span className="console-request-name">{log.requestName}</span>
-              <span className="console-source">{log.source}</span>
+              <div className="console-line-meta">
+                <span className="console-time">
+                  {new Date(log.timestamp).toLocaleTimeString()}
+                </span>
+                <span className="console-request-name">{log.requestName}</span>
+                <span className="console-source">{log.source}</span>
+              </div>
               <span className="console-message">{log.message}</span>
             </div>
           ))

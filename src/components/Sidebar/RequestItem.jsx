@@ -134,7 +134,7 @@ export function RequestItem({
               isDragOver={dragOverExample === example.id}
               onDragStart={canEdit ? (e) => onExampleDragStart(e, example, request.id) : undefined}
               onDragEnd={canEdit ? onExampleDragEnd : undefined}
-              onDragOver={canEdit ? (e) => onExampleDragOver(e, example) : undefined}
+              onDragOver={canEdit ? (e) => onExampleDragOver(e, example, examples) : undefined}
               onDragLeave={canEdit ? onExampleDragLeave : undefined}
               onDrop={canEdit ? (e) => onExampleDrop(e, example, request.id, examples) : undefined}
               menuOpen={exampleMenuOpen}

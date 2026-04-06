@@ -586,8 +586,8 @@ function AppContent() {
               />
             </>
           )}
-          {activePanel && (
-            <div className="bottom-panel-area" style={{ height: panelHeight }}>
+          {(activePanel || terminalMounted) && (
+            <div className="bottom-panel-area" style={{ height: panelHeight, display: activePanel ? 'flex' : 'none' }}>
               <div className="bottom-panel-resize-handle" onMouseDown={startResizingBottom} />
               <div className="bottom-panel-content" style={{ display: activePanel === 'console' ? 'flex' : 'none' }}>
                 <ConsolePanel />

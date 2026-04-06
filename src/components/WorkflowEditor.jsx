@@ -162,7 +162,13 @@ export function WorkflowEditor({
   const handleStepDragOver = useCallback((e, index) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = draggedIndex !== null ? 'move' : 'copy';
-    setDragOverIndex(index);
+    if (draggedIndex === null) {
+      setDragOverIndex(index);
+      return;
+    }
+
+    const insertIndex = draggedIndex < index ? index : index + 1;
+    setDragOverIndex(insertIndex === draggedIndex ? null : index);
   }, [draggedIndex]);
 
   const handleStepDrop = useCallback((e, targetIndex) => {
@@ -187,11 +193,12 @@ export function WorkflowEditor({
     }
     const newSteps = [...steps];
     const [moved] = newSteps.splice(draggedIndex, 1);
-    newSteps.splice(targetIndex, 0, moved);
+    const insertIndex = draggedIndex < targetIndex ? targetIndex : targetIndex + 1;
+    newSteps.splice(insertIndex, 0, moved);
     updateSteps(newSteps);
     setDraggedIndex(null);
     setDragOverIndex(null);
-  }, [draggedIndex, steps, updateSteps]);
+  }, [draggedIndex, steps, updateSteps, isRequestAllowed]);
 
   const handleStepDragEnd = useCallback(() => {
     setDraggedIndex(null);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Plus, RotateCcw } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import useConsoleStore from '../stores/consoleStore';
@@ -43,7 +43,8 @@ function getShellInfo() {
   };
 }
 
-function TerminalInstance({ session, isActive, onExited }) {
+function TerminalInstance({ session, isActive, onExited, focusRequest }) {
+  const isTerminalPanelOpen = useConsoleStore((s) => s.activePanel === 'terminal');
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const ptyRef = useRef(null);
@@ -94,19 +95,47 @@ function TerminalInstance({ session, isActive, onExited }) {
       if (ptyRef.current) { ptyRef.current.kill(); ptyRef.current = null; }
       term.dispose();
     };
-  }, [session.key]); // re-mount on restart (key changes)
+  }, [session.key]);
 
-  // Refit and focus when becoming active
   useEffect(() => {
-    if (isActive) {
-      setTimeout(() => {
-        fitAddonRef.current?.fit();
-        termRef.current?.focus();
-      }, 50);
-    }
-  }, [isActive]);
+    if (!isActive || !isTerminalPanelOpen) return;
 
-  // Sync theme on data-theme attribute change
+    let frameId = null;
+    let timeoutId = null;
+
+    const focusWhenVisible = (retries = 10) => {
+      const container = containerRef.current;
+      const term = termRef.current;
+      const fitAddon = fitAddonRef.current;
+      const helperTextarea = container?.querySelector('.xterm-helper-textarea');
+
+      if (!container || !term || !fitAddon) return;
+
+      const visible = container.offsetParent !== null && container.clientWidth > 0 && container.clientHeight > 0;
+      if (!visible && retries > 0) {
+        timeoutId = setTimeout(() => {
+          frameId = requestAnimationFrame(() => focusWhenVisible(retries - 1));
+        }, 24);
+        return;
+      }
+
+      fitAddon.fit();
+      helperTextarea?.focus();
+      term.focus();
+
+      if (document.activeElement !== helperTextarea && retries > 0) {
+        timeoutId = setTimeout(() => focusWhenVisible(retries - 1), 24);
+      }
+    };
+
+    frameId = requestAnimationFrame(() => focusWhenVisible());
+
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId);
+      if (timeoutId !== null) clearTimeout(timeoutId);
+    };
+  }, [isActive, isTerminalPanelOpen, focusRequest]);
+
   useEffect(() => {
     const observer = new MutationObserver(() => {
       if (termRef.current) termRef.current.options.theme = getTermTheme();
@@ -125,8 +154,22 @@ function TerminalInstance({ session, isActive, onExited }) {
 }
 
 export function TerminalPanel() {
+  const activePanel = useConsoleStore((s) => s.activePanel);
   const [sessions, setSessions] = useState(() => [{ id: nextId++, label: 'Terminal 1', key: 0 }]);
-  const [activeSessionId, setActiveSessionId] = useState(1);
+  const [activeSessionId, setActiveSessionId] = useState(() => nextId - 1);
+  const [focusRequest, setFocusRequest] = useState(0);
+
+  useEffect(() => {
+    if (activePanel === 'terminal') {
+      setFocusRequest((prev) => prev + 1);
+    }
+  }, [activePanel]);
+
+  useEffect(() => {
+    if (sessions.length > 0 && !sessions.some((session) => session.id === activeSessionId)) {
+      setActiveSessionId(sessions[0].id);
+    }
+  }, [sessions, activeSessionId]);
 
   const addSession = useCallback(() => {
     const id = nextId++;
@@ -138,7 +181,6 @@ export function TerminalPanel() {
     setSessions(prev => {
       const next = prev.filter(s => s.id !== id);
       if (next.length === 0) {
-        // Last terminal closed — close the panel
         useConsoleStore.getState().setActivePanel(null);
         return prev;
       }
@@ -149,22 +191,40 @@ export function TerminalPanel() {
     });
   }, [activeSessionId]);
 
-  const restartSession = useCallback((id) => {
-    setSessions(prev => prev.map(s =>
-      s.id === id ? { ...s, key: s.key + 1 } : s
-    ));
-  }, []);
-
-  const activeSession = sessions.find(s => s.id === activeSessionId);
-
   return (
     <div className="terminal-panel" data-testid="terminal-panel">
       <div className="terminal-panel-header">
-        <div className="terminal-tabs">
+        <span className="console-panel-title">Terminal</span>
+        <div className="terminal-panel-actions">
+          <button className="btn-icon small panel-icon-btn" onClick={addSession} title="New terminal">
+            <Plus size={14} />
+          </button>
+          <button
+            className="btn-icon small panel-icon-btn"
+            onClick={() => useConsoleStore.getState().setActivePanel(null)}
+            title="Close panel"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="terminal-panel-body">
+        <div className="terminal-workspace">
+          {sessions.map(s => (
+          <TerminalInstance
+            key={`${s.id}-${s.key}`}
+            session={s}
+            isActive={s.id === activeSessionId}
+            onExited={() => {}}
+            focusRequest={focusRequest}
+          />
+        ))}
+      </div>
+        <div className="terminal-session-rail">
           {sessions.map(s => (
             <div
               key={s.id}
-              className={`terminal-tab ${s.id === activeSessionId ? 'active' : ''}`}
+              className={`terminal-tab vertical ${s.id === activeSessionId ? 'active' : ''}`}
               onClick={() => setActiveSessionId(s.id)}
             >
               <span className="terminal-tab-label">{s.label}</span>
@@ -177,38 +237,7 @@ export function TerminalPanel() {
               </button>
             </div>
           ))}
-          <button className="btn-icon small" onClick={addSession} title="New terminal">
-            <Plus size={14} />
-          </button>
         </div>
-        <div className="terminal-panel-actions">
-          {activeSession && (
-            <button
-              className="btn-icon small"
-              onClick={() => restartSession(activeSessionId)}
-              title="Restart terminal"
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-          <button
-            className="btn-icon small"
-            onClick={() => useConsoleStore.getState().setActivePanel(null)}
-            title="Close panel"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-      <div className="terminal-panel-body">
-        {sessions.map(s => (
-          <TerminalInstance
-            key={`${s.id}-${s.key}`}
-            session={s}
-            isActive={s.id === activeSessionId}
-            onExited={() => {}}
-          />
-        ))}
       </div>
     </div>
   );

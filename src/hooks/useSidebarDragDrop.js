@@ -17,6 +17,20 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
   const [dragOverCollection, setDragOverCollection] = useState(null);
   const [folderDropZone, setFolderDropZone] = useState(null);
 
+  const getReorderIndices = (items, draggedId, targetId, placement = 'before') => {
+    const ids = items.map((item) => (typeof item === 'string' ? item : item.id));
+    const draggedIndex = ids.indexOf(draggedId);
+    const targetIndex = ids.indexOf(targetId);
+
+    if (draggedIndex === -1 || targetIndex === -1) return null;
+
+    const insertIndex = placement === 'after'
+      ? (draggedIndex < targetIndex ? targetIndex : targetIndex + 1)
+      : (draggedIndex < targetIndex ? targetIndex - 1 : targetIndex);
+
+    return { draggedIndex, targetIndex, insertIndex };
+  };
+
   const getRootCollectionId = (collectionId) => {
     let current = collections.find(c => c.id === collectionId);
     while (current?.parent_id) {
@@ -60,9 +74,15 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
     if (!isSameRootCollection(draggedRequest.collectionId, collectionId)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (draggedRequest.id !== request.id) {
+
+    if (draggedRequest.collectionId !== collectionId) {
       setDragOverRequest(request.id);
+      return;
     }
+
+    const sourceCollection = collections.find(c => c.id === collectionId);
+    const indices = getReorderIndices(sourceCollection?.requests || [], draggedRequest.id, request.id, 'before');
+    setDragOverRequest(indices && indices.insertIndex !== indices.draggedIndex ? request.id : null);
   };
 
   const handleDragLeave = () => {
@@ -110,11 +130,14 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
     }
 
     const requestIds = requests.map(r => r.id);
-    const draggedIndex = requestIds.indexOf(draggedRequest.id);
-    const targetIndex = requestIds.indexOf(targetRequest.id);
-    requestIds.splice(draggedIndex, 1);
-    // When dragging forward, indices above the removed item shift down by 1
-    const insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    const indices = getReorderIndices(requests, draggedRequest.id, targetRequest.id, 'before');
+    if (!indices || indices.insertIndex === indices.draggedIndex) {
+      setDraggedRequest(null);
+      return;
+    }
+
+    requestIds.splice(indices.draggedIndex, 1);
+    const { insertIndex } = indices;
     requestIds.splice(insertIndex, 0, draggedRequest.id);
 
     try {
@@ -155,6 +178,20 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
 
     if (draggedFolder && draggedFolder.id !== collectionId) {
       const zone = getFolderDropZone(e);
+      const targetCollection = collections.find(c => c.id === collectionId);
+      const sameParent = draggedFolder.parent_id === targetCollection?.parent_id;
+
+      if (zone !== 'inside' && sameParent) {
+        const siblings = getChildCollections(targetCollection?.parent_id);
+        const indices = getReorderIndices(siblings, draggedFolder.id, collectionId, zone);
+        if (!indices || indices.insertIndex === indices.draggedIndex) {
+          setFolderDropZone(null);
+          setDragOverFolder(null);
+          setDragOverCollection(null);
+          return;
+        }
+      }
+
       setFolderDropZone(zone);
       if (zone === 'inside') {
         setDragOverCollection(collectionId);
@@ -203,13 +240,15 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
         }
 
         const newSiblings = isSibling ? siblingCollections : getChildCollections(targetParentId);
+        const indices = getReorderIndices(newSiblings, draggedFolder.id, collectionId, zone);
+        if (!indices || indices.insertIndex === indices.draggedIndex) {
+          setDraggedFolder(null);
+          return;
+        }
+
         const ids = newSiblings.map(c => c.id);
-        const draggedIndex = ids.indexOf(draggedFolder.id);
-        if (draggedIndex !== -1) ids.splice(draggedIndex, 1);
-        let targetIndex = ids.indexOf(collectionId);
-        if (targetIndex === -1) { setDraggedFolder(null); return; }
-        if (zone === 'after') targetIndex += 1;
-        ids.splice(targetIndex, 0, draggedFolder.id);
+        if (indices.draggedIndex !== -1) ids.splice(indices.draggedIndex, 1);
+        ids.splice(indices.insertIndex, 0, draggedFolder.id);
 
         try {
           await data.reorderCollections(targetParentId, ids);
@@ -285,11 +324,17 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
     setDragOverExample(null);
   };
 
-  const handleExampleDragOver = (e, example) => {
+  const handleExampleDragOver = (e, example, examples) => {
     if (!draggedExample || draggedExample.id === example.id) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverExample(example.id);
+    if (draggedExample.requestId !== example.request_id) {
+      setDragOverExample(example.id);
+      return;
+    }
+
+    const indices = getReorderIndices(examples || [], draggedExample.id, example.id, 'before');
+    setDragOverExample(indices && indices.insertIndex !== indices.draggedIndex ? example.id : null);
   };
 
   const handleExampleDragLeave = () => {
@@ -305,12 +350,14 @@ export function useSidebarDragDrop(collections, getChildCollections, setCollecti
     if (draggedExample.requestId !== requestId) return;
 
     const ids = examples.map(ex => ex.id);
-    const draggedIndex = ids.indexOf(draggedExample.id);
-    const targetIndex = ids.indexOf(targetExample.id);
-    if (draggedIndex === -1 || targetIndex === -1) return;
+    const indices = getReorderIndices(examples, draggedExample.id, targetExample.id, 'before');
+    if (!indices || indices.insertIndex === indices.draggedIndex) {
+      setDraggedExample(null);
+      return;
+    }
 
-    ids.splice(draggedIndex, 1);
-    ids.splice(targetIndex, 0, draggedExample.id);
+    ids.splice(indices.draggedIndex, 1);
+    ids.splice(indices.insertIndex, 0, draggedExample.id);
 
     try {
       await data.reorderExamples(requestId, ids);

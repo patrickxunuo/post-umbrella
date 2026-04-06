@@ -6,7 +6,6 @@ const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in 
 export function BottomBar() {
   const activePanel = useConsoleStore((s) => s.activePanel);
   const togglePanel = useConsoleStore((s) => s.togglePanel);
-  const setActivePanel = useConsoleStore((s) => s.setActivePanel);
   const logs = useConsoleStore((s) => s.logs);
   const hasErrors = logs.some((l) => l.type === 'error');
 
@@ -29,12 +28,9 @@ export function BottomBar() {
         {isTauri() && (
           <button
             className={`bottom-bar-btn ${activePanel === 'terminal' ? 'active' : ''}`}
-            onClick={() => {
-              // If already on terminal, just ensure focus; otherwise open it
-              if (activePanel === 'terminal') return;
-              setActivePanel('terminal');
-            }}
-            title="Open Terminal"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => togglePanel('terminal')}
+            title="Toggle Terminal"
             data-testid="terminal-btn"
           >
             <Terminal size={14} />
