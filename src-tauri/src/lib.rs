@@ -135,13 +135,33 @@ async fn http_request(
   let status_text = res.status().canonical_reason().unwrap_or("").to_string();
 
   let mut res_headers = Vec::new();
+  let mut content_type = String::new();
   for (name, value) in res.headers().iter() {
     if let Ok(v) = value.to_str() {
+      if name.as_str().eq_ignore_ascii_case("content-type") {
+        content_type = v.to_string();
+      }
       res_headers.push((name.as_str().to_string(), v.to_string()));
     }
   }
 
-  let body_text = res.text().await.map_err(|e| e.to_string())?;
+  // Binary content types — base64-encode so the bytes survive the JS bridge intact.
+  // SVG is text-based, leave it as text.
+  let ct_lower = content_type.to_ascii_lowercase();
+  let is_binary = (ct_lower.starts_with("image/") && !ct_lower.starts_with("image/svg"))
+    || ct_lower.starts_with("audio/")
+    || ct_lower.starts_with("video/")
+    || ct_lower.starts_with("application/octet-stream")
+    || ct_lower.starts_with("application/pdf")
+    || ct_lower.starts_with("application/zip")
+    || ct_lower.starts_with("application/x-");
+
+  let body_text = if is_binary {
+    let bytes = res.bytes().await.map_err(|e| e.to_string())?;
+    base64::engine::general_purpose::STANDARD.encode(&bytes)
+  } else {
+    res.text().await.map_err(|e| e.to_string())?
+  };
 
   Ok(HttpResponse { status, status_text: status_text, headers: res_headers, body: body_text })
 }
