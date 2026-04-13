@@ -1,0 +1,64 @@
+name: Cleanup Old Releases
+
+# Runs when a release is published (manually or via the release.yml workflow).
+# Keeps the N most recent published releases and deletes the rest along with
+# their git tags. Drafts and prereleases are ignored.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: 'Number of recent releases to keep'
+        required: false
+        default: '2'
+
+env:
+  KEEP: ${{ github.event.inputs.keep || '2' }}
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old releases and tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          KEEP_COUNT="${KEEP:-2}"
+          echo "Keeping the $KEEP_COUNT most recent published releases."
+
+          # List published (non-draft, non-prerelease) releases newest-first by createdAt.
+          TAGS=$(gh release list --limit 100 \
+            --json tagName,isDraft,isPrerelease,createdAt \
+            --jq 'map(select(.isDraft == false and .isPrerelease == false))
+                  | sort_by(.createdAt) | reverse | map(.tagName) | .[]')
+
+          if [ -z "$TAGS" ]; then
+            echo "No published releases found."
+            exit 0
+          fi
+
+          echo "Found releases (newest first):"
+          echo "$TAGS"
+          echo "---"
+
+          INDEX=0
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            INDEX=$((INDEX + 1))
+            if [ "$INDEX" -le "$KEEP_COUNT" ]; then
+              echo "Keeping #$INDEX: $tag"
+              continue
+            fi
+            echo "Deleting #$INDEX: $tag (release + tag)"
+            gh release delete "$tag" --yes --cleanup-tag
+          done <<< "$TAGS"
+
+          echo "Cleanup complete."
