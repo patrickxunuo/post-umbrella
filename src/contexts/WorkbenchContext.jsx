@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { useWorkspace } from './WorkspaceContext';
 import { useConflictResolution } from '../hooks/useConflictResolution';
@@ -69,6 +69,9 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   const selectedExample = activeTab?.type === 'example' ? activeTab.example : null;
   const response = activeTab?.response || null;
 
+  // Collection variables for the current root collection (used by cURL preview and anywhere else that needs {{vars}})
+  const [collectionVariables, setCollectionVariables] = useState([]);
+
   // Ref for original requests — proxy to store's mutable data
   const originalRequestsRef = useRef(useWorkbenchStore.getState()._originalRequests);
 
@@ -110,6 +113,19 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   useEffect(() => {
     loadExamples(selectedRequest?.id);
   }, [selectedRequest?.id, loadExamples]);
+
+  // Load collection variables when current root collection changes
+  useEffect(() => {
+    if (!currentRootCollectionId) {
+      setCollectionVariables([]);
+      return;
+    }
+    let cancelled = false;
+    data.getCollectionVariables(currentRootCollectionId)
+      .then((vars) => { if (!cancelled) setCollectionVariables(vars || []); })
+      .catch(() => { if (!cancelled) setCollectionVariables([]); });
+    return () => { cancelled = true; };
+  }, [currentRootCollectionId]);
 
   // Track current root collection for realtime updates
   useEffect(() => {
@@ -437,6 +453,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     revealRequestId, setRevealRequestId, revealCollectionId, setRevealCollectionId,
     activeTab, selectedRequest, selectedExample, response,
     collections, setCollections, collectionsLoading,
+    collectionVariables,
     examples, setExamples, environments, activeEnvironment, setActiveEnvironment,
     loadCollections, loadEnvironments, loading,
     openCollectionInTab, openRequestInTab, openExampleInTab, saveFunctionsRef, closeTab,

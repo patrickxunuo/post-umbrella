@@ -125,7 +125,7 @@ function VariablesTab({ collectionId, canEdit, onEnvironmentUpdate }) {
 
       if (canEdit) {
         const allVars = vars.map(v => {
-          const isNew = newVarIndices.has(editingVars.indexOf(v)) && !existingKeys.has(v.key);
+          const isNew = !existingKeys.has(v.key);
           const original = variables.find(ov => ov.key === v.key);
           return {
             key: v.key,

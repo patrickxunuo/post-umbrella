@@ -143,7 +143,7 @@ export function EnvironmentEditor({ onClose, workspaceId, workspaceName, canEdit
         // Admin: pass all current variables to updateEnvironment
         // It will detect additions and deletions
         const allVars = vars.map(v => {
-          const isNew = newVarIndices.has(editingVars.indexOf(v)) && !existingKeys.has(v.key);
+          const isNew = !existingKeys.has(v.key);
           const original = selectedEnv.variables.find(ov => ov.key === v.key);
           return {
             key: v.key,

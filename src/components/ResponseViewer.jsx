@@ -10,6 +10,23 @@ const isHtmlResponse = (headers) => {
   );
 };
 
+// Matches image/png, image/jpeg, image/gif, image/webp, image/svg+xml, image/bmp, image/x-icon, image/avif, etc.
+const getImageMimeType = (headers) => {
+  if (!Array.isArray(headers)) return null;
+  const ct = headers.find(h => h.key?.toLowerCase() === 'content-type')?.value;
+  if (!ct) return null;
+  const match = ct.match(/^\s*(image\/[^;\s]+)/i);
+  return match ? match[1].toLowerCase() : null;
+};
+
+// body may be a data URL already or a base64 string; returns a valid <img> src.
+function buildImageSrc(body, mimeType) {
+  if (typeof body !== 'string' || !mimeType) return '';
+  if (body.startsWith('data:')) return body;
+  const cleaned = body.replace(/\s+/g, '');
+  return `data:${mimeType};base64,${cleaned}`;
+}
+
 const isTauri = () => '__TAURI_INTERNALS__' in window;
 
 const isLocalOrPrivateUrl = (url) => {
@@ -65,6 +82,12 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   const isHtmlBody = useMemo(() => {
     return !isExample && !isJsonBody && isHtmlResponse(displayResponse?.headers);
   }, [isExample, isJsonBody, displayResponse?.headers]);
+
+  const imageMimeType = useMemo(() => {
+    if (isExample) return null;
+    return getImageMimeType(displayResponse?.headers);
+  }, [isExample, displayResponse?.headers]);
+  const isImageBody = !!imageMimeType;
 
   if (loading) {
     return (
@@ -260,6 +283,16 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                 <pre className="response-body" data-testid="html-raw-body">{displayResponse?.body}</pre>
               )}
             </>
+          ) : isImageBody ? (
+            <div className="image-preview-container" data-testid="image-preview-container">
+              <img
+                className="image-preview"
+                src={buildImageSrc(displayResponse?.body, imageMimeType)}
+                alt="Response image"
+                data-testid="image-preview"
+                onError={(e) => { e.currentTarget.dataset.failed = 'true'; }}
+              />
+            </div>
           ) : isJsonBody ? (
             <div className="json-view-wrapper">
               <JsonView
