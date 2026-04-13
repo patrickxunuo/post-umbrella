@@ -227,6 +227,91 @@
   border-radius: var(--radius-sm);
 }
 
+/* PDF Preview — fills remaining flex space in the response-content column.
+   No fixed height: avoids creating an outer scrollbar; scrolling stays inside the PDF viewer. */
+.pdf-preview-container {
+  display: flex;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.pdf-preview-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: none;
+  background: var(--bg-tertiary);
+}
+
+.pdf-preview-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  color: var(--text-secondary);
+  text-align: center;
+  width: 100%;
+}
+
+.pdf-preview-fallback a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+/* Binary (Image/PDF) View Toggle */
+.binary-view-toggle {
+  margin-bottom: var(--space-2);
+}
+
+.binary-raw-view,
+.binary-hex-view {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre;
+  overflow: auto;
+  padding: var(--space-3);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  margin: 0;
+  height: 100%;
+}
+
+.binary-raw-view {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.binary-hex-view-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.binary-hex-truncated {
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  font-size: 12px;
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-tertiary);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent-primary);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
 /* Desktop Agent Banner (shown when local URL fails on web) */
 .desktop-agent-banner {
   display: flex;
