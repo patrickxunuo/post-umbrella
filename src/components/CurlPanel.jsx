@@ -62,25 +62,75 @@ const curlDarkSyntax = EditorView.theme({
 
 const shellLang = StreamLanguage.define(shell);
 
+// Walk up the collection hierarchy to resolve inherited auth (mirrors useResponseExecution.js)
+function resolveInheritedAuth(collectionId, collections) {
+  let currentId = collectionId;
+  let iterations = 0;
+  while (currentId && iterations < 50) {
+    const col = collections.find(c => c.id === currentId);
+    if (!col) break;
+    if (col.auth_type && col.auth_type !== 'none' && col.auth_type !== 'inherit') {
+      return { auth_type: col.auth_type, auth_token: col.auth_token || '' };
+    }
+    currentId = col.parent_id;
+    iterations++;
+  }
+  return { auth_type: 'none', auth_token: '' };
+}
+
 export function CurlPanel({ width, theme, onResize, onClose }) {
   const toast = useToast();
-  const { activeTab, selectedRequest, selectedExample, activeEnvironment } = useWorkbench();
+  const { activeTab, selectedRequest, selectedExample, activeEnvironment, collections, collectionVariables } = useWorkbench();
 
   const curlPreview = useMemo(() => {
     const req = activeTab?.type === 'example'
       ? selectedExample?.request_data
       : selectedRequest;
     if (!req) return '';
-    const sub = (text) => {
-      if (!text || !activeEnvironment) return text;
-      let result = text;
-      for (const v of activeEnvironment.variables) {
-        if (v.enabled && v.key) {
-          result = result.replace(new RegExp(`\\{\\{${v.key}\\}\\}`, 'g'), v.value || '');
+
+    // Resolve inherited auth — for examples, look up the parent request's collection_id
+    let authType = req.auth_type || 'none';
+    let authToken = req.auth_token || '';
+    if (authType === 'inherit' && collections && collections.length > 0) {
+      let collectionIdForAuth = req.collection_id;
+      if (!collectionIdForAuth && activeTab?.type === 'example' && selectedExample?.request_id) {
+        for (const c of collections) {
+          const found = c.requests?.find(r => r.id === selectedExample.request_id);
+          if (found) { collectionIdForAuth = found.collection_id; break; }
         }
+      }
+      if (collectionIdForAuth) {
+        const resolved = resolveInheritedAuth(collectionIdForAuth, collections);
+        authType = resolved.auth_type;
+        authToken = resolved.auth_token;
+      }
+    }
+
+    const sub = (text) => {
+      if (!text) return text;
+      // Build merged map: collection (lower priority) then env (higher priority overrides).
+      // Single substitution pass so env truly overrides — otherwise replacing collection first
+      // erases the {{key}} pattern before env ever sees it.
+      const resolved = new Map();
+      if (collectionVariables && collectionVariables.length > 0) {
+        for (const v of collectionVariables) {
+          if (v.enabled === false || !v.key) continue;
+          resolved.set(v.key, v.value || v.current_value || v.initial_value || '');
+        }
+      }
+      if (activeEnvironment?.variables) {
+        for (const v of activeEnvironment.variables) {
+          if (v.enabled === false || !v.key) continue;
+          resolved.set(v.key, v.value || v.current_value || v.initial_value || '');
+        }
+      }
+      let result = text;
+      for (const [key, value] of resolved) {
+        result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value);
       }
       return result;
     };
+
     const headers = (req.headers || []).map(h => ({ ...h, key: sub(h.key), value: sub(h.value) }));
     const fd = (req.form_data || []).map(f => ({ ...f, key: sub(f.key), value: f.type === 'file' ? f.value : sub(f.value) }));
     return generateCurl(
@@ -90,10 +140,10 @@ export function CurlPanel({ width, theme, onResize, onClose }) {
       sub(req.body || ''),
       req.body_type || 'none',
       fd,
-      req.auth_type || 'none',
-      sub(req.auth_token || '')
+      authType,
+      sub(authToken)
     );
-  }, [selectedRequest, selectedExample, activeTab?.type, activeEnvironment]);
+  }, [selectedRequest, selectedExample, activeTab?.type, activeEnvironment, collections, collectionVariables]);
 
   return (
     <>
@@ -129,7 +179,7 @@ export function CurlPanel({ width, theme, onResize, onClose }) {
             </button>
           </div>
         </div>
-        <div className="curl-panel-code">
+        <div className="curl-panel-code" data-testid="curl-panel-code">
           <CodeMirror
             value={curlPreview}
             readOnly

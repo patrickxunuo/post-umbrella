@@ -207,6 +207,26 @@
   background: #ffffff;
 }
 
+/* Image Preview (shown when response Content-Type is image/*) */
+.image-preview-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  min-height: 200px;
+  height: 100%;
+  overflow: auto;
+}
+
+.image-preview {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: repeating-conic-gradient(var(--bg-tertiary) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+  border-radius: var(--radius-sm);
+}
+
 /* Desktop Agent Banner (shown when local URL fails on web) */
 .desktop-agent-banner {
   display: flex;

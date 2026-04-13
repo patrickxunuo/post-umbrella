@@ -130,8 +130,14 @@ serve(async (req: Request) => {
       // Get response body
       let responseBody: unknown;
       const contentType = response.headers.get("content-type") || "";
+      const isBinary = /^\s*(image\/|audio\/|video\/|application\/(octet-stream|pdf|zip|x-.+))/i.test(contentType);
       if (contentType.includes("application/json")) {
         responseBody = await response.json();
+      } else if (isBinary) {
+        const buf = new Uint8Array(await response.arrayBuffer());
+        let binary = "";
+        for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+        responseBody = btoa(binary);
       } else {
         responseBody = await response.text();
       }

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as data from '../data/index.js';
+import useCollectionStore from './collectionStore';
 
 // Helper: create a setter that supports both direct values and functional updates (like useState)
 const stateSetter = (key) => (set) => (updater) =>
@@ -220,10 +221,15 @@ const useWorkbenchStore = create((set, get) => ({
     const tab = openTabs.find((t) => t.id === activeTabId);
     if (!tab || tab.type !== 'collection') return;
     const col = tab.collection;
-    await data.updateCollection(col.id, {
+    const updates = {
       auth_type: col.auth_type || 'none', auth_token: col.auth_token || '',
       pre_script: col.pre_script || '', post_script: col.post_script || '',
-    });
+    };
+    await data.updateCollection(col.id, updates);
+    // Optimistic local update so dependent consumers (cURL preview, auth inheritance) see the change immediately
+    useCollectionStore.getState().setCollections((prev) =>
+      prev.map((c) => (c.id === col.id ? { ...c, ...updates } : c))
+    );
     _originalRequests[activeTabId] = JSON.stringify({
       auth_type: col.auth_type || 'none', auth_token: col.auth_token || '',
       pre_script: col.pre_script || '', post_script: col.post_script || '',

@@ -173,28 +173,24 @@ export function useResponseExecution({
       const substituteWithEnv = (text) => {
         if (!text) return text;
 
-        let result = text;
-
-        // Apply collection variables first (lower priority)
+        // Build merged map: collection (lower priority) then env (higher priority overrides).
+        // Single substitution pass so env truly overrides — otherwise replacing collection first
+        // erases the {{key}} pattern before env ever sees it.
+        const resolved = new Map();
         for (const variable of collectionVars) {
-          if (variable.enabled && variable.key) {
-            const value = variable.value || variable.current_value || variable.initial_value || '';
-            const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
-            result = result.replace(regex, value);
-          }
+          if (!variable.enabled || !variable.key) continue;
+          resolved.set(variable.key, variable.value || variable.current_value || variable.initial_value || '');
         }
-
-        // Apply env variables second (higher priority — overwrites collection vars)
         if (currentEnv) {
           for (const variable of currentEnv.variables) {
-            if (variable.enabled && variable.key) {
-              const value = variable.value || variable.current_value || variable.initial_value || '';
-              const regex = new RegExp(`\\{\\{\\s*${variable.key}\\s*\\}\\}`, 'g');
-              result = result.replace(regex, value);
-            }
+            if (!variable.enabled || !variable.key) continue;
+            resolved.set(variable.key, variable.value || variable.current_value || variable.initial_value || '');
           }
         }
-
+        let result = text;
+        for (const [key, value] of resolved) {
+          result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value);
+        }
         return result;
       };
 

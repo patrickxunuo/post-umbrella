@@ -505,15 +505,46 @@ export function Sidebar({
     finishEditing();
   };
 
-  // Expand all folders
-  const handleExpandAll = () => {
-    const allCollectionIds = collections.map(c => c.id);
-    setExpandedCollections(new Set(allCollectionIds));
+  // Collection IDs visible under current search (all IDs when no search active)
+  const getVisibleCollectionIds = () => {
+    const visible = new Set();
+    const walk = (col) => {
+      if (!col) return false;
+      if (!searchQuery.trim()) {
+        visible.add(col.id);
+        getChildCollections(col.id).forEach(walk);
+        return true;
+      }
+      const selfMatches = collectionMatchesSearch(col);
+      const reqMatches = filterRequests(col.requests).length > 0;
+      const children = getChildCollections(col.id);
+      let childMatched = false;
+      for (const child of children) if (walk(child)) childMatched = true;
+      const matched = selfMatches || reqMatches || childMatched;
+      if (matched) visible.add(col.id);
+      return matched;
+    };
+    collections.filter(c => !c.parent_id).forEach(walk);
+    return visible;
   };
 
-  // Collapse all folders
+  // Expand all folders (respects active search)
+  const handleExpandAll = () => {
+    setExpandedCollections(new Set(getVisibleCollectionIds()));
+  };
+
+  // Collapse all folders (respects active search)
   const handleCollapseAll = () => {
-    setExpandedCollections(new Set());
+    if (!searchQuery.trim()) {
+      setExpandedCollections(new Set());
+      return;
+    }
+    const visible = getVisibleCollectionIds();
+    setExpandedCollections((prev) => {
+      const next = new Set(prev);
+      for (const id of visible) next.delete(id);
+      return next;
+    });
   };
 
   // Scroll to active item (request or example) in sidebar
@@ -566,6 +597,28 @@ export function Sidebar({
       }
     }, 100);
   };
+
+  // Auto-seed expanded collections on search so matching branches are visible
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const toExpand = new Set();
+    const walk = (col) => {
+      if (!col) return false;
+      const selfMatches = collectionMatchesSearch(col);
+      const reqMatches = filterRequests(col.requests).length > 0;
+      const children = getChildCollections(col.id);
+      let childMatched = false;
+      for (const child of children) {
+        if (walk(child)) childMatched = true;
+      }
+      const matched = selfMatches || reqMatches || childMatched;
+      if (matched) toExpand.add(col.id);
+      return matched;
+    };
+    collections.filter(c => !c.parent_id).forEach(walk);
+    setExpandedCollections(prev => new Set([...prev, ...toExpand]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, collections]);
 
   // Auto-reveal request when revealRequestId is set (e.g., from shared link)
   useEffect(() => {
@@ -652,8 +705,7 @@ export function Sidebar({
     const filteredReqs = (searchQuery.trim() && showAll)
       ? (collection.requests || [])
       : filterRequests(collection.requests);
-    // Auto-expand when searching
-    const isExpanded = searchQuery.trim() ? true : expandedCollections.has(collection.id);
+    const isExpanded = expandedCollections.has(collection.id);
     const hasChildren = childCollections.length > 0 || (collection.requests?.length > 0);
     const isFolder = !!collection.parent_id;
     const collectionWorkflows = !isFolder ? workflows.filter(w => w.collection_id === collection.id) : [];
@@ -929,6 +981,7 @@ export function Sidebar({
             onClick={handleExpandAll}
             className="btn-icon small"
             title="Expand all folders"
+            data-testid="sidebar-expand-all"
           >
             <ChevronsUpDown size={14} />
           </button>
@@ -936,6 +989,7 @@ export function Sidebar({
             onClick={handleCollapseAll}
             className="btn-icon small"
             title="Collapse all folders"
+            data-testid="sidebar-collapse-all"
           >
             <ChevronsDownUp size={14} />
           </button>
@@ -966,6 +1020,7 @@ export function Sidebar({
           placeholder="Search APIs..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          data-testid="sidebar-search-input"
         />
       </div>
 

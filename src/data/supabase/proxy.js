@@ -215,8 +215,16 @@ const sendDirectRequest = async (data, signal) => {
     const endTime = Date.now();
     let responseBody;
     const contentType = response.headers.get('content-type') || '';
+    const isBinary = /^\s*(image\/|audio\/|video\/|application\/(octet-stream|pdf|zip|x-.+))/i.test(contentType);
+    // SVG is an image but text-encoded — keep it as text.
+    const isSvg = /^\s*image\/svg\+xml/i.test(contentType);
     if (contentType.includes('application/json')) {
       responseBody = await response.json();
+    } else if (isBinary && !isSvg) {
+      const buf = new Uint8Array(await response.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < buf.length; i++) binary += String.fromCharCode(buf[i]);
+      responseBody = btoa(binary);
     } else {
       responseBody = await response.text();
     }

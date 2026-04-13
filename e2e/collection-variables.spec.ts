@@ -108,10 +108,9 @@ test.describe('Collection Variables', () => {
     const savedKey = page.locator('.env-var-table tbody tr').first().locator('td.col-key input');
     await expect(savedKey).toHaveValue('edit_var');
 
-    // Now type a new value (the value field may be empty after re-fetch — that's expected)
+    // Replace the value with a new one
     const editValueInput = page.locator('.env-var-table tbody tr').first().locator('td.col-value input');
-    await editValueInput.click();
-    await editValueInput.type('updated_value', { delay: 20 });
+    await editValueInput.fill('updated_value');
 
     // Verify value entered
     await expect(editValueInput).toHaveValue('updated_value');
