@@ -5,6 +5,8 @@
 ### New
 
 - **Image Response Preview** — Responses with `image/*` content types (PNG, JPEG, WebP, GIF, SVG) now render inline as an actual image in the Response Viewer instead of dumping raw binary text. Edge Function proxy, browser-direct fetch path, and the Tauri desktop `http_request` command all base64-encode binary bodies so the bytes survive the JS bridge intact. (#21)
+- **PDF Response Preview** — Responses with `Content-Type: application/pdf` render inline via an `<object>` viewer with a nested fallback containing a download link, so browsers without a built-in PDF viewer (notably macOS WKWebView in the Tauri desktop app) still get a useful affordance. (#25)
+- **Preview / Raw / Hex Toggle for Image and PDF** — Image and PDF previews now have a segmented `[Preview | Raw | Hex]` control matching the existing HTML preview toggle. Raw shows the base64 body string; Hex shows a classic `addr | bytes | ascii` dump capped at 1 MB with a "Show all" affordance for larger bodies. Switching views is pure state — no re-fetch. (#25)
 
 ### Improved
 
