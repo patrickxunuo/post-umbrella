@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Monitor, Download, Terminal } from 'lucide-react';
 import JsonView from '@uiw/react-json-view';
 import { JsonEditor } from './JsonEditor';
+import { BinaryViewToggle } from './BinaryViewToggle';
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -19,9 +20,15 @@ const getImageMimeType = (headers) => {
   return match ? match[1].toLowerCase() : null;
 };
 
+const isPdfResponse = (headers) => {
+  if (!Array.isArray(headers)) return false;
+  const ct = headers.find(h => h.key?.toLowerCase() === 'content-type')?.value;
+  return !!ct && /^\s*application\/pdf/i.test(ct);
+};
+
 // body may be a data URL, a base64 string, a raw-binary string (lossy utf-8 decoded),
-// or an SVG source. Returns a valid <img> src for any of these.
-function buildImageSrc(body, mimeType) {
+// or an SVG source. Returns a valid data URL for any of these.
+function buildBinaryDataUrl(body, mimeType) {
   if (typeof body !== 'string' || !body || !mimeType) return '';
   if (body.startsWith('data:')) return body;
   // SVG is text — inline it so it doesn't need base64 decoding
@@ -39,6 +46,58 @@ function buildImageSrc(body, mimeType) {
   } catch {
     return '';
   }
+}
+
+const HEX_VIEW_BYTE_CAP = 1024 * 1024; // 1 MB
+
+// Decode body (base64 string OR raw-binary string) -> Uint8Array
+function decodeToBytes(body) {
+  if (typeof body !== 'string' || !body) return new Uint8Array();
+  const cleaned = body.replace(/\s+/g, '');
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned) && cleaned.length % 4 === 0) {
+    try {
+      const bin = atob(cleaned);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    } catch { /* fall through */ }
+  }
+  const out = new Uint8Array(body.length);
+  for (let i = 0; i < body.length; i++) out[i] = body.charCodeAt(i) & 0xff;
+  return out;
+}
+
+// Render up to `byteLimit` bytes as `addr | hex | ascii` rows.
+function buildHexDump(bytes, byteLimit = HEX_VIEW_BYTE_CAP) {
+  const total = bytes.length;
+  const cap = Math.min(total, byteLimit);
+  const lines = [];
+  for (let off = 0; off < cap; off += 16) {
+    const slice = bytes.subarray(off, Math.min(off + 16, cap));
+    const addr = off.toString(16).padStart(8, '0');
+    const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ').padEnd(47, ' ');
+    const ascii = Array.from(slice).map(b => (b >= 0x20 && b < 0x7f) ? String.fromCharCode(b) : '.').join('');
+    lines.push(`${addr}  ${hex}  ${ascii}`);
+  }
+  return { text: lines.join('\n'), truncated: total > cap, totalBytes: total };
+}
+
+function HexView({ body, showAll, onShowAll, testId }) {
+  const { text, truncated, totalBytes } = useMemo(() => {
+    const bytes = decodeToBytes(body);
+    return buildHexDump(bytes, showAll ? Infinity : HEX_VIEW_BYTE_CAP);
+  }, [body, showAll]);
+  return (
+    <div className="binary-hex-view-wrapper">
+      <pre className="binary-hex-view" data-testid={testId}>{text}</pre>
+      {truncated && (
+        <div className="binary-hex-truncated">
+          Showing first {HEX_VIEW_BYTE_CAP.toLocaleString()} bytes of {totalBytes.toLocaleString()}.{' '}
+          <button className="link-button" onClick={onShowAll} data-testid={`${testId}-show-all`}>Show all</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -68,6 +127,9 @@ const isLocalOrPrivateUrl = (url) => {
 export function ResponseViewer({ response, loading, isExample, example, onExampleChange, requestUrl }) {
   const [activeTab, setActiveTab] = useState('body');
   const [htmlViewMode, setHtmlViewMode] = useState('preview');
+  const [imageViewMode, setImageViewMode] = useState('preview');
+  const [pdfViewMode, setPdfViewMode] = useState('preview');
+  const [hexShowAll, setHexShowAll] = useState(false);
 
   // For examples, use example.response_data
   const displayResponse = isExample ? example?.response_data : response;
@@ -75,6 +137,13 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   // Reset htmlViewMode to 'preview' when displayResponse changes
   useEffect(() => {
     setHtmlViewMode('preview');
+  }, [displayResponse]);
+
+  // Reset binary view modes + hex expansion when a new response arrives
+  useEffect(() => {
+    setImageViewMode('preview');
+    setPdfViewMode('preview');
+    setHexShowAll(false);
   }, [displayResponse]);
 
   // Parse JSON body - must be before any early returns!
@@ -102,6 +171,11 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     return getImageMimeType(displayResponse?.headers);
   }, [isExample, displayResponse?.headers]);
   const isImageBody = !!imageMimeType;
+
+  const isPdfBody = useMemo(
+    () => !isExample && isPdfResponse(displayResponse?.headers),
+    [isExample, displayResponse?.headers]
+  );
 
   if (loading) {
     return (
@@ -298,15 +372,66 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               )}
             </>
           ) : isImageBody ? (
-            <div className="image-preview-container" data-testid="image-preview-container">
-              <img
-                className="image-preview"
-                src={buildImageSrc(displayResponse?.body, imageMimeType)}
-                alt="Response image"
-                data-testid="image-preview"
-                onError={(e) => { e.currentTarget.dataset.failed = 'true'; }}
-              />
-            </div>
+            <>
+              <BinaryViewToggle value={imageViewMode} onChange={setImageViewMode} testIdPrefix="image" />
+              {imageViewMode === 'preview' && (
+                <div className="image-preview-container" data-testid="image-preview-container">
+                  <img
+                    className="image-preview"
+                    src={buildBinaryDataUrl(displayResponse?.body, imageMimeType)}
+                    alt="Response image"
+                    data-testid="image-preview"
+                    onError={(e) => { e.currentTarget.dataset.failed = 'true'; }}
+                  />
+                </div>
+              )}
+              {imageViewMode === 'raw' && (
+                <pre className="binary-raw-view" data-testid="image-raw-body">{displayResponse?.body}</pre>
+              )}
+              {imageViewMode === 'hex' && (
+                <HexView
+                  body={displayResponse?.body}
+                  showAll={hexShowAll}
+                  onShowAll={() => setHexShowAll(true)}
+                  testId="image-hex-body"
+                />
+              )}
+            </>
+          ) : isPdfBody ? (
+            <>
+              <BinaryViewToggle value={pdfViewMode} onChange={setPdfViewMode} testIdPrefix="pdf" />
+              {pdfViewMode === 'preview' && (
+                <div className="pdf-preview-container" data-testid="pdf-preview-container">
+                  <object
+                    className="pdf-preview-frame"
+                    data={buildBinaryDataUrl(displayResponse?.body, 'application/pdf')}
+                    type="application/pdf"
+                    data-testid="pdf-preview-frame"
+                  >
+                    <div className="pdf-preview-fallback" data-testid="pdf-preview-fallback">
+                      <p>Your browser cannot display this PDF inline.</p>
+                      <a
+                        href={buildBinaryDataUrl(displayResponse?.body, 'application/pdf')}
+                        download="response.pdf"
+                      >
+                        Download PDF
+                      </a>
+                    </div>
+                  </object>
+                </div>
+              )}
+              {pdfViewMode === 'raw' && (
+                <pre className="binary-raw-view" data-testid="pdf-raw-body">{displayResponse?.body}</pre>
+              )}
+              {pdfViewMode === 'hex' && (
+                <HexView
+                  body={displayResponse?.body}
+                  showAll={hexShowAll}
+                  onShowAll={() => setHexShowAll(true)}
+                  testId="pdf-hex-body"
+                />
+              )}
+            </>
           ) : isJsonBody ? (
             <div className="json-view-wrapper">
               <JsonView
