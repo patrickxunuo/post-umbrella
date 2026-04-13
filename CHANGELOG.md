@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.12
+
+### New
+
+- **Image Response Preview** — Responses with `image/*` content types (PNG, JPEG, WebP, GIF, SVG) now render inline as an actual image in the Response Viewer instead of dumping raw binary text. Edge Function proxy, browser-direct fetch path, and the Tauri desktop `http_request` command all base64-encode binary bodies so the bytes survive the JS bridge intact. (#21)
+
+### Improved
+
+- **Sidebar Expand/Collapse Works During Search** — Clicking expand-all or collapse-all while a search query is active now actually does something. Typing a query auto-expands matching branches; expand-all unfolds all matching collections + their ancestors; collapse-all folds them back to headers only. As a side benefit, expand-all without a search now recurses into nested subfolders too (previously only root-level). (#21)
+- **Copy as cURL Honors Inherited Auth & Variables** — When a request uses "Inherit from Parent" auth, the cURL output now includes the parent collection's Bearer token. When a token contains `{{variable}}`, both environment and collection variables are substituted (environment wins on conflicts). (#21)
+
+### Fixed
+
+- **New Variable Values Were Silently Dropped** — Adding a new environment or collection variable in the editor was saving the variable with an empty value due to a reference-equality bug in the `isNew` detection (`editingVars.indexOf(v)` against a mapped copy always returned -1). Values now persist correctly on first save.
+- **Env Vars Truly Override Collection Vars** — When both an environment variable and a collection variable defined the same key, the previous substitution loop replaced the collection value first, erasing the `{{key}}` pattern before the environment value could win. Substitution now uses a single-pass merged map so environment values reliably override.
+- **Optimistic Collection Save** — Saving auth or pre/post scripts on a collection now updates the in-memory collection list immediately, so the cURL preview and auth inheritance reflect the change without waiting for the realtime broadcast round-trip.
+
 ## v0.1.11
 
 ### New
