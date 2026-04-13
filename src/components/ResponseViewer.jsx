@@ -19,12 +19,26 @@ const getImageMimeType = (headers) => {
   return match ? match[1].toLowerCase() : null;
 };
 
-// body may be a data URL already or a base64 string; returns a valid <img> src.
+// body may be a data URL, a base64 string, a raw-binary string (lossy utf-8 decoded),
+// or an SVG source. Returns a valid <img> src for any of these.
 function buildImageSrc(body, mimeType) {
-  if (typeof body !== 'string' || !mimeType) return '';
+  if (typeof body !== 'string' || !body || !mimeType) return '';
   if (body.startsWith('data:')) return body;
+  // SVG is text — inline it so it doesn't need base64 decoding
+  if (mimeType === 'image/svg+xml' && body.trim().startsWith('<')) {
+    return `data:image/svg+xml;utf8,${encodeURIComponent(body)}`;
+  }
   const cleaned = body.replace(/\s+/g, '');
-  return `data:${mimeType};base64,${cleaned}`;
+  // Already base64? (only base64 alphabet chars)
+  if (/^[A-Za-z0-9+/]+={0,2}$/.test(cleaned) && cleaned.length % 4 === 0) {
+    return `data:${mimeType};base64,${cleaned}`;
+  }
+  // Raw-binary string (each char code is a byte): re-encode as base64.
+  try {
+    return `data:${mimeType};base64,${btoa(body)}`;
+  } catch {
+    return '';
+  }
 }
 
 const isTauri = () => '__TAURI_INTERNALS__' in window;
