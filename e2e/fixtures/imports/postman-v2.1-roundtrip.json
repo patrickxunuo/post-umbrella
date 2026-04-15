@@ -1,0 +1,143 @@
+{
+  "info": {
+    "_postman_id": "rt-postman-test-id",
+    "name": "RT Postman Test",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "root-token", "type": "string" }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": ["console.log(\"root pre\")"]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": ["console.log(\"root post\")"]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "api_key", "value": "abc123", "type": "string" },
+    { "key": "base_url", "value": "https://httpbin.org", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Folder A",
+      "item": [
+        {
+          "name": "Bearer Request",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/bearer",
+              "host": ["{{base_url}}"],
+              "path": ["bearer"]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "req-token", "type": "string" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SubFolder",
+          "item": [
+            {
+              "name": "Inherit Request",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/get",
+                  "host": ["{{base_url}}"],
+                  "path": ["get"]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NoAuth Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/get",
+          "host": ["{{base_url}}"],
+          "path": ["get"]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "APIKey Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/headers",
+          "host": ["{{base_url}}"],
+          "path": ["headers"]
+        },
+        "auth": {
+          "type": "apikey",
+          "apikey": [
+            { "key": "key", "value": "X-API-Key" },
+            { "key": "value", "value": "secret123" },
+            { "key": "in", "value": "header" }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Scripted Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/get",
+          "host": ["{{base_url}}"],
+          "path": ["get"]
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["console.log(\"req pre\")"]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": ["console.log(\"req post\")"]
+          }
+        }
+      ],
+      "response": []
+    }
+  ]
+}

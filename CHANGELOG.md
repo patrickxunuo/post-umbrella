@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Improved
+
+- **Postman Import/Export Round-Trip** — Exporting a collection now preserves bearer auth, `Inherit from Parent` auth, folder/collection-level auth, pre/post scripts (request and collection level), and collection variables. Importing recognizes Postman's `event[]` script format and maps API Key auth (header location) into a request header. Basic, OAuth 1.0, OAuth 2.0, and unknown auth types no longer silently drop — they surface a per-request warning in a new "Import Warnings" modal. Part 1 of 3 for #30. (#30)
+
+### Breaking
+
+- **Postman collection-level `variable[]` now imports as collection variables.** Previously, importing a Postman file with top-level `variable[]` silently created a new Environment named `"<Collection> Variables"`. It now creates Post Umbrella collection variables on the imported root collection (matching the v0.1.8 collection-variables feature). Users who relied on the old behavior should recreate the environment manually or re-scope the values to collection variables. (#30)
+
 ## v0.1.12
 
 ### New
