@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { Terminal, Plus, Folder, FolderOpen, Play, FileText } from 'lucide-react';
 import { METHOD_COLORS } from '../constants/methodColors';
 
@@ -11,6 +11,7 @@ export function TabBar({
   conflictedTabs,
   deletedTabs,
   closeTab,
+  closeManyTabs,
   canEdit,
   activeWorkspace,
   userConfig,
@@ -20,6 +21,10 @@ export function TabBar({
 }) {
   const [draggingTabId, setDraggingTabId] = useState(null);
   const [dragOverTabId, setDragOverTabId] = useState(null);
+  const [menuState, setMenuState] = useState(null);
+  const menuRef = useRef(null);
+
+  const closeMenu = useCallback(() => setMenuState(null), []);
 
   const handleTabDragStart = useCallback((e, tabId) => {
     setDraggingTabId(tabId);
@@ -55,6 +60,70 @@ export function TabBar({
     setDragOverTabId(null);
   }, [draggingTabId, setOpenTabs]);
 
+  // Dismiss context menu on outside click or Escape
+  useEffect(() => {
+    if (!menuState) return;
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        closeMenu();
+      }
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') closeMenu();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuState, closeMenu]);
+
+  // Clamp menu to viewport so it never clips past the edges
+  useLayoutEffect(() => {
+    if (!menuState || !menuRef.current) return;
+    const el = menuRef.current;
+    const rect = el.getBoundingClientRect();
+    const margin = 8;
+    let { x, y } = menuState;
+    let needsUpdate = false;
+    if (rect.right > window.innerWidth - margin) {
+      x = Math.max(margin, window.innerWidth - margin - rect.width);
+      needsUpdate = true;
+    }
+    if (rect.bottom > window.innerHeight - margin) {
+      y = Math.max(margin, window.innerHeight - margin - rect.height);
+      needsUpdate = true;
+    }
+    if (needsUpdate && (x !== menuState.x || y !== menuState.y)) {
+      setMenuState((prev) => (prev ? { ...prev, x, y } : prev));
+    }
+  }, [menuState]);
+
+  const closeSingleTab = useCallback((tabId, e) => {
+    const tab = openTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    if (userConfig?.skipCloseConfirm) {
+      closeTab(tabId, e, { force: true });
+    } else if (tab.isTemporary) {
+      const r = tab.request || {};
+      const isEmpty = !r.url && !r.body && (!r.headers || r.headers.length === 0) && (!r.params || r.params.length === 0) && (!r.form_data || r.form_data.length === 0) && (!r.auth_token);
+      if (isEmpty) {
+        closeTab(tabId, e);
+      } else {
+        setTempCloseTabId(tabId);
+      }
+    } else if (tab.dirty) {
+      setDirtyCloseTabId(tabId);
+    } else {
+      closeTab(tabId, e);
+    }
+  }, [openTabs, userConfig, closeTab, setTempCloseTabId, setDirtyCloseTabId]);
+
+  const bulkCloseOpts = useCallback((extra = {}) => (
+    userConfig?.skipCloseConfirm ? { ...extra, force: true } : extra
+  ), [userConfig]);
+
   return (
     <div className="open-tabs-bar" onWheel={onWheel}>
       {openTabs.length === 0 ? (
@@ -79,6 +148,10 @@ export function TabBar({
               key={tab.id}
               className={`open-tab ${tab.id === activeTabId ? 'active' : ''} ${tab.isTemporary ? 'temporary' : ''} ${isExample ? 'example-tab' : ''} ${isCollection ? 'collection-tab' : ''} ${isWorkflow ? 'workflow-tab' : ''} ${isDocs ? 'docs-tab' : ''} ${isConflicted ? 'conflicted' : ''} ${isDeleted ? 'deleted' : ''} ${draggingTabId === tab.id ? 'dragging' : ''} ${dragOverTabId === tab.id ? 'drag-over' : ''} ${previewTabId === tab.id ? 'preview' : ''}`}
               onClick={() => setActiveTabId(tab.id)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenuState({ tabId: tab.id, x: e.clientX, y: e.clientY });
+              }}
               draggable
               onDragStart={(e) => handleTabDragStart(e, tab.id)}
               onDragEnd={handleTabDragEnd}
@@ -113,21 +186,7 @@ export function TabBar({
                 className="tab-close"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (userConfig.skipCloseConfirm) {
-                    closeTab(tab.id, e, { force: true });
-                  } else if (tab.isTemporary) {
-                    const r = tab.request || {};
-                    const isEmpty = !r.url && !r.body && (!r.headers || r.headers.length === 0) && (!r.params || r.params.length === 0) && (!r.form_data || r.form_data.length === 0) && (!r.auth_token);
-                    if (isEmpty) {
-                      closeTab(tab.id, e);
-                    } else {
-                      setTempCloseTabId(tab.id);
-                    }
-                  } else if (tab.dirty) {
-                    setDirtyCloseTabId(tab.id);
-                  } else {
-                    closeTab(tab.id, e);
-                  }
+                  closeSingleTab(tab.id, e);
                 }}
                 title="Close"
               >
@@ -174,6 +233,96 @@ export function TabBar({
           <Plus size={14} />
         </button>
       )}
+      {menuState && (() => {
+        const clickedId = menuState.tabId;
+        const clickedIndex = openTabs.findIndex((t) => t.id === clickedId);
+        if (clickedIndex < 0) return null;
+        const others = openTabs.filter((t) => t.id !== clickedId);
+        const leftTabs = openTabs.slice(0, clickedIndex);
+        const rightTabs = openTabs.slice(clickedIndex + 1);
+        const unmodifiedOthers = others.filter((t) => !t.dirty);
+
+        const showOthers = others.length > 0;
+        const showUnmodified = unmodifiedOthers.length > 0;
+        const showLeft = leftTabs.length > 0;
+        const showRight = rightTabs.length > 0;
+        const showAnyBulk = showOthers || showUnmodified || showLeft || showRight;
+
+        return (
+          <div
+            ref={menuRef}
+            className="request-menu tab-context-menu"
+            style={{ position: 'fixed', top: menuState.y, left: menuState.x, right: 'auto' }}
+            data-testid="tab-context-menu"
+            role="menu"
+          >
+            <button
+              className="request-menu-item"
+              data-testid="tab-menu-close"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeMenu();
+                closeSingleTab(clickedId, e);
+              }}
+            >
+              Close
+            </button>
+            {showAnyBulk && <div className="request-menu-divider" />}
+            {showOthers && (
+              <button
+                className="request-menu-item"
+                data-testid="tab-menu-close-others"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeMenu();
+                  closeManyTabs(others.map((t) => t.id), bulkCloseOpts({ confirmTitle: 'Close Other Tabs' }));
+                }}
+              >
+                Close Other Tabs
+              </button>
+            )}
+            {showUnmodified && (
+              <button
+                className="request-menu-item"
+                data-testid="tab-menu-close-unmodified"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeMenu();
+                  closeManyTabs(unmodifiedOthers.map((t) => t.id), { force: true });
+                }}
+              >
+                Close Unmodified Tabs
+              </button>
+            )}
+            {showLeft && (
+              <button
+                className="request-menu-item"
+                data-testid="tab-menu-close-left"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeMenu();
+                  closeManyTabs(leftTabs.map((t) => t.id), bulkCloseOpts());
+                }}
+              >
+                Close Tabs to the Left
+              </button>
+            )}
+            {showRight && (
+              <button
+                className="request-menu-item"
+                data-testid="tab-menu-close-right"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeMenu();
+                  closeManyTabs(rightTabs.map((t) => t.id), bulkCloseOpts());
+                }}
+              >
+                Close Tabs to the Right
+              </button>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

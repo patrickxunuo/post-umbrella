@@ -102,6 +102,19 @@
   margin: 0;
 }
 
+.confirm-list {
+  margin: var(--space-2) 0 0 0;
+  padding-left: var(--space-5);
+  max-height: 200px;
+  overflow-y: auto;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.confirm-list li {
+  padding: 2px 0;
+}
+
 .confirm-footer {
   display: flex;
   justify-content: flex-end;

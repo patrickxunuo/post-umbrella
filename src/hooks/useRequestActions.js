@@ -1,5 +1,28 @@
 import { useCallback } from 'react';
 import * as data from '../data/index.js';
+import { tabDisplayName, isEmptyTempRequest } from '../utils/tabLabel.js';
+
+// Given the tab list as it was BEFORE closing, the ids being closed, and the
+// current active tab id, return the id that should be active after the close.
+// If the current active tab isn't being closed, keep it. Otherwise focus the
+// nearest remaining tab to the right of the closed-active tab's original
+// position; fall back to the nearest remaining tab on the left. Returns null
+// if no tabs remain.
+export function computeNextActiveTabId(tabsBefore, closedIds, currentActiveId) {
+  const closedSet = closedIds instanceof Set ? closedIds : new Set(closedIds);
+  const remaining = tabsBefore.filter((t) => !closedSet.has(t.id));
+  if (remaining.length === 0) return null;
+  if (currentActiveId && !closedSet.has(currentActiveId)) return currentActiveId;
+  const activeIndex = tabsBefore.findIndex((t) => t.id === currentActiveId);
+  if (activeIndex < 0) return remaining[0].id;
+  for (let i = activeIndex + 1; i < tabsBefore.length; i++) {
+    if (!closedSet.has(tabsBefore[i].id)) return tabsBefore[i].id;
+  }
+  for (let i = activeIndex - 1; i >= 0; i--) {
+    if (!closedSet.has(tabsBefore[i].id)) return tabsBefore[i].id;
+  }
+  return remaining[0].id;
+}
 
 export function useRequestActions({
   prompt,
@@ -227,31 +250,7 @@ export function useRequestActions({
     setPreviewTabId(tabId);
   }, [openTabs, originalRequestsRef, previewTabId, setActiveTabId, setOpenTabs, setPreviewTabId]);
 
-  const closeTab = useCallback(async (id, e, { force = false } = {}) => {
-    if (e) e.stopPropagation();
-
-    const tab = openTabs.find((item) => item.id === id);
-    if (!force && tab?.dirty) {
-      const confirmed = await confirm({
-        title: 'Unsaved Changes',
-        message: 'You have unsaved changes. Are you sure you want to close this tab?',
-        confirmText: 'Close',
-        cancelText: 'Cancel',
-        variant: 'danger',
-      });
-      if (!confirmed) return;
-    }
-
-    setOpenTabs((prev) => {
-      const newTabs = prev.filter((item) => item.id !== id);
-      if (activeTabId === id && newTabs.length > 0) {
-        setActiveTabId(newTabs[newTabs.length - 1].id);
-      } else if (newTabs.length === 0) {
-        setActiveTabId(null);
-      }
-      return newTabs;
-    });
-
+  const cleanupTabState = useCallback((id) => {
     if (previewTabId === id) {
       setPreviewTabId(null);
     }
@@ -270,16 +269,92 @@ export function useRequestActions({
 
     delete originalRequestsRef.current[id];
   }, [
-    activeTabId,
-    confirm,
-    openTabs,
     originalRequestsRef,
     previewTabId,
-    setActiveTabId,
     setConflictedTabs,
     setDeletedTabs,
-    setOpenTabs,
     setPreviewTabId,
+  ]);
+
+  const closeTab = useCallback(async (id, e, { force = false } = {}) => {
+    if (e) e.stopPropagation();
+
+    const tab = openTabs.find((item) => item.id === id);
+    if (!force && tab?.dirty) {
+      const confirmed = await confirm({
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Are you sure you want to close this tab?',
+        confirmText: 'Close',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      });
+      if (!confirmed) return;
+    }
+
+    setOpenTabs((prev) => {
+      const nextActive = computeNextActiveTabId(prev, new Set([id]), activeTabId);
+      if (activeTabId === id || nextActive === null) {
+        setActiveTabId(nextActive);
+      }
+      return prev.filter((item) => item.id !== id);
+    });
+
+    cleanupTabState(id);
+  }, [
+    activeTabId,
+    cleanupTabState,
+    confirm,
+    openTabs,
+    setActiveTabId,
+    setOpenTabs,
+  ]);
+
+  const closeManyTabs = useCallback(async (ids, opts = {}) => {
+    const idSet = new Set(ids);
+    if (idSet.size === 0) return;
+
+    const tabsBefore = openTabs;
+    const closing = tabsBefore.filter((t) => idSet.has(t.id));
+    if (closing.length === 0) return;
+
+    const dirtyClosing = closing.filter((t) => t.dirty);
+
+    if (!opts.force && dirtyClosing.length > 0) {
+      const confirmed = await confirm({
+        title: opts.confirmTitle || 'Unsaved Changes',
+        message: `You have unsaved changes in ${dirtyClosing.length} tab${dirtyClosing.length === 1 ? '' : 's'}. Close anyway?`,
+        listItems: dirtyClosing.map((t) => tabDisplayName(t)),
+        confirmText: 'Close',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      });
+      if (!confirmed) return;
+    }
+
+    // Temp tabs: close only the empty "New Request" ones; leave user-modified
+    // temp tabs alone so we don't silently drop in-progress work.
+    const finalIds = new Set(
+      closing
+        .filter((t) => !t.isTemporary || isEmptyTempRequest(t))
+        .map((t) => t.id)
+    );
+    if (finalIds.size === 0) return;
+
+    const nextActive = computeNextActiveTabId(tabsBefore, finalIds, activeTabId);
+
+    setOpenTabs((prev) => prev.filter((t) => !finalIds.has(t.id)));
+    setActiveTabId(nextActive);
+
+    for (const id of finalIds) {
+      cleanupTabState(id);
+    }
+  }, [
+    activeTabId,
+    cleanupTabState,
+    confirm,
+    openTabs,
+    setActiveTabId,
+    setOpenTabs,
   ]);
 
   const handleCreateCollection = useCallback(async () => {
@@ -685,6 +760,7 @@ export function useRequestActions({
     openRequestInTab,
     openExampleInTab,
     closeTab,
+    closeManyTabs,
     handleCreateCollection,
     handleCreateSubCollection,
     handleCreateRequest,

@@ -2017,6 +2017,11 @@ body {
   margin: 4px 6px;
 }
 
+/* Tab Context Menu */
+.tab-context-menu {
+  min-width: 180px;
+}
+
 /* Example Actions in Sidebar */
 .example-actions {
   position: relative;

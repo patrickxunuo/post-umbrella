@@ -159,6 +159,7 @@ function AppContent() {
     loadEnvironments,
     loading,
     closeTab,
+    closeManyTabs,
     handleCreateCollection,
     handleCreateSubCollection,
     handleCreateRequest,
@@ -465,6 +466,7 @@ function AppContent() {
             conflictedTabs={conflictedTabs}
             deletedTabs={deletedTabs}
             closeTab={closeTab}
+            closeManyTabs={closeManyTabs}
             canEdit={canEdit}
             activeWorkspace={activeWorkspace}
             userConfig={userConfig}
