@@ -283,7 +283,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
   // --- Hook composition ---
 
   const {
-    openCollectionInTab, openRequestInTab, openExampleInTab, closeTab,
+    openCollectionInTab, openRequestInTab, openExampleInTab, closeTab, closeManyTabs,
     handleCreateCollection, handleCreateSubCollection, handleCreateRequest,
     handleDeleteCollection, handleDeleteRequest, handleDuplicateRequest,
     handleRenameCollection, handleRenameRequest,
@@ -456,7 +456,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
     collectionVariables,
     examples, setExamples, environments, activeEnvironment, setActiveEnvironment,
     loadCollections, loadEnvironments, loading,
-    openCollectionInTab, openRequestInTab, openExampleInTab, saveFunctionsRef, closeTab,
+    openCollectionInTab, openRequestInTab, openExampleInTab, saveFunctionsRef, closeTab, closeManyTabs,
     handleCreateCollection, handleCreateSubCollection, handleCreateRequest,
     handleDeleteCollection, handleDeleteRequest, handleDuplicateRequest,
     handleRenameCollection, handleRenameRequest,

@@ -28,6 +28,7 @@ export function ConfirmProvider({ children }) {
     confirmText = 'Confirm',
     cancelText = 'Cancel',
     variant = 'default',
+    listItems,
   }) => {
     return new Promise((resolve) => {
       setState({
@@ -37,6 +38,7 @@ export function ConfirmProvider({ children }) {
         confirmText,
         cancelText,
         variant,
+        listItems,
         resolve,
       });
     });
@@ -62,6 +64,7 @@ export function ConfirmProvider({ children }) {
           confirmText={state.confirmText}
           cancelText={state.cancelText}
           variant={state.variant}
+          listItems={state.listItems}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />
@@ -76,6 +79,7 @@ function ConfirmModal({
   confirmText,
   cancelText,
   variant,
+  listItems,
   onConfirm,
   onCancel,
 }) {
@@ -112,6 +116,13 @@ function ConfirmModal({
 
         <div className="confirm-body">
           <p className="confirm-message">{message}</p>
+          {Array.isArray(listItems) && listItems.length > 0 && (
+            <ul className="confirm-list" data-testid="confirm-list">
+              {listItems.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="confirm-footer">
