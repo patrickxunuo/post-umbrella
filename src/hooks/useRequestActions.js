@@ -629,6 +629,7 @@ export function useRequestActions({
     const loadingToast = toast.loading('Importing collection...');
     try {
       const result = await data.importCollection(importData, activeWorkspace?.id);
+      const collectionName = importData?.info?.name || 'Collection';
       // Fetch the newly imported collection tree and add to state
       if (result.rootCollectionId) {
         markAsRecentlyModified(`collection-${result.rootCollectionId}`);
@@ -643,12 +644,26 @@ export function useRequestActions({
         });
       }
       toast.dismiss(loadingToast);
-      toast.success('Collection imported successfully');
+
+      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
+      if (warnings.length > 0) {
+        // Info-only modal so users see exactly which Postman features didn't round-trip
+        await confirm({
+          title: 'Import Warnings',
+          message: `Imported "${collectionName}" with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`,
+          listItems: warnings,
+          confirmText: 'OK',
+          hideCancel: true,
+          variant: 'default',
+        });
+      } else {
+        toast.success(`Imported "${collectionName}"`);
+      }
     } catch (err) {
       toast.dismiss(loadingToast);
       toast.error(err.message || 'Failed to import collection');
     }
-  }, [activeWorkspace, markAsRecentlyModified, setCollections, toast]);
+  }, [activeWorkspace, confirm, markAsRecentlyModified, setCollections, toast]);
 
   const handleExportCollection = useCallback(async (collection) => {
     const loadingToast = toast.loading('Exporting collection...');

@@ -29,6 +29,7 @@ export function ConfirmProvider({ children }) {
     cancelText = 'Cancel',
     variant = 'default',
     listItems,
+    hideCancel = false,
   }) => {
     return new Promise((resolve) => {
       setState({
@@ -39,6 +40,7 @@ export function ConfirmProvider({ children }) {
         cancelText,
         variant,
         listItems,
+        hideCancel,
         resolve,
       });
     });
@@ -65,6 +67,7 @@ export function ConfirmProvider({ children }) {
           cancelText={state.cancelText}
           variant={state.variant}
           listItems={state.listItems}
+          hideCancel={state.hideCancel}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />
@@ -80,6 +83,7 @@ function ConfirmModal({
   cancelText,
   variant,
   listItems,
+  hideCancel,
   onConfirm,
   onCancel,
 }) {
@@ -126,12 +130,14 @@ function ConfirmModal({
         </div>
 
         <div className="confirm-footer">
-          <button
-            className="confirm-btn confirm-btn-cancel"
-            onClick={onCancel}
-          >
-            {cancelText}
-          </button>
+          {!hideCancel && (
+            <button
+              className="confirm-btn confirm-btn-cancel"
+              onClick={onCancel}
+            >
+              {cancelText}
+            </button>
+          )}
           <button
             className={`confirm-btn confirm-btn-confirm ${variant === 'danger' ? 'confirm-btn-danger' : ''}`}
             onClick={onConfirm}
