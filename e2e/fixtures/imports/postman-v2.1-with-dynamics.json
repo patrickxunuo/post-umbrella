@@ -1,0 +1,74 @@
+{
+  "info": {
+    "_postman_id": "dynamics-postman-id",
+    "name": "Dynamics Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Guid Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{$guid}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "https://httpbin.org/get?ts={{$timestamp}}",
+          "protocol": "https",
+          "host": ["httpbin", "org"],
+          "path": ["get"],
+          "query": [
+            { "key": "ts", "value": "{{$timestamp}}" }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Nope Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{$nope}}", "type": "string" }
+          ]
+        },
+        "url": {
+          "raw": "https://httpbin.org/get",
+          "protocol": "https",
+          "host": ["httpbin", "org"],
+          "path": ["get"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "APIKey Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "auth": {
+          "type": "apikey",
+          "apikey": [
+            { "key": "key", "value": "X-API-Key" },
+            { "key": "value", "value": "secret123" },
+            { "key": "in", "value": "header" }
+          ]
+        },
+        "url": {
+          "raw": "https://httpbin.org/headers",
+          "protocol": "https",
+          "host": ["httpbin", "org"],
+          "path": ["headers"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

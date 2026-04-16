@@ -1,0 +1,25 @@
+{
+  "info": {
+    "_postman_id": "wrong-format-postman-id",
+    "name": "Wrong Format Postman",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get Users",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "https://api.example.com/users",
+          "protocol": "https",
+          "host": ["api", "example", "com"],
+          "path": ["users"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

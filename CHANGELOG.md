@@ -2,13 +2,22 @@
 
 ## Unreleased
 
+### New
+
+- **Multi-Format Import Modal** — Import now opens a step-by-step modal where you pick the source format (Postman, Insomnia, Post Umbrella; OpenAPI reserved for a future release), upload a file, preview the outcome (collection/folder/request/variable counts + warnings list), and confirm before anything is written. The old implicit "pick any JSON and hope" flow is replaced by explicit format selection + schema validation. (#30)
+- **Insomnia v4 Import** — Full Insomnia v4 export parsing: workspaces, request groups (folders), requests (method/URL/headers/body/auth), and base environment variables. Insomnia `{% response 'body', 'req_<id>', 'b64::<jsonpath>::<hash>' %}` template tags are automatically rewritten: the producing request gains a post-response script that extracts the referenced value and saves it as a collection variable, while the consuming request's token becomes `{{slug_token}}`. Unresolvable tags become `{{TODO_FIX_insomnia_response}}` with a warning. Other Insomnia tags (`{% uuid %}`, `{% timestamp %}`, etc.) map to their Postman equivalents or `{{TODO_FIX_...}}` placeholders. (#30)
+- **Schema Validation on Import** — Every import file is validated against a bundled JSON Schema before any DB write (Postman v2.1/v2.0, Insomnia v4, Post Umbrella v1). Validation failures surface in a detailed error panel listing the JSON path and expected shape for each problem. (#30)
+- **Postman Dynamic Variable Seeding** — `{{$guid}}`, `{{$timestamp}}`, `{{$randomInt}}`, `{{$randomUUID}}`, `{{$isoTimestamp}}` in imported Postman files auto-seed matching collection variables. Unknown dynamics produce a warning. (#30)
+
 ### Improved
 
 - **Postman Import/Export Round-Trip** — Exporting a collection now preserves bearer auth, `Inherit from Parent` auth, folder/collection-level auth, pre/post scripts (request and collection level), and collection variables. Importing recognizes Postman's `event[]` script format and maps API Key auth (header location) into a request header. Basic, OAuth 1.0, OAuth 2.0, and unknown auth types no longer silently drop — they surface a per-request warning in a new "Import Warnings" modal. Part 1 of 3 for #30. (#30)
+- **Export Performance** — `exportCollection` now fetches only the target collection's subtree instead of every collection in the workspace, fixing a pre-existing duplicate-folder bug and reducing DB reads. (#30)
 
 ### Breaking
 
 - **Postman collection-level `variable[]` now imports as collection variables.** Previously, importing a Postman file with top-level `variable[]` silently created a new Environment named `"<Collection> Variables"`. It now creates Post Umbrella collection variables on the imported root collection (matching the v0.1.8 collection-variables feature). Users who relied on the old behavior should recreate the environment manually or re-scope the values to collection variables. (#30)
+- **Import UX changed.** The old single-click "Collection File" import path is replaced by the new multi-step ImportModal. The "From cURL" flow is unchanged. (#30)
 
 ## v0.1.12
 
