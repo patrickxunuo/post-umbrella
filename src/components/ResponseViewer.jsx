@@ -460,7 +460,26 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                   fontSize: '12px',
                   padding: 'var(--space-4)',
                 }}
-              />
+              >
+                {/* Library bug in @uiw/react-json-view@2.0.0-alpha.41: TypeNull/TypeUndefined/TypeNan
+                    render nothing when displayDataTypes={false} because they lack a `child` fallback
+                    (unlike TypeInt/TypeString). Supply one here. */}
+                <JsonView.Null
+                  render={(props, { type }) =>
+                    type === 'value' ? <span {...props}>null</span> : null
+                  }
+                />
+                <JsonView.Undefined
+                  render={(props, { type }) =>
+                    type === 'value' ? <span {...props}>undefined</span> : null
+                  }
+                />
+                <JsonView.Nan
+                  render={(props, { type }) =>
+                    type === 'value' ? <span {...props}>NaN</span> : null
+                  }
+                />
+              </JsonView>
             </div>
           ) : (
             <pre className="response-body">{formatBody(displayResponse?.body)}</pre>
