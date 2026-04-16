@@ -1,0 +1,13 @@
+openapi: "3.0.0"
+info:
+  title: Broken API
+  version: "1.0.0"
+paths:
+  /broken:
+    get:
+     summary: bad indent here
+      responses:
+        "200":
+          description: OK
+        this line: is not: valid: yaml: at all
+      - stray list item under a mapping

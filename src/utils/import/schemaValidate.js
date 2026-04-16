@@ -25,7 +25,24 @@ const validators = {
 };
 
 /** Validate a parsed JSON object against the chosen import format's schema. */
-export function validate(format, parsed) {
+export async function validate(format, parsed) {
+  if (format === 'openapi-3') {
+    const SwaggerParser = (await import('@apidevtools/swagger-parser')).default;
+    try {
+      await SwaggerParser.validate(structuredClone(parsed));
+      return { ok: true };
+    } catch (err) {
+      const pathArr = (err && err.details && err.details[0] && err.details[0].path) || [];
+      return {
+        ok: false,
+        errors: [{
+          path: Array.isArray(pathArr) && pathArr.length > 0 ? pathArr.join('.') : '(root)',
+          message: (err && err.message) || String(err),
+        }],
+      };
+    }
+  }
+
   const v = validators[format];
   if (!v) {
     return { ok: false, errors: [{ path: '', message: `Unknown format ${format}` }] };

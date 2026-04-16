@@ -20,6 +20,15 @@ export default defineConfig({
   plugins: [react()],
   define: {
     __BUILD_VERSION__: JSON.stringify(buildVersion),
+    // Polyfill Node `Buffer`/`global` so Node-oriented deps like
+    // `@apidevtools/swagger-parser` load in the browser. The real `Buffer`
+    // ships via the `buffer` npm package; see src/polyfills/buffer.js.
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      define: { global: 'globalThis' },
+    },
   },
   server: {
     allowedHosts: ['post-umbrealla.ngrok.io'],
