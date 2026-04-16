@@ -625,11 +625,15 @@ export function useRequestActions({
     await handleDeleteExample(id, parentRequestId);
   }, [handleDeleteExample]);
 
-  const handleImport = useCallback(async (importData) => {
+  const handleImport = useCallback(async ({ normalized, clientWarnings = [] } = {}) => {
+    if (!normalized) {
+      toast.error('Nothing to import');
+      return;
+    }
     const loadingToast = toast.loading('Importing collection...');
     try {
-      const result = await data.importCollection(importData, activeWorkspace?.id);
-      const collectionName = importData?.info?.name || 'Collection';
+      const result = await data.importCollection(normalized, activeWorkspace?.id);
+      const collectionName = normalized?.info?.name || 'Collection';
       // Fetch the newly imported collection tree and add to state
       if (result.rootCollectionId) {
         markAsRecentlyModified(`collection-${result.rootCollectionId}`);
@@ -645,13 +649,14 @@ export function useRequestActions({
       }
       toast.dismiss(loadingToast);
 
-      const warnings = Array.isArray(result.warnings) ? result.warnings : [];
-      if (warnings.length > 0) {
-        // Info-only modal so users see exactly which Postman features didn't round-trip
+      // Merge client + server warnings, deduplicate on exact-string match, preserve order
+      const serverWarnings = Array.isArray(result.warnings) ? result.warnings : [];
+      const allWarnings = Array.from(new Set([...(clientWarnings || []), ...serverWarnings]));
+      if (allWarnings.length > 0) {
         await confirm({
           title: 'Import Warnings',
-          message: `Imported "${collectionName}" with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`,
-          listItems: warnings,
+          message: `Imported "${collectionName}" with ${allWarnings.length} warning${allWarnings.length === 1 ? '' : 's'}.`,
+          listItems: allWarnings,
           confirmText: 'OK',
           hideCancel: true,
           variant: 'default',

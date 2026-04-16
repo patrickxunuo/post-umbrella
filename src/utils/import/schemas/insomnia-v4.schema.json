@@ -1,0 +1,65 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://post-umbrella.local/schema/insomnia/v4",
+    "title": "Insomnia Export v4",
+    "description": "Hand-authored schema for Insomnia v4 exports. Conservative — catches typos in the top-level wrapper and required resource fields but permits unknown resource properties so benign extras don't reject an otherwise valid file.",
+    "type": "object",
+    "properties": {
+        "_type": {
+            "type": "string",
+            "const": "export"
+        },
+        "__export_format": {
+            "type": "integer",
+            "const": 4
+        },
+        "__export_date": {
+            "type": "string"
+        },
+        "__export_source": {
+            "type": "string"
+        },
+        "resources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "_id": {
+                        "type": "string"
+                    },
+                    "_type": {
+                        "type": "string",
+                        "enum": [
+                            "workspace",
+                            "request",
+                            "request_group",
+                            "environment",
+                            "cookie_jar",
+                            "api_spec",
+                            "unit_test_suite",
+                            "unit_test",
+                            "proto_file",
+                            "proto_directory",
+                            "grpc_request"
+                        ]
+                    },
+                    "parentId": {
+                        "type": ["string", "null"]
+                    },
+                    "name": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "_id",
+                    "_type"
+                ]
+            }
+        }
+    },
+    "required": [
+        "_type",
+        "__export_format",
+        "resources"
+    ]
+}

@@ -4,6 +4,7 @@ const useModalStore = create((set) => ({
   // Modal visibility
   showEnvEditor: false,
   showImportCurl: false,
+  showImportModal: false,
   showSettings: false,
   showAbout: false,
   showCloseModal: false,
@@ -16,6 +17,7 @@ const useModalStore = create((set) => ({
   // Setters
   setShowEnvEditor: (v) => set({ showEnvEditor: v }),
   setShowImportCurl: (v) => set({ showImportCurl: v }),
+  setShowImportModal: (v) => set({ showImportModal: v }),
   setShowSettings: (v) => set({ showSettings: v }),
   setShowAbout: (v) => set({ showAbout: v }),
   setShowCloseModal: (v) => set({ showCloseModal: v }),

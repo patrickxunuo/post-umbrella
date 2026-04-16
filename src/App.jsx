@@ -38,6 +38,7 @@ import './styles/request-editor.css';
 import './styles/response-viewer.css';
 import './styles/variables.css';
 import './styles/modals.css';
+import './styles/import-modal.css';
 import './styles/workspace-settings.css';
 import './styles/user-management.css';
 import './styles/environment-editor.css';
@@ -54,6 +55,8 @@ function AppContent() {
   const setShowEnvEditor = useModalStore((s) => s.setShowEnvEditor);
   const showImportCurl = useModalStore((s) => s.showImportCurl);
   const setShowImportCurl = useModalStore((s) => s.setShowImportCurl);
+  const showImportModal = useModalStore((s) => s.showImportModal);
+  const setShowImportModal = useModalStore((s) => s.setShowImportModal);
   const draftSavePending = useModalStore((s) => s.draftSavePending);
   const setDraftSavePending = useModalStore((s) => s.setDraftSavePending);
   const tempCloseTabId = useModalStore((s) => s.tempCloseTabId);
@@ -359,11 +362,11 @@ function AppContent() {
         activeEnvironment={activeEnvironment}
         loadEnvironments={loadEnvironments}
         canEdit={canEdit}
-        handleImport={handleImport}
         openTabs={openTabs}
         activeTab={activeTab}
         setShowEnvEditor={setShowEnvEditor}
         setShowImportCurl={setShowImportCurl}
+        setShowImportModal={setShowImportModal}
         setShowUserManagement={setShowUserManagement}
         setShowSettings={setShowSettings}
         setShowAbout={setShowAbout}
@@ -635,6 +638,7 @@ function AppContent() {
         showSettings={showSettings} setShowSettings={setShowSettings}
         handleThemeChange={handleThemeChange} toast={toast}
         showImportCurl={showImportCurl} setShowImportCurl={setShowImportCurl} handleImportCurl={handleImportCurl}
+        showImportModal={showImportModal} setShowImportModal={setShowImportModal} handleImport={handleImport}
         draftSavePending={draftSavePending} setDraftSavePending={setDraftSavePending}
         collections={collections} setCollections={setCollections}
         openTabs={openTabs} setOpenTabs={setOpenTabs} activeTabId={activeTabId} setActiveTabId={setActiveTabId}

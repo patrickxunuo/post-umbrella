@@ -4,6 +4,7 @@ import { WorkspaceSettings } from './WorkspaceSettings';
 import { UserManagement } from './UserManagement';
 import { InviteUserModal } from './InviteUserModal';
 import { ImportCurlModal } from './ImportCurlModal';
+import { ImportModal } from './ImportModal';
 import { FolderPickerModal } from './FolderPicker';
 import { UnsavedChangesModal } from './UnsavedChangesModal';
 import { SettingsModal, syncCloseBehaviorToRust } from './SettingsModal';
@@ -26,6 +27,8 @@ export function AppModals({
   showSettings, setShowSettings, handleThemeChange, toast,
   // Import cURL
   showImportCurl, setShowImportCurl, handleImportCurl,
+  // Import Collection (multi-format)
+  showImportModal, setShowImportModal, handleImport,
   // Draft save (temp request → folder picker)
   draftSavePending, setDraftSavePending, collections, setCollections, openTabs, setOpenTabs, activeTabId, setActiveTabId, openRequestInTab,
   // Unsaved changes (temp tab close)
@@ -142,6 +145,15 @@ export function AppModals({
           onClose={() => setShowImportCurl(false)}
         />
       )}
+
+      <ImportModal
+        open={!!showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onCommit={handleImport}
+        userConfig={userConfig}
+        setUserConfig={setUserConfig}
+      />
+
 
       {draftSavePending && (
         <FolderPickerModal

@@ -28,8 +28,8 @@ async function waitForApp(page: Page) {
 }
 
 /**
- * Open the import dropdown and choose "Collection File", then upload a Postman JSON file.
- * Mirrors the pattern from `e2e/import.spec.ts`.
+ * Drive the new ImportModal end-to-end (format pick → file → preview → commit)
+ * with a Postman v2.1 fixture.
  */
 async function importPostmanFile(page: Page, collectionJsonObj: any, fileName = 'test-collection.json') {
   const importTrigger = page.locator('.import-dropdown-trigger');
@@ -38,16 +38,22 @@ async function importPostmanFile(page: Page, collectionJsonObj: any, fileName = 
 
   const importMenu = page.locator('.import-dropdown-menu');
   await expect(importMenu).toBeVisible();
+  await importMenu.locator('.import-dropdown-item').filter({ hasText: 'Import Collection' }).click();
 
-  const fileChooserPromise = page.waitForEvent('filechooser');
-  await importMenu.locator('.import-dropdown-item').filter({ hasText: 'Collection File' }).click();
+  const modal = page.locator('[data-testid="import-modal"]');
+  await expect(modal).toBeVisible({ timeout: 10000 });
+  await page.locator('[data-testid="import-format-postman-v2.1"]').click();
+  await modal.locator('button.btn-primary').filter({ hasText: /Next/i }).click();
 
-  const fileChooser = await fileChooserPromise;
-  await fileChooser.setFiles({
+  await page.locator('[data-testid="import-file-input"]').setInputFiles({
     name: fileName,
     mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify(collectionJsonObj)),
   });
+  await modal.locator('button.btn-primary').filter({ hasText: /Preview/i }).click();
+
+  await expect(page.locator('[data-testid="import-preview-summary"]')).toBeVisible({ timeout: 15000 });
+  await page.locator('[data-testid="import-commit"]').click();
 }
 
 /**

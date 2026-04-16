@@ -1,0 +1,53 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-04-14T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {
+      "_id": "wrk_GHOST",
+      "_type": "workspace",
+      "name": "Insomnia Ghost Ref",
+      "description": "",
+      "scope": "collection"
+    },
+    {
+      "_id": "fld_GHOST",
+      "_type": "request_group",
+      "parentId": "wrk_GHOST",
+      "name": "Ghost",
+      "description": ""
+    },
+    {
+      "_id": "req_A",
+      "_type": "request",
+      "parentId": "fld_GHOST",
+      "name": "Login",
+      "method": "GET",
+      "url": "{{ _.base_url }}/token",
+      "headers": []
+    },
+    {
+      "_id": "req_B",
+      "_type": "request",
+      "parentId": "fld_GHOST",
+      "name": "Protected",
+      "method": "GET",
+      "url": "{{ _.base_url }}/protected",
+      "headers": [],
+      "authentication": {
+        "type": "bearer",
+        "token": "{% response 'body', 'req_GHOST', 'b64::JC5pZF90b2tlbg==::46b', 'never', 60 %}"
+      }
+    },
+    {
+      "_id": "env_BASE",
+      "_type": "environment",
+      "parentId": "wrk_GHOST",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "https://httpbin.org"
+      }
+    }
+  ]
+}

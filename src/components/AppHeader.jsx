@@ -25,11 +25,11 @@ export function AppHeader({
   activeEnvironment,
   loadEnvironments,
   canEdit,
-  handleImport,
   openTabs,
   activeTab,
   setShowEnvEditor,
   setShowImportCurl,
+  setShowImportModal,
   setShowUserManagement,
   setShowSettings,
   setShowAbout,
@@ -74,7 +74,7 @@ export function AppHeader({
         {canEdit && (
           <ImportDropdown
             onImportCurl={() => setShowImportCurl(true)}
-            onImportFile={handleImport}
+            onOpenImportModal={() => setShowImportModal(true)}
             disabled={!activeWorkspace}
           />
         )}

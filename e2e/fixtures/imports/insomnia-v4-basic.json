@@ -1,0 +1,68 @@
+{
+  "_type": "export",
+  "__export_format": 4,
+  "__export_date": "2026-04-14T00:00:00.000Z",
+  "__export_source": "insomnia.desktop.app:v2023.5.8",
+  "resources": [
+    {
+      "_id": "wrk_BASIC",
+      "_type": "workspace",
+      "name": "Insomnia Basic",
+      "description": "",
+      "scope": "collection"
+    },
+    {
+      "_id": "fld_A",
+      "_type": "request_group",
+      "parentId": "wrk_BASIC",
+      "name": "Folder A",
+      "description": ""
+    },
+    {
+      "_id": "req_1",
+      "_type": "request",
+      "parentId": "fld_A",
+      "name": "List Items",
+      "method": "GET",
+      "url": "{{ _.base_url }}/items",
+      "headers": [
+        { "name": "Accept", "value": "application/json" }
+      ],
+      "body": {}
+    },
+    {
+      "_id": "req_2",
+      "_type": "request",
+      "parentId": "fld_A",
+      "name": "Create Item",
+      "method": "POST",
+      "url": "{{ _.base_url }}/items",
+      "headers": [
+        { "name": "Content-Type", "value": "application/json" }
+      ],
+      "body": {
+        "mimeType": "application/json",
+        "text": "{\"name\":\"new\"}"
+      }
+    },
+    {
+      "_id": "req_3",
+      "_type": "request",
+      "parentId": "fld_A",
+      "name": "Delete Item",
+      "method": "DELETE",
+      "url": "{{ _.base_url }}/items/1",
+      "headers": []
+    },
+    {
+      "_id": "env_BASE",
+      "_type": "environment",
+      "parentId": "wrk_BASIC",
+      "name": "Base Environment",
+      "data": {
+        "base_url": "https://httpbin.org",
+        "api_key": "abc123"
+      }
+    }
+  ]
+}

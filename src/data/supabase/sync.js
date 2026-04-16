@@ -1,8 +1,7 @@
 // Import/Export + Realtime subscriptions
 import { supabase } from './client.js';
 import { checkAuth } from './helpers.js';
-import { getCollections } from './collections.js';
-import { getRequests } from './requests.js';
+import { getCollectionTree } from './collections.js';
 import { getExamples } from './examples.js';
 import { getCollectionVariables } from './collectionVars.js';
 
@@ -152,6 +151,7 @@ function buildPostmanCollection(collection, allCollections, allRequests, allExam
           _postman_id: collection.id,
           name: collection.name,
           schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+          _post_umbrella_version: '1',
         },
         item: items,
       }
@@ -173,8 +173,11 @@ function buildPostmanCollection(collection, allCollections, allRequests, allExam
 }
 
 export const exportCollection = async (id) => {
-  const allCollections = await getCollections();
-  const allRequests = await getRequests();
+  // Use getCollectionTree so we scope strictly to the subtree of `id` (avoids
+  // the workspace-wide getCollections() duplicate-row quirk and cuts unneeded fetches).
+  const tree = await getCollectionTree(id);
+  const allCollections = tree.map(({ requests, example_count, ...col }) => col);
+  const allRequests = tree.flatMap(col => col.requests || []);
   const allExamples = await getExamples();
 
   const rootCollection = allCollections.find(c => c.id === id);

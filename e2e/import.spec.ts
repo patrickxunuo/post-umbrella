@@ -87,27 +87,34 @@ test.describe('Import', () => {
       ],
     };
 
-    // Open import dropdown
+    // Open import dropdown and launch the new ImportModal.
     const importTrigger = page.locator('.import-dropdown-trigger');
     await expect(importTrigger).toBeVisible();
     await importTrigger.click();
 
     const importMenu = page.locator('.import-dropdown-menu');
     await expect(importMenu).toBeVisible();
+    await importMenu.locator('.import-dropdown-item').filter({ hasText: 'Import Collection' }).click();
 
-    // Set up file chooser handler before clicking "Collection File"
-    const fileChooserPromise = page.waitForEvent('filechooser');
-    await importMenu.locator('.import-dropdown-item').filter({ hasText: 'Collection File' }).click();
+    // New ImportModal: pick Postman v2.1 → upload → commit via preview.
+    const modal = page.locator('[data-testid="import-modal"]');
+    await expect(modal).toBeVisible({ timeout: 10000 });
+    await page.locator('[data-testid="import-format-postman-v2.1"]').click();
+    // Advance from format step to file step.
+    await modal.locator('button.btn-primary').filter({ hasText: /Next/i }).click();
 
-    // Handle the file chooser
-    const fileChooser = await fileChooserPromise;
-    const collectionJson = JSON.stringify(postmanCollection);
-
-    await fileChooser.setFiles({
+    const fileInput = page.locator('[data-testid="import-file-input"]');
+    await fileInput.setInputFiles({
       name: 'test-collection.json',
       mimeType: 'application/json',
-      buffer: Buffer.from(collectionJson),
+      buffer: Buffer.from(JSON.stringify(postmanCollection)),
     });
+    // Advance from file step to preview step.
+    await modal.locator('button.btn-primary').filter({ hasText: /Preview/i }).click();
+
+    // Preview step → commit.
+    await expect(page.locator('[data-testid="import-preview-summary"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('[data-testid="import-commit"]').click();
 
     // Wait for import to process - either the collection appears or a loading toast shows
     // The import calls an Edge Function which may or may not be available
