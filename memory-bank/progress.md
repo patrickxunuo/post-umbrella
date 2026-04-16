@@ -5,7 +5,8 @@ v0.1.8 released — Workflow Builder, Collection Variables, Auth Inheritance
 
 ## Log
 <!-- Newest entries first. Format: - YYYY-MM-DDTHH:MMZ [status] feature-name — notes -->
-- 2026-03-26T00:00Z [DONE] v0.1.8 release — Changelog, README, website features updated
+- 2026-04-16T00:00Z [DONE] response-download — Download button on response toolbar for all body types (binary/JSON/text). New `src/utils/downloadResponse.js` helper; new Tauri `write_binary_file` command. Closes #29
+- 2026-04-16T00:00Z [DONE] v0.1.8 release — Changelog, README, website features updated
 - 2026-03-25T00:00Z [DONE] variable-popover-shared — Extracted VariablePopover to top-level context provider, shared across EnvVariableInput and JsonEditor
 - 2026-03-25T00:00Z [DONE] json-editor-variables — CodeMirror extension for {{var}} highlighting, autocomplete, hover preview in JSON body editor
 - 2026-03-25T00:00Z [DONE] json-variable-support — pm.collectionVariables/environment .set() stores objects as JSON, .get() auto-parses

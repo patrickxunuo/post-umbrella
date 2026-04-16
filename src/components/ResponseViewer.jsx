@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Monitor, Download, Terminal } from 'lucide-react';
 import JsonView from '@uiw/react-json-view';
 import { JsonEditor } from './JsonEditor';
 import { BinaryViewToggle } from './BinaryViewToggle';
+import { useToast } from './Toast';
+import { downloadResponse } from '../utils/downloadResponse';
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -130,6 +132,8 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   const [imageViewMode, setImageViewMode] = useState('preview');
   const [pdfViewMode, setPdfViewMode] = useState('preview');
   const [hexShowAll, setHexShowAll] = useState(false);
+  const downloadingRef = useRef(false);
+  const toast = useToast();
 
   // For examples, use example.response_data
   const displayResponse = isExample ? example?.response_data : response;
@@ -269,6 +273,25 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     });
   };
 
+  const handleDownload = async () => {
+    if (downloadingRef.current) return;
+    downloadingRef.current = true;
+    try {
+      const result = await downloadResponse({
+        body: displayResponse?.body,
+        headers: displayResponse?.headers,
+        url: displayResponse?.resolvedUrl || requestUrl,
+      });
+      if (result.ok) {
+        toast.success(`Downloaded ${result.filename}`);
+      } else if (!result.cancelled) {
+        toast.error(result.error || 'Failed to download response');
+      }
+    } finally {
+      downloadingRef.current = false;
+    }
+  };
+
   return (
     <div className="response-viewer">
       <div className="response-toolbar">
@@ -319,6 +342,16 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           )}
           <span className="time">{displayResponse?.time || 0} ms</span>
           <span className="size">{formatSize(displayResponse?.size || 0)}</span>
+          {!isExample && displayResponse?.body && (
+            <button
+              className="response-download-btn"
+              onClick={handleDownload}
+              title="Download response"
+              data-testid="response-download-btn"
+            >
+              <Download size={12} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -409,13 +442,7 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                     data-testid="pdf-preview-frame"
                   >
                     <div className="pdf-preview-fallback" data-testid="pdf-preview-fallback">
-                      <p>Your browser cannot display this PDF inline.</p>
-                      <a
-                        href={buildBinaryDataUrl(displayResponse?.body, 'application/pdf')}
-                        download="response.pdf"
-                      >
-                        Download PDF
-                      </a>
+                      <p>Your browser cannot display this PDF inline. Use the Download button above to save it.</p>
                     </div>
                   </object>
                 </div>
