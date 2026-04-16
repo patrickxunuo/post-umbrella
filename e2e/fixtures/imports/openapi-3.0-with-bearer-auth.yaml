@@ -1,0 +1,29 @@
+openapi: "3.0.0"
+info:
+  title: Bearer API
+  version: "1.0.0"
+  description: Minimal spec that exercises root-level bearer security.
+servers:
+  - url: https://api.example.com
+security:
+  - BearerAuth: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+paths:
+  /ping:
+    get:
+      operationId: ping
+      summary: Ping
+      responses:
+        "200":
+          description: OK
+  /whoami:
+    get:
+      operationId: whoami
+      summary: Current user
+      responses:
+        "200":
+          description: OK

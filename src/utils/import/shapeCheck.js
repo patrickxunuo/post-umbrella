@@ -70,5 +70,15 @@ export function shapeCheck(format, parsed) {
     };
   }
 
+  if (format === 'openapi-3') {
+    if (typeof parsed.openapi === 'string' && /^3\./.test(parsed.openapi)) return { ok: true };
+    if (typeof parsed.swagger === 'string' && /^2\./.test(parsed.swagger)) return { ok: true };
+    return {
+      ok: false,
+      detected,
+      reason: 'Expected an OpenAPI 3.x (openapi) or Swagger 2.x (swagger) version string at the root.',
+    };
+  }
+
   return { ok: false, detected, reason: `Unknown format "${format}".` };
 }

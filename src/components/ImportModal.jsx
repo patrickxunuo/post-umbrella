@@ -7,7 +7,7 @@ const FORMATS = [
   { value: 'postman-v2.1', title: 'Postman', subtitle: 'Postman Collection v2.1 or v2.0 JSON' },
   { value: 'insomnia-v4', title: 'Insomnia', subtitle: 'Insomnia v4 export JSON' },
   { value: 'post-umbrella', title: 'Post Umbrella', subtitle: 'A collection exported from this tool' },
-  { value: 'openapi-3', title: 'OpenAPI / Swagger', subtitle: 'Coming in a future release', disabled: true },
+  { value: 'openapi-3', title: 'OpenAPI / Swagger', subtitle: 'OpenAPI 3.x or Swagger 2.x (.json, .yaml, .yml)' },
 ];
 
 function detectedLabel(detected) {
@@ -256,7 +256,7 @@ export function ImportModal({ open, onClose, onCommit, userConfig, setUserConfig
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json"
+                  accept={format === 'openapi-3' ? '.json,.yaml,.yml' : '.json'}
                   style={{ display: 'none' }}
                   data-testid="import-file-input"
                   onChange={handleFileChange}

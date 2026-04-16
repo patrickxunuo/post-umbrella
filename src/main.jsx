@@ -1,3 +1,6 @@
+// Polyfill Node globals for browser-hostile deps (e.g., @apidevtools/swagger-parser).
+import './polyfills/buffer.js';
+
 // Capture deep link auth tokens for desktop app (Supabase's detectSessionInUrl is unreliable after signout)
 if ('__TAURI_INTERNALS__' in window && window.location.hash.includes('access_token') && window.location.pathname !== '/auth/callback') {
   const params = new URLSearchParams(window.location.hash.substring(1));

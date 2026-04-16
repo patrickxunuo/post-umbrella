@@ -1,0 +1,27 @@
+openapi: "3.0.0"
+info:
+  title: OAuth2 API
+  version: "1.0.0"
+  description: Spec whose only security scheme is oauth2 — importer should warn and drop.
+servers:
+  - url: https://api.example.com
+security:
+  - OAuth2:
+      - "read:pets"
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        implicit:
+          authorizationUrl: https://example.com/auth
+          scopes:
+            "read:pets": Read your pets
+paths:
+  /orders:
+    post:
+      operationId: createOrder
+      summary: Create an order
+      responses:
+        "200":
+          description: OK
