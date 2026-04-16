@@ -65,6 +65,14 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
   fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn write_binary_file(path: String, contents_base64: String) -> Result<(), String> {
+  let bytes = base64::engine::general_purpose::STANDARD
+    .decode(contents_base64.trim())
+    .map_err(|e| e.to_string())?;
+  fs::write(&path, bytes).map_err(|e| e.to_string())
+}
+
 // behavior: 0 = ask, 1 = hide to tray, 2 = close
 #[tauri::command]
 fn set_close_behavior(behavior: u8) {
@@ -186,7 +194,7 @@ pub fn run() {
   let wh = window::handler();
 
   tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path, write_text_file, set_close_behavior, hide_window, close_app, open_url_in_browser])
+    .invoke_handler(tauri::generate_handler![http_request, read_file_at_path, write_text_file, write_binary_file, set_close_behavior, hide_window, close_app, open_url_in_browser])
     .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
       log_to_file(&format!("Second launch intercepted with args: {:?}", argv));
 

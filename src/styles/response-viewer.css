@@ -1235,3 +1235,28 @@
   color: var(--text-secondary);
 }
 
+/* Response toolbar Download button */
+.response-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: var(--space-1);
+}
+
+.response-download-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-secondary);
+}
+
+.response-download-btn:active {
+  transform: scale(0.96);
+}
+
