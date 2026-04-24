@@ -154,6 +154,22 @@
   --shadow-inner: inset 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
+/* Theme-switch flicker guard.
+   When the theme attribute flips on <html>, every element that has a
+   `transition` touching a theme token (--bg-*, --text-*, --border-*, etc.)
+   would fade over ~100ms while elements without transitions (body, td,
+   containers) snap instantly, producing a visible mismatch blink.
+   `useLayoutState` adds `.theme-switching` on <html> for one frame around
+   the flip; this rule forces every transition off during that window, so
+   all elements snap together. Interaction transitions (hover/focus) resume
+   as soon as the class is removed. */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+}
+
 /* Reset */
 *, *::before, *::after {
   box-sizing: border-box;

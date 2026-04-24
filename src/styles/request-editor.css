@@ -762,7 +762,11 @@
   font-size: 12px;
   font-family: var(--font-mono);
   outline: none;
-  transition: all var(--transition-fast);
+  /* Scope the transition to interaction-only properties. `background` and
+     `color` are theme tokens — transitioning them causes a visible blink on
+     theme switch because `body` and surrounding td/tr have no transition and
+     snap, leaving the input mid-way through its fade. */
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .params-editor input[type="text"]:hover,
