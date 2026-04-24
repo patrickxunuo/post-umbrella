@@ -14,6 +14,20 @@ function K({ children }) { return <span className="json-key">"{children}"</span>
 function S({ children }) { return <span className="json-string">"{children}"</span> }
 function P({ children }) { return <span className="json-punct">{children}</span> }
 
+// Marketing demo: wraps a literal substring of a JSON string in a search-highlight <mark>.
+// Only used to pre-render the "Create User" response with two visible matches for the
+// demo query, so visitors who click the magnifier see matches land immediately.
+// `active` paints the saturated-amber "current match" styling seen in the real app.
+function SHit({ before, hit, after, active }) {
+  return (
+    <span className="json-string">
+      "{before}
+      <mark className={`json-search-hit${active ? ' active' : ''}`}>{hit}</mark>
+      {after}"
+    </span>
+  )
+}
+
 function FolderIcon({ size = 12 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
@@ -35,6 +49,26 @@ function ChevronIcon() {
   return (
     <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.5 }}>
       <path d="M5 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Two chevrons pointing outward — "expand all" affordance (lucide ChevronsUpDown shape).
+function ExpandAllIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+      <path d="M4 6l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 10l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+// Two chevrons pointing inward — "collapse all" affordance (lucide ChevronsDownUp shape).
+function CollapseAllIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+      <path d="M4 2l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 14l4-4 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
@@ -76,6 +110,21 @@ const REQUESTS = {
         <JsonLine num={2}>  <K>id</K><P>: </P><S>usr_a1b2c3d4</S><P>,</P></JsonLine>
         <JsonLine num={3}>  <K>name</K><P>: </P><S>Jane Cooper</S><P>,</P></JsonLine>
         <JsonLine num={4}>  <K>email</K><P>: </P><S>jane@example.com</S><P>,</P></JsonLine>
+        <JsonLine num={5}>  <K>role</K><P>: </P><S>developer</S><P>,</P></JsonLine>
+        <JsonLine num={6}>  <K>created_at</K><P>: </P><S>2025-03-15T10:30:00Z</S></JsonLine>
+        <JsonLine num={7}><P>{'}'}</P></JsonLine>
+      </>
+    ),
+    // Pre-highlighted version for the in-dock search demo — query "jane" (case-insensitive)
+    // matches twice: once inside "Jane Cooper" (line 3), once inside "jane@example.com" (line 4).
+    demoSearchQuery: 'jane',
+    demoMatchCount: 2,
+    responseBodyHighlighted: (
+      <>
+        <JsonLine num={1}><P>{'{'}</P></JsonLine>
+        <JsonLine num={2}>  <K>id</K><P>: </P><S>usr_a1b2c3d4</S><P>,</P></JsonLine>
+        <JsonLine num={3}>  <K>name</K><P>: </P><SHit before="" hit="Jane" after=" Cooper" active /><P>,</P></JsonLine>
+        <JsonLine num={4}>  <K>email</K><P>: </P><SHit before="" hit="jane" after="@example.com" /><P>,</P></JsonLine>
         <JsonLine num={5}>  <K>role</K><P>: </P><S>developer</S><P>,</P></JsonLine>
         <JsonLine num={6}>  <K>created_at</K><P>: </P><S>2025-03-15T10:30:00Z</S></JsonLine>
         <JsonLine num={7}><P>{'}'}</P></JsonLine>
@@ -207,6 +256,9 @@ export default function AppMockup({ theme, onToggleTheme }) {
   // Send animation
   const [sending, setSending] = useState(false)
   const [showResponse, setShowResponse] = useState(true)
+  // Dock-search demo: clicking the magnifier on the response viewer opens a pre-filled
+  // search bar with highlighted matches. Interactive but cosmetic — no real query logic.
+  const [dockSearchOpen, setDockSearchOpen] = useState(false)
 
   const activeRequest = REQUESTS[activeRequestId]
   const currentDetailTab = detailTabs[activeRequestId] || activeRequest?.activeDetailTab || 'Body'
@@ -217,6 +269,9 @@ export default function AppMockup({ theme, onToggleTheme }) {
     setShowResponse(true)
     setSending(false)
     setResponseDetailTab('Body')
+    // Close the search demo when switching requests — each response has its own body
+    // and we only pre-highlight the "Create User" demo.
+    setDockSearchOpen(false)
     // Add tab if not open
     setTabs(prev => {
       if (prev.some(t => t.id === reqId)) return prev
@@ -244,6 +299,7 @@ export default function AppMockup({ theme, onToggleTheme }) {
     if (sending) return
     setSending(true)
     setShowResponse(false)
+    setDockSearchOpen(false)
     setTimeout(() => {
       setSending(false)
       setShowResponse(true)
@@ -450,14 +506,56 @@ export default function AppMockup({ theme, onToggleTheme }) {
                     )}
                   </div>
                 </div>
-                <div className="m-code">
+                <div className="m-code m-code-with-dock">
+                  {/* Float dock — mirrors the real app's search + expand/collapse cluster */}
+                  {showResponse && responseDetailTab === 'Body' && (
+                    dockSearchOpen ? (
+                      <div className="m-json-dock m-json-dock-search" role="group" aria-label="Search response">
+                        <span className="m-json-dock-icon"><SearchIcon /></span>
+                        <input
+                          className="m-json-dock-input"
+                          value={activeRequest.demoSearchQuery || 'search'}
+                          readOnly
+                          aria-label="Search query"
+                        />
+                        <span className="m-json-dock-count">
+                          {activeRequest.demoMatchCount
+                            ? `1 / ${activeRequest.demoMatchCount}`
+                            : '0 / 0'}
+                        </span>
+                        <span
+                          className="m-json-dock-btn clickable"
+                          onClick={() => setDockSearchOpen(false)}
+                          role="button"
+                          aria-label="Close search"
+                          title="Close"
+                        >×</span>
+                      </div>
+                    ) : (
+                      <div className="m-json-dock" role="group" aria-label="Response viewer tools">
+                        <span
+                          className="m-json-dock-btn clickable"
+                          onClick={() => setDockSearchOpen(true)}
+                          role="button"
+                          aria-label="Search response"
+                          title="Search (Ctrl+F)"
+                        ><SearchIcon /></span>
+                        <span className="m-json-dock-btn" aria-hidden="true" title="Expand all"><ExpandAllIcon /></span>
+                        <span className="m-json-dock-btn" aria-hidden="true" title="Collapse all"><CollapseAllIcon /></span>
+                      </div>
+                    )
+                  )}
                   {sending ? (
                     <div className="m-loading">
                       <div className="m-spinner" />
                       <span>Sending request...</span>
                     </div>
                   ) : showResponse ? (
-                    responseDetailTab === 'Body' ? activeRequest.responseBody : (
+                    responseDetailTab === 'Body' ? (
+                      dockSearchOpen && activeRequest.responseBodyHighlighted
+                        ? activeRequest.responseBodyHighlighted
+                        : activeRequest.responseBody
+                    ) : (
                       <>
                         <JsonLine num={1}><K>content-type</K><P>: </P><S>application/json; charset=utf-8</S></JsonLine>
                         <JsonLine num={2}><K>x-request-id</K><P>: </P><S>req_7f8g9h0i</S></JsonLine>

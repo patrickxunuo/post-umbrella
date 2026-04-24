@@ -101,7 +101,11 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   color: var(--text-tertiary);
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  /* Only transition what actually changes on :focus-within (border-color).
+     Background and color are theme tokens — letting them fade while the child
+     <input> (no transition) snaps its own color on theme switch produces a
+     visible mismatch blink. */
+  transition: border-color var(--transition-fast);
 }
 
 .sidebar-search:focus-within {

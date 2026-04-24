@@ -13,8 +13,28 @@ export function useLayoutState() {
   const mainContentRef = useRef(null);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const root = document.documentElement;
+    // Suppress transitions for one paint cycle so theme-token changes (bg,
+    // text, border colors) snap together instead of each transition-enabled
+    // element fading independently over ~100ms — which looks like a blink.
+    // Matching CSS rule: `html.theme-switching, html.theme-switching *` in App.css.
+    root.classList.add('theme-switching');
+    root.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
+    // Force a synchronous reflow so the class + attribute land in the same
+    // paint, then release on the next frame after the themed state is committed.
+    void root.offsetWidth;
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        root.classList.remove('theme-switching');
+      });
+    });
+    return () => {
+      cancelAnimationFrame(outer);
+      if (inner) cancelAnimationFrame(inner);
+      root.classList.remove('theme-switching');
+    };
   }, [theme]);
 
   const handleThemeChange = useCallback((nextTheme) => {

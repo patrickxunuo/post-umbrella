@@ -1782,3 +1782,103 @@ a:hover { color: var(--accent-hover); }
   .tech-section { padding: 40px 16px 60px; }
   .tech-item { padding: 10px 16px; font-size: 12px; }
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Response-viewer float dock (mockup) — mirrors the real app's top-right dock
+   inside the JSON viewer. Purely visual / cosmetic interactive; demonstrates
+   the "Searchable Responses" feature without re-implementing it.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+.m-code-with-dock {
+  position: relative;
+}
+
+.m-json-dock {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(14, 165, 233, 0.12),
+    0 4px 10px rgba(0, 0, 0, 0.18);
+  max-width: calc(100% - 20px);
+}
+
+.m-json-dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.m-json-dock-btn.clickable {
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.m-json-dock-btn.clickable:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.m-json-dock-search {
+  /* Give the search state a bit more room for the input + counter */
+  padding-right: 4px;
+}
+
+.m-json-dock-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px 0 6px;
+  color: var(--text-tertiary);
+}
+
+.m-json-dock-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  width: 90px;
+  padding: 2px 0;
+  pointer-events: none; /* cosmetic only */
+}
+
+.m-json-dock-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+/* Search match highlight inside the response JSON — inline <mark> on string values. */
+.json-search-hit {
+  background: rgba(245, 158, 11, 0.28);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+/* The active match — one hit gets the saturated amber to indicate "current". */
+.json-search-hit.active {
+  background: rgba(245, 158, 11, 0.9);
+  color: #1a1a1a;
+}
+
+@media (max-width: 640px) {
+  .m-json-dock { top: 6px; right: 8px; padding: 2px; }
+  .m-json-dock-input { width: 64px; }
+  .m-json-dock-count { padding: 0 4px; }
+}
