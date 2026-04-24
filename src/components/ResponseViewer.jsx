@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Monitor, Download, Terminal } from 'lucide-react';
+import { Monitor, Download, Terminal, ChevronsUpDown, ChevronsDownUp, Search, ChevronUp, ChevronDown, X } from 'lucide-react';
 import JsonView from '@uiw/react-json-view';
 import { JsonEditor } from './JsonEditor';
 import { BinaryViewToggle } from './BinaryViewToggle';
@@ -84,6 +84,103 @@ function buildHexDump(bytes, byteLimit = HEX_VIEW_BYTE_CAP) {
   return { text: lines.join('\n'), truncated: total > cap, totalBytes: total };
 }
 
+// JSON search helpers — walk parsed JSON DFS and emit match entries.
+// A match is { path, kind, text, start, length }.
+const SEARCH_MATCH_CAP = 5000;
+
+// Let users type quotes around a term the way they see it in the tree view
+// (e.g. `"route_id"` matches the key `route_id`). Strip at most one leading
+// and one trailing double-quote. Middle quotes are preserved.
+function normalizeSearchQuery(raw) {
+  if (!raw) return '';
+  let q = raw;
+  if (q.startsWith('"')) q = q.slice(1);
+  if (q.length > 0 && q.endsWith('"')) q = q.slice(0, -1);
+  return q;
+}
+
+function findJsonMatches(json, query) {
+  if (!query) return [];
+  const q = String(query).toLowerCase();
+  if (!q) return [];
+  const out = [];
+  const pushMatches = (path, kind, text) => {
+    if (out.length >= SEARCH_MATCH_CAP) return;
+    const lower = text.toLowerCase();
+    let cursor = 0;
+    let idx;
+    while ((idx = lower.indexOf(q, cursor)) !== -1) {
+      out.push({ path: path.slice(), kind, text, start: idx, length: query.length });
+      if (out.length >= SEARCH_MATCH_CAP) return;
+      cursor = idx + q.length;
+    }
+  };
+  const stringifyLeaf = (v) => {
+    if (typeof v === 'string') return v;
+    if (typeof v === 'number' || typeof v === 'bigint') return String(v);
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (v === null) return 'null';
+    if (v === undefined) return 'undefined';
+    try { return String(v); } catch { return ''; }
+  };
+  const walk = (node, path) => {
+    if (out.length >= SEARCH_MATCH_CAP) return;
+    if (node !== null && typeof node === 'object') {
+      if (Array.isArray(node)) {
+        for (let i = 0; i < node.length; i++) {
+          if (out.length >= SEARCH_MATCH_CAP) return;
+          path.push(i);
+          walk(node[i], path);
+          path.pop();
+        }
+      } else {
+        for (const key of Object.keys(node)) {
+          if (out.length >= SEARCH_MATCH_CAP) return;
+          pushMatches(path.concat(key), 'key', String(key));
+          path.push(key);
+          walk(node[key], path);
+          path.pop();
+        }
+      }
+    } else {
+      // leaf
+      pushMatches(path, 'value', stringifyLeaf(node));
+    }
+  };
+  walk(json, []);
+  return out;
+}
+
+function renderHighlightedText({ baseProps, text, query, kind }) {
+  if (text == null) return null;
+  const str = typeof text === 'string' ? text : String(text);
+  if (!str) return null;
+  const lower = str.toLowerCase();
+  const q = (query || '').toLowerCase();
+  if (!q || !lower.includes(q)) return null; // fall through to default
+  const parts = [];
+  let cursor = 0;
+  let idx;
+  while ((idx = lower.indexOf(q, cursor)) !== -1) {
+    if (idx > cursor) parts.push({ t: str.slice(cursor, idx), hit: false });
+    parts.push({ t: str.slice(idx, idx + q.length), hit: true });
+    cursor = idx + q.length;
+  }
+  if (cursor < str.length) parts.push({ t: str.slice(cursor), hit: false });
+  const wrapQuotes = kind === 'value-string';
+  return (
+    <span {...(baseProps || {})}>
+      {wrapQuotes ? '"' : ''}
+      {parts.map((p, i) =>
+        p.hit
+          ? <mark key={i} className="response-search-highlight" data-search-hit="true">{p.t}</mark>
+          : <span key={i}>{p.t}</span>
+      )}
+      {wrapQuotes ? '"' : ''}
+    </span>
+  );
+}
+
 function HexView({ body, showAll, onShowAll, testId }) {
   const { text, truncated, totalBytes } = useMemo(() => {
     const bytes = decodeToBytes(body);
@@ -132,6 +229,20 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   const [imageViewMode, setImageViewMode] = useState('preview');
   const [pdfViewMode, setPdfViewMode] = useState('preview');
   const [hexShowAll, setHexShowAll] = useState(false);
+  // 'all-expanded' (collapsed=false), 'all-collapsed' (collapsed=true)
+  const [collapseMode, setCollapseMode] = useState('all-expanded');
+  const [jsonViewKey, setJsonViewKey] = useState(0);
+  // Search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
+  // Last non-empty forceExpandSet — survives zero-match queries AND search close,
+  // so that an in-progress typo or stopping mid-search doesn't collapse the tree
+  // back to the pre-search state. Cleared only on explicit Collapse/Expand-all
+  // or on a new response.
+  const [persistentForceSet, setPersistentForceSet] = useState(null);
+  const searchInputRef = useRef(null);
+  const rootRef = useRef(null);
   const downloadingRef = useRef(false);
   const toast = useToast();
 
@@ -148,6 +259,12 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     setImageViewMode('preview');
     setPdfViewMode('preview');
     setHexShowAll(false);
+    setCollapseMode('all-expanded');
+    setJsonViewKey((k) => k + 1);
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchActiveIndex(0);
+    setPersistentForceSet(null);
   }, [displayResponse]);
 
   // Parse JSON body - must be before any early returns!
@@ -180,6 +297,84 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     () => !isExample && isPdfResponse(displayResponse?.headers),
     [isExample, displayResponse?.headers]
   );
+
+  // Normalized query — strips boundary quotes so `"route_id"` matches key route_id.
+  const effectiveSearchQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
+
+  // Match discovery (only when search is open and body is JSON non-example)
+  const searchMatches = useMemo(() => {
+    if (!searchOpen || !effectiveSearchQuery || !isJsonBody || isExample || jsonBody == null) return [];
+    return findJsonMatches(jsonBody, effectiveSearchQuery);
+  }, [searchOpen, effectiveSearchQuery, isJsonBody, isExample, jsonBody]);
+
+  // Force-expand set — every prefix of every match path (for the CURRENT query).
+  const forceExpandSet = useMemo(() => {
+    if (!searchOpen || !effectiveSearchQuery || searchMatches.length === 0) return null;
+    const s = new Set();
+    for (const m of searchMatches) {
+      for (let i = 0; i <= m.path.length; i++) {
+        s.add(JSON.stringify(m.path.slice(0, i)));
+      }
+    }
+    return s;
+  }, [searchOpen, effectiveSearchQuery, searchMatches]);
+
+  // Capture the latest non-empty forceExpandSet. This "sticky" set drives the
+  // tree's expansion after the current query stops matching (typo, zero results)
+  // and after the search bar closes — so we don't snap back to the pre-search
+  // collapse state.
+  useEffect(() => {
+    if (forceExpandSet) setPersistentForceSet(forceExpandSet);
+  }, [forceExpandSet]);
+
+  // What actually drives the JsonView's expansion policy:
+  //   - Active search with matches → forceExpandSet (current query's ancestors)
+  //   - No current matches, but persistent set present → persistent set
+  //   - Neither → null (fall back to collapseMode via `collapsed` prop)
+  const activeExpandSet = forceExpandSet || persistentForceSet;
+
+  // Re-mount JsonView when the expansion policy changes.
+  // `activeExpandSet` identity changes when a new query produces new ancestors,
+  // when the persistent set is cleared, or when it becomes available for the
+  // first time. `collapseMode` matters only when activeExpandSet is null, but
+  // depending on both keeps the logic uniform.
+  const searchKeyBumpGuard = useRef(false);
+  useEffect(() => {
+    if (!searchKeyBumpGuard.current) {
+      searchKeyBumpGuard.current = true;
+      return;
+    }
+    setJsonViewKey((k) => k + 1);
+  }, [activeExpandSet, collapseMode]);
+
+  // Auto-close search when the body is no longer a JSON non-example view
+  useEffect(() => {
+    if (searchOpen && (!isJsonBody || isExample)) {
+      setSearchOpen(false);
+      setSearchQuery('');
+      setSearchActiveIndex(0);
+    }
+  }, [isJsonBody, isExample, searchOpen]);
+
+  // Active-match highlight + scroll into view
+  useEffect(() => {
+    if (!searchOpen || !rootRef.current) return;
+    const hits = rootRef.current.querySelectorAll('[data-search-hit="true"]');
+    hits.forEach((h) => h.classList.remove('response-search-highlight--active'));
+    if (hits.length === 0) return;
+    const safeIndex = Math.min(Math.max(searchActiveIndex, 0), hits.length - 1);
+    const target = hits[safeIndex];
+    if (target) {
+      target.classList.add('response-search-highlight--active');
+      try {
+        // 'auto' (instant) — smooth scrolling feels sluggish when jumping
+        // through many matches in a large response.
+        target.scrollIntoView({ block: 'center', behavior: 'auto' });
+      } catch {
+        target.scrollIntoView();
+      }
+    }
+  }, [searchOpen, effectiveSearchQuery, searchActiveIndex, jsonViewKey, searchMatches.length]);
 
   if (loading) {
     return (
@@ -273,6 +468,42 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     });
   };
 
+  const handleExpandAll = () => {
+    // Explicit user action → drop any sticky search expansion so the mode alone drives the tree.
+    setPersistentForceSet(null);
+    setCollapseMode('all-expanded');
+    // Key bump is handled by the `[activeExpandSet, collapseMode]` effect.
+  };
+
+  const handleCollapseAll = () => {
+    setPersistentForceSet(null);
+    setCollapseMode('all-collapsed');
+  };
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select?.();
+    });
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchActiveIndex(0);
+  };
+
+  const gotoNext = () => {
+    if (searchMatches.length === 0) return;
+    setSearchActiveIndex((i) => (i + 1) % searchMatches.length);
+  };
+
+  const gotoPrev = () => {
+    if (searchMatches.length === 0) return;
+    setSearchActiveIndex((i) => (i - 1 + searchMatches.length) % searchMatches.length);
+  };
+
   const handleDownload = async () => {
     if (downloadingRef.current) return;
     downloadingRef.current = true;
@@ -292,8 +523,33 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     }
   };
 
+  const handleRootKeyDown = (e) => {
+    const isFind = (e.ctrlKey || e.metaKey) && typeof e.key === 'string' && e.key.toLowerCase() === 'f';
+    if (isFind && isJsonBody && !isExample) {
+      e.preventDefault();
+      if (!searchOpen) {
+        openSearch();
+      } else {
+        requestAnimationFrame(() => {
+          searchInputRef.current?.focus();
+          searchInputRef.current?.select?.();
+        });
+      }
+      return;
+    }
+    if (e.key === 'Escape' && searchOpen) {
+      e.preventDefault();
+      closeSearch();
+    }
+  };
+
   return (
-    <div className="response-viewer">
+    <div
+      ref={rootRef}
+      className="response-viewer"
+      tabIndex={-1}
+      onKeyDown={handleRootKeyDown}
+    >
       <div className="response-toolbar">
         <div className="response-tabs">
           <button
@@ -460,53 +716,219 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               )}
             </>
           ) : isJsonBody ? (
-            <div className="json-view-wrapper">
-              <JsonView
-                value={jsonBody}
-                displayDataTypes={false}
-                collapsed={2}
-                enableClipboard={true}
-                style={{
-                  '--w-rjv-font-family': 'var(--font-mono)',
-                  '--w-rjv-background-color': 'var(--bg-secondary)',
-                  '--w-rjv-color': 'var(--text-primary)',
-                  '--w-rjv-key-string': '#0ea5e9',
-                  '--w-rjv-type-string-color': '#22c55e',
-                  '--w-rjv-type-int-color': '#f59e0b',
-                  '--w-rjv-type-float-color': '#f59e0b',
-                  '--w-rjv-type-boolean-color': '#8b5cf6',
-                  '--w-rjv-type-null-color': '#ef4444',
-                  '--w-rjv-arrow-color': 'var(--text-tertiary)',
-                  '--w-rjv-brackets-color': 'var(--text-tertiary)',
-                  '--w-rjv-ellipsis-color': 'var(--text-tertiary)',
-                  '--w-rjv-curlybraces-color': 'var(--text-tertiary)',
-                  '--w-rjv-colon-color': 'var(--text-tertiary)',
-                  '--w-rjv-info-color': 'var(--text-tertiary)',
-                  '--w-rjv-copied-color': 'var(--accent-success)',
-                  '--w-rjv-copied-success-color': 'var(--accent-success)',
-                  fontSize: '12px',
-                  padding: 'var(--space-4)',
-                }}
-              >
-                {/* Library bug in @uiw/react-json-view@2.0.0-alpha.41: TypeNull/TypeUndefined/TypeNan
-                    render nothing when displayDataTypes={false} because they lack a `child` fallback
-                    (unlike TypeInt/TypeString). Supply one here. */}
-                <JsonView.Null
-                  render={(props, { type }) =>
-                    type === 'value' ? <span {...props}>null</span> : null
-                  }
-                />
-                <JsonView.Undefined
-                  render={(props, { type }) =>
-                    type === 'value' ? <span {...props}>undefined</span> : null
-                  }
-                />
-                <JsonView.Nan
-                  render={(props, { type }) =>
-                    type === 'value' ? <span {...props}>NaN</span> : null
-                  }
-                />
-              </JsonView>
+            <div className="response-json-container">
+              <div className="response-json-dock" data-testid="response-json-dock">
+                {searchOpen ? (
+                  <>
+                    <Search size={12} className="response-json-dock-search-icon" aria-hidden="true" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      className="response-json-dock-input"
+                      placeholder="Search…"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        setSearchActiveIndex(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (e.shiftKey) gotoPrev();
+                          else gotoNext();
+                        } else if (e.key === 'Escape') {
+                          e.preventDefault();
+                          closeSearch();
+                        }
+                      }}
+                      data-testid="response-search-input"
+                      aria-label="Search response JSON"
+                    />
+                    <span className="response-json-dock-count" data-testid="response-search-count">
+                      {searchMatches.length === 0
+                        ? (effectiveSearchQuery ? '0 / 0' : '')
+                        : `${Math.min(searchActiveIndex, searchMatches.length - 1) + 1} / ${searchMatches.length}${searchMatches.length >= SEARCH_MATCH_CAP ? '+' : ''}`}
+                    </span>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={gotoPrev}
+                      disabled={searchMatches.length === 0}
+                      title="Previous match (Shift+Enter)"
+                      data-testid="response-search-prev"
+                      aria-label="Previous match"
+                    >
+                      <ChevronUp size={12} />
+                    </button>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={gotoNext}
+                      disabled={searchMatches.length === 0}
+                      title="Next match (Enter)"
+                      data-testid="response-search-next"
+                      aria-label="Next match"
+                    >
+                      <ChevronDown size={12} />
+                    </button>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={closeSearch}
+                      title="Close (Esc)"
+                      data-testid="response-search-close"
+                      aria-label="Close search"
+                    >
+                      <X size={12} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={openSearch}
+                      title="Search (Ctrl+F)"
+                      data-testid="response-search-btn"
+                      aria-label="Search response"
+                    >
+                      <Search size={12} />
+                    </button>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={handleExpandAll}
+                      title="Expand all"
+                      data-testid="response-expand-all-btn"
+                      aria-label="Expand all"
+                    >
+                      <ChevronsUpDown size={12} />
+                    </button>
+                    <button
+                      className="response-json-dock-btn"
+                      onClick={handleCollapseAll}
+                      title="Collapse all"
+                      data-testid="response-collapse-all-btn"
+                      aria-label="Collapse all"
+                    >
+                      <ChevronsDownUp size={12} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="json-view-wrapper">
+                <JsonView
+                  key={jsonViewKey}
+                  value={jsonBody}
+                  displayDataTypes={false}
+                  {...(activeExpandSet
+                    ? {
+                        shouldExpandNodeInitially: (isExpanded, { keys }) =>
+                          activeExpandSet.has(JSON.stringify(keys)) || isExpanded,
+                        // Only disable string truncation while actively searching — once the user
+                        // has stopped typing the sticky set stays but long strings truncate again.
+                        ...(forceExpandSet ? { shortenTextAfterLength: 0 } : {}),
+                      }
+                    : {
+                        collapsed: collapseMode === 'all-collapsed' ? true : false,
+                      })}
+                  enableClipboard={true}
+                  style={{
+                    '--w-rjv-font-family': 'var(--font-mono)',
+                    '--w-rjv-background-color': 'var(--bg-secondary)',
+                    '--w-rjv-color': 'var(--text-primary)',
+                    '--w-rjv-key-string': '#0ea5e9',
+                    '--w-rjv-type-string-color': '#22c55e',
+                    '--w-rjv-type-int-color': '#f59e0b',
+                    '--w-rjv-type-float-color': '#f59e0b',
+                    '--w-rjv-type-boolean-color': '#8b5cf6',
+                    '--w-rjv-type-null-color': '#ef4444',
+                    '--w-rjv-arrow-color': 'var(--text-tertiary)',
+                    '--w-rjv-brackets-color': 'var(--text-tertiary)',
+                    '--w-rjv-ellipsis-color': 'var(--text-tertiary)',
+                    '--w-rjv-curlybraces-color': 'var(--text-tertiary)',
+                    '--w-rjv-colon-color': 'var(--text-tertiary)',
+                    '--w-rjv-info-color': 'var(--text-tertiary)',
+                    '--w-rjv-copied-color': 'var(--accent-success)',
+                    '--w-rjv-copied-success-color': 'var(--accent-success)',
+                    fontSize: '12px',
+                    padding: 'var(--space-4)',
+                  }}
+                >
+                  {/* Library bug in @uiw/react-json-view@2.0.0-alpha.41: TypeNull/TypeUndefined/TypeNan
+                      render nothing when displayDataTypes={false} because they lack a `child` fallback
+                      (unlike TypeInt/TypeString). Supply one here — and also highlight search hits. */}
+                  <JsonView.Null
+                    render={(props, { type }) => {
+                      if (type !== 'value') return null;
+                      const highlighted = effectiveSearchQuery
+                        ? renderHighlightedText({ baseProps: props, text: 'null', query: effectiveSearchQuery, kind: 'value' })
+                        : null;
+                      return highlighted || <span {...props}>null</span>;
+                    }}
+                  />
+                  <JsonView.Undefined
+                    render={(props, { type }) => {
+                      if (type !== 'value') return null;
+                      const highlighted = effectiveSearchQuery
+                        ? renderHighlightedText({ baseProps: props, text: 'undefined', query: effectiveSearchQuery, kind: 'value' })
+                        : null;
+                      return highlighted || <span {...props}>undefined</span>;
+                    }}
+                  />
+                  <JsonView.Nan
+                    render={(props, { type }) => {
+                      if (type !== 'value') return null;
+                      const highlighted = effectiveSearchQuery
+                        ? renderHighlightedText({ baseProps: props, text: 'NaN', query: effectiveSearchQuery, kind: 'value' })
+                        : null;
+                      return highlighted || <span {...props}>NaN</span>;
+                    }}
+                  />
+                  <JsonView.String
+                    render={(props, { type, value }) => {
+                      if (type !== 'value') return null;
+                      if (!effectiveSearchQuery || typeof value !== 'string') return null;
+                      return renderHighlightedText({ baseProps: props, text: value, query: effectiveSearchQuery, kind: 'value-string' });
+                    }}
+                  />
+                  <JsonView.KeyName
+                    render={(props, { keyName }) => {
+                      // Library passes the actual key name as `keyName` in the 2nd arg;
+                      // `value` in the 2nd arg is the value AT this key, not the key itself.
+                      if (!effectiveSearchQuery) return null;
+                      const s = typeof keyName === 'string' ? keyName : String(keyName ?? '');
+                      return renderHighlightedText({ baseProps: props, text: s, query: effectiveSearchQuery, kind: 'key' });
+                    }}
+                  />
+                  <JsonView.True
+                    render={(props, { type, value }) => {
+                      if (type !== 'value') return null;
+                      if (!effectiveSearchQuery) return null;
+                      const s = value === undefined ? 'true' : String(value);
+                      return renderHighlightedText({ baseProps: props, text: s, query: effectiveSearchQuery, kind: 'value' });
+                    }}
+                  />
+                  <JsonView.False
+                    render={(props, { type, value }) => {
+                      if (type !== 'value') return null;
+                      if (!effectiveSearchQuery) return null;
+                      const s = value === undefined ? 'false' : String(value);
+                      return renderHighlightedText({ baseProps: props, text: s, query: effectiveSearchQuery, kind: 'value' });
+                    }}
+                  />
+                  <JsonView.Int
+                    render={(props, { type, value }) => {
+                      if (type !== 'value') return null;
+                      if (!effectiveSearchQuery || value == null) return null;
+                      return renderHighlightedText({ baseProps: props, text: String(value), query: effectiveSearchQuery, kind: 'value' });
+                    }}
+                  />
+                  <JsonView.Float
+                    render={(props, { type, value }) => {
+                      if (type !== 'value') return null;
+                      if (!effectiveSearchQuery || value == null) return null;
+                      return renderHighlightedText({ baseProps: props, text: String(value), query: effectiveSearchQuery, kind: 'value' });
+                    }}
+                  />
+                </JsonView>
+              </div>
             </div>
           ) : (
             <pre className="response-body">{formatBody(displayResponse?.body)}</pre>
