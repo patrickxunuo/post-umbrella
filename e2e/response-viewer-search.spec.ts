@@ -193,7 +193,10 @@ test.describe('Response viewer — JSON search dock', () => {
     await expect(input).toBeVisible();
     await expect(input).toBeFocused();
 
-    await expect(page.locator('[data-testid="response-search-count"]')).toBeVisible();
+    // Counter is an inline span and renders empty text until the user types
+    // (so `toBeVisible` reports "hidden" on empty inline content). Assert it's
+    // in the DOM instead — presence is what matters here.
+    await expect(page.locator('[data-testid="response-search-count"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="response-search-prev"]')).toBeVisible();
     await expect(page.locator('[data-testid="response-search-next"]')).toBeVisible();
     await expect(page.locator('[data-testid="response-search-close"]')).toBeVisible();
@@ -245,7 +248,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('.w-rjv-wrap');
+    const jsonWrap = page.locator('.json-view-wrapper');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     // With Feature 2, default is fully expanded — deep string is visible with no user action.
@@ -261,7 +264,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('.w-rjv-wrap');
+    const jsonWrap = page.locator('.json-view-wrapper');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -371,18 +374,25 @@ test.describe('Response viewer — JSON search dock', () => {
     await dock.locator('[data-testid="response-search-btn"]').click();
     const input = page.locator('[data-testid="response-search-input"]');
 
+    const marks = page.locator('mark.response-search-highlight[data-search-hit="true"]');
+
+    // Wait for the JsonView to settle (key-bump remount + render-prop highlights)
+    // before reading the count — otherwise .count() races React's render cycle.
     await input.fill('wonder');
-    const lowerCount = await page.locator('mark.response-search-highlight[data-search-hit="true"]').count();
+    await expect(marks.first()).toBeVisible({ timeout: 5000 });
+    const lowerCount = await marks.count();
     expect(lowerCount).toBeGreaterThan(0);
 
     await input.fill('');
     await input.fill('WONDER');
-    const upperCount = await page.locator('mark.response-search-highlight[data-search-hit="true"]').count();
+    await expect(marks.first()).toBeVisible({ timeout: 5000 });
+    const upperCount = await marks.count();
     expect(upperCount).toBe(lowerCount);
 
     await input.fill('');
     await input.fill('Wonder');
-    const mixedCount = await page.locator('mark.response-search-highlight[data-search-hit="true"]').count();
+    await expect(marks.first()).toBeVisible({ timeout: 5000 });
+    const mixedCount = await marks.count();
     expect(mixedCount).toBe(lowerCount);
   });
 
@@ -532,6 +542,12 @@ test.describe('Response viewer — JSON search dock', () => {
     const input = page.locator('[data-testid="response-search-input"]');
     await input.fill('WonderWidgets');
 
+    // Wait for the first highlight to render, THEN assert the active-class
+    // effect has picked exactly one of them. Without this wait the post-render
+    // effect might race with the test snapshot.
+    await expect(
+      page.locator('mark.response-search-highlight[data-search-hit="true"]').first()
+    ).toBeVisible({ timeout: 5000 });
     await expect(page.locator('mark.response-search-highlight--active')).toHaveCount(1);
 
     // Advance and re-check uniqueness.
@@ -611,7 +627,7 @@ test.describe('Response viewer — JSON search dock', () => {
     // Re-send the request → new response → search should auto-close.
     await page.locator('.btn-send').click();
     await expect(page.locator('.response-viewer.loading')).not.toBeVisible({ timeout: 30000 });
-    await expect(page.locator('.w-rjv-wrap')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.json-view-wrapper')).toBeVisible({ timeout: 10000 });
 
     await expect(page.locator('[data-testid="response-search-input"]')).toHaveCount(0);
     await expect(page.locator('mark.response-search-highlight[data-search-hit="true"]')).toHaveCount(0);
@@ -627,7 +643,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('.w-rjv-wrap');
+    const jsonWrap = page.locator('.json-view-wrapper');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     const dock = page.locator('[data-testid="response-json-dock"]');
