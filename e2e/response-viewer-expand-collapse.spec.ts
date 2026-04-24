@@ -161,7 +161,7 @@ test.describe('Response viewer — expand/collapse all', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     // First expand everything so depth-3+ nodes are rendered.
@@ -195,7 +195,7 @@ test.describe('Response viewer — expand/collapse all', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     // Click Collapse-all so depth-4 content is removed from the DOM.
@@ -224,7 +224,7 @@ test.describe('Response viewer — expand/collapse all', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     // Default is expanded — click Collapse-all to put the viewer into all-collapsed.
@@ -235,11 +235,11 @@ test.describe('Response viewer — expand/collapse all', () => {
     // Re-send the request. Reset should flip collapseMode back to 'all-expanded'.
     await page.locator('.btn-send').click();
     await expect(page.locator('.response-viewer.loading')).not.toBeVisible({ timeout: 30000 });
-    await expect(page.locator('[data-testid="w-rjv-wrap"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.w-rjv-wrap')).toBeVisible({ timeout: 10000 });
 
     // With all-expanded restored, the deep (depth-4) string is visible again — the
     // previous collapse state did NOT persist across the new response.
-    const jsonWrapAfter = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrapAfter = page.locator('.w-rjv-wrap');
     await expect(jsonWrapAfter.getByText(DEEP_TEXT_FRAGMENT, { exact: false }).first())
       .toBeVisible({ timeout: 10000 });
     await expect(jsonWrapAfter.getByText(ROOT_KEY, { exact: false }).first()).toBeVisible();

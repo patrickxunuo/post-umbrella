@@ -245,7 +245,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     // With Feature 2, default is fully expanded — deep string is visible with no user action.
@@ -261,7 +261,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -611,7 +611,7 @@ test.describe('Response viewer — JSON search dock', () => {
     // Re-send the request → new response → search should auto-close.
     await page.locator('.btn-send').click();
     await expect(page.locator('.response-viewer.loading')).not.toBeVisible({ timeout: 30000 });
-    await expect(page.locator('[data-testid="w-rjv-wrap"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.w-rjv-wrap')).toBeVisible({ timeout: 10000 });
 
     await expect(page.locator('[data-testid="response-search-input"]')).toHaveCount(0);
     await expect(page.locator('mark.response-search-highlight[data-search-hit="true"]')).toHaveCount(0);
@@ -627,7 +627,7 @@ test.describe('Response viewer — JSON search dock', () => {
     await page.locator('.url-input').fill(DEEP_JSON_URL);
     await sendRequestAndWaitForResponse(page);
 
-    const jsonWrap = page.locator('[data-testid="w-rjv-wrap"]');
+    const jsonWrap = page.locator('.w-rjv-wrap');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
     const dock = page.locator('[data-testid="response-json-dock"]');
