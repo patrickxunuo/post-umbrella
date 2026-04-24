@@ -112,7 +112,10 @@ jobs:
           retention-days: 14
 
       - name: Upload failure screenshots
-        if: failure()
+        # Also run on cancel so we can see what was failing when the job was cut short
+        # (Playwright writes test-failed-*.png + error-context.md per failing test,
+        # even when the whole run gets cancelled partway through).
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: test-screenshots
