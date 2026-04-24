@@ -1,6 +1,6 @@
 [package]
 name = "post-umbrella"
-version = "0.1.13"
+version = "0.1.14"
 description = "A self-hosted API testing tool"
 authors = ["emonster"]
 license = ""

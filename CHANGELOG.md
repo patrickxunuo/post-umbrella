@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.1.14
+
+### New
+
+- **Response Viewer Float Dock** — A floating control cluster pinned to the top-right of the JSON response viewer, with three actions: **Search**, **Expand-all**, **Collapse-all**. Replaces the toolbar-mounted expand/collapse icons from v0.1.13. The dock stays visible as you scroll through large responses and adapts its border + shadow for both light and dark themes. Closes #36. (#37)
+- **In-Viewer Search with Auto-Expand** — Clicking the dock's magnifier (or pressing **Ctrl+F / Cmd+F** while focus is inside the response viewer) opens an inline search bar with input, live `N / M` counter, prev/next buttons, and close. The search walks the **parsed JSON** rather than the rendered DOM — so matches inside collapsed nodes are found, and the ancestor path of every match is automatically expanded so you can see it. Matches are highlighted with inline `<mark>` spans, and navigation scrolls the active match into view. Escape closes. Browser Find is suppressed while focus is inside the viewer; Ctrl+F anywhere else works normally. Closes #36. (#37)
+- **Substring Match Across All Leaf Types** — Search compares case-insensitively against every key name and every stringified leaf (string values, numbers, booleans, `null`, `undefined`, `NaN`). `"12"` finds `"123"` and the number `123`; `"tru"` finds boolean `true` or the string `"true"`; `"ull"` finds `null`. Quote-inclusive queries work too — `"route_id"` (with quotes) matches the key `route_id` the same as typing it bare. Up to 5000 matches are kept; beyond that the counter shows `N / 5000+`. (#37)
+- **Sticky Search Expansion** — Typing a query that yields zero matches, or closing the search bar mid-session, no longer snaps the tree back to its pre-search collapse state. The expansion hints from the most recent non-empty match set persist, so a typo or Escape doesn't wipe the context you were reading. Explicit Collapse-all, Expand-all, or a new response clears the sticky state as usual. (#37)
+- **Landing Page Dock Demo** — The marketing page mockup (`website/`) now shows the response-viewer dock. Clicking the magnifier opens a pre-filled "jane" search with two inline highlights on the Create User response, mirroring what the real app does. Advertises the feature without a screenshot. (#37)
+
+### Improved
+
+- **Default JSON Render is Fully Expanded** — Previously the response viewer opened every JSON response with depth-2 collapse (`collapsed={2}`). With the dock's Collapse-all button always one click away, the default now shows everything expanded. If you want the collapsed view, use the dock. (#37)
+- **Instant Match Navigation** — Clicking Next/Prev (or pressing Enter / Shift+Enter) on a match jumps instantly instead of smooth-scrolling, which felt sluggish when stepping through many matches in a large response. (#37)
+
+### Fixed
+
+- **Theme-Switch Flicker on Inputs and Cards** — Toggling light/dark themes caused a visible ~100 ms blink on elements that declared `transition: all` or explicit transitions on theme-token properties (`background`, `color`, `border-color`). Those elements faded over the transition while `<body>` and untransitioned containers snapped instantly, producing a mismatch. Introduced a one-frame global transition guard (`html.theme-switching *`) applied by `useLayoutState` around the `[data-theme]` flip so every element snaps together. Interaction transitions (hover, focus) are unaffected. Specifically resolves the blink on the params/headers inputs and the sidebar search bar. (#37)
+- **`@uiw/react-json-view` KeyName Render Propagation** — An internal render-prop override for `<JsonView.KeyName>` was reading the wrong field (`value` from the 2nd callback arg, which the library uses for the *value at* the key, not the key name itself). With the new search feature relying on key highlighting, the bug would have caused key matches to silently miss. Fixed to read `keyName` explicitly, matching the library's signature. (#37)
+
+### Breaking
+
+- **Response Viewer's Default Collapse Behavior Changed.** JSON responses now render fully expanded on arrival instead of collapsed at depth 2. If you relied on the old depth-limited default, click the new Collapse-all icon in the top-right dock. (#37)
+- **Expand / Collapse Buttons Moved from Toolbar to the Float Dock.** The toolbar buttons introduced in v0.1.13 are gone; the same actions live inside the new `response-json-dock` element. Test selectors (`response-expand-all-btn`, `response-collapse-all-btn`) are preserved so existing E2E tests that target them by `data-testid` keep working. (#37)
+
 ## v0.1.13
 
 ### New
