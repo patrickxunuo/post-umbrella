@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.1.15
+
+### New
+
+- **Path Variables in Request URL** — Postman-style `:name` path variables, scoped per-request. Typing `:id` in the URL adds a row to a new "Path Variables" section under the Params tab; deleting the `:name` from the URL removes the row. Keys are read-only in the list (edit them in the URL); values are editable inline or via the same hover popover used for environment variables. Path-var values may reference `{{env_var}}` — they're resolved before substitution into the URL. Distinct green accent (`--accent-success`) in the URL overlay distinguishes path vars from env (blue) and collection (orange). Closes #38. (#39)
+- **Reserved-Character URL Sanitization** — Typing `:` followed immediately by a URL-reserved character (`/`, `?`, `#`, `&`, `=`, etc.) strips the stray `:` from the URL — `/users/:/posts` collapses to `/users//posts` instead of creating a no-name path variable. Trailing `:` at end of URL is preserved so users can keep typing the name. (#39)
+- **Port- and Query-Aware Path-Var Parser** — The parser explicitly skips `:` inside `scheme://host:port` and stops at the first `?` or `#`, so `https://localhost:3000/api/:id` and `/api/:id?ts=2024:01:01` both produce exactly one path variable (`id`) — not three bogus ones. (#39)
+
+### Improved
+
+- **Shared Substitution Util** — Three previously-duplicated env/collection-variable substitution sites (`useResponseExecution`, `useWorkflowExecution`, `CurlPanel`) now share a single `src/utils/substituteVariables.js` with a merged-Map env-then-collection priority pass. Both the live request and the cURL preview run identical pipelines, so the cURL never drifts from what was actually sent. (#39)
+- **Compact Key/Value Tables** — Query Params, Path Variables, Headers, and Body→form-data tables share a `.kv-section` style with tighter row padding (4px input padding, 9px header font) so more rows are visible at once without scrolling. The form-data Type selector and Select File button shrunk to match. (#39)
+- **Response JSON Dock Shadow** — The floating dock no longer carries its accent ring + ambient drop-shadow at rest. Both layers fade in (150ms) on `:hover` or `:focus-within` (search input or button focus). Reads quieter against busy JSON. (#39)
+- **cURL Paste Wires Path Variables** — Pasting a `curl` command containing a templated URL (e.g. `https://api/users/:id`) now reconciles path variables on paste so the section appears immediately, instead of waiting for the user to type. (#39)
+
+### Fixed
+
+- **Workflow Env-vs-Collection Override Bug** — When a collection variable and an environment variable defined the same key, the workflow executor's sequential-replacement substitution erased the `{{key}}` pattern after the first pass — so the second pass (env) had nothing to override and the collection value silently won. The new shared util uses a merged-Map pattern so env reliably wins regardless of order. Pre-existing in `useWorkflowExecution.js` since v0.1.8; fixed as a side benefit of the substitution refactor. (#39)
+- **Tab Dirty-State Snapshot Missed `path_variables`** — `openRequestInTab` built its dirty-detection snapshot inline and was missing `path_variables`, so any edit to a fresh tab produced a permanent dirty mismatch (snapshot key omitted vs current key present). Bulk close-tab actions then opened a "Close anyway?" confirm modal that surprised users (and broke 5 tab-context-menu E2E tests). Fixed by including `path_variables` in the snapshot, matching the WorkbenchContext / workbenchStore / useConflictResolution paths. (#39)
+
+### Database
+
+- **Migration `20260424000000_request_path_variables.sql`** — Adds `path_variables JSONB DEFAULT '[]'::jsonb` column to `requests`. Existing rows get `[]` automatically; the new section stays hidden until users add `:name` to a URL. Run `supabase db push` to apply to cloud projects.
+
 ## v0.1.14
 
 ### New
