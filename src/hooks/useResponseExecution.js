@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
+import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 import useWorkbenchStore from '../stores/workbenchStore';
 import useConsoleStore from '../stores/consoleStore';
 
@@ -82,6 +83,7 @@ export function useResponseExecution({
     preScript,
     postScript,
     collectionId,
+    pathVariables = [],
   }) => {
     const controller = new AbortController();
     abortRef.current = controller;
@@ -170,42 +172,27 @@ export function useResponseExecution({
         }
       }
 
-      const substituteWithEnv = (text) => {
-        if (!text) return text;
+      const subEnv = (text) => substituteEnv(text, {
+        environment: currentEnv,
+        collectionVariables: collectionVars,
+      });
 
-        // Build merged map: collection (lower priority) then env (higher priority overrides).
-        // Single substitution pass so env truly overrides — otherwise replacing collection first
-        // erases the {{key}} pattern before env ever sees it.
-        const resolved = new Map();
-        for (const variable of collectionVars) {
-          if (!variable.enabled || !variable.key) continue;
-          resolved.set(variable.key, variable.value || variable.current_value || variable.initial_value || '');
-        }
-        if (currentEnv) {
-          for (const variable of currentEnv.variables) {
-            if (!variable.enabled || !variable.key) continue;
-            resolved.set(variable.key, variable.value || variable.current_value || variable.initial_value || '');
-          }
-        }
-        let result = text;
-        for (const [key, value] of resolved) {
-          result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value);
-        }
-        return result;
-      };
-
-      const resolvedUrl = substituteWithEnv(url);
+      const resolvedUrl = substituteUrl(url, {
+        environment: currentEnv,
+        collectionVariables: collectionVars,
+        pathVariables,
+      });
       const resolvedHeaders = headers.map((header) => ({
         ...header,
-        key: substituteWithEnv(header.key),
-        value: substituteWithEnv(header.value),
+        key: subEnv(header.key),
+        value: subEnv(header.value),
       }));
-      const resolvedBody = substituteWithEnv(body);
-      const resolvedAuthToken = substituteWithEnv(authToken);
+      const resolvedBody = subEnv(body);
+      const resolvedAuthToken = subEnv(authToken);
       const resolvedFormData = formData?.map((field) => ({
         ...field,
-        key: substituteWithEnv(field.key),
-        value: field.type === 'file' ? field.value : substituteWithEnv(field.value),
+        key: subEnv(field.key),
+        value: field.type === 'file' ? field.value : subEnv(field.value),
       }));
 
       if (bodyType === 'json' && resolvedBody) {

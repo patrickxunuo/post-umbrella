@@ -47,16 +47,29 @@ export function VariablePopoverProvider({ children, activeEnvironment, collectio
     }, 150);
   }, [isEditing, clearHideTimeout]);
 
-  const show = useCallback(({ varName, rect }) => {
+  const show = useCallback(({ varName, rect, kind = 'env', pathVariables: pvList, onPathVarChange }) => {
     // Don't interrupt edit mode
     if (isEditing) { clearHideTimeout(); return; }
     // Don't show while selecting text
     const sel = window.getSelection();
     if (sel && sel.toString().length > 0) return;
     clearHideTimeout();
+    if (kind === 'path') {
+      const pv = pvList?.find(p => p.key === varName);
+      setState({
+        varName,
+        rect,
+        kind: 'path',
+        source: 'path',
+        value: pv?.value ?? '',
+        onPathVarChange,
+      });
+      setEditValue(pv?.value || '');
+      return;
+    }
     const source = getVariableSource(varName);
     const value = getVariableValue(varName);
-    setState({ varName, rect, source, value });
+    setState({ varName, rect, kind: 'env', source, value });
     setEditValue(value || '');
   }, [isEditing, getVariableSource, getVariableValue, clearHideTimeout]);
 
@@ -71,6 +84,13 @@ export function VariablePopoverProvider({ children, activeEnvironment, collectio
       // Minify JSON before saving
       let valueToSave = editValue;
       try { valueToSave = JSON.stringify(JSON.parse(editValue)); } catch {}
+
+      if (state.kind === 'path' && state.onPathVarChange) {
+        state.onPathVarChange(state.varName, valueToSave);
+        setIsEditing(false);
+        setState(null);
+        return;
+      }
 
       if (state.source === 'collection' && rootCollectionId) {
         await data.updateCollectionVariableCurrentValues(rootCollectionId, {
@@ -156,12 +176,17 @@ export function VariablePopoverProvider({ children, activeEnvironment, collectio
             <span className={`env-var-name ${state.source || ''}`}>
               {state.source === 'collection' && <span className="suggestion-source-badge collection">C</span>}
               {state.source === 'env' && <span className="suggestion-source-badge env">E</span>}
+              {state.kind === 'path' && <span className="suggestion-source-badge path">P</span>}
               {state.varName}
             </span>
-            {state.source !== 'collection' && (
-              activeEnvironment
-                ? <span className="env-var-env">{activeEnvironment.name}</span>
-                : <span className="env-var-env no-env">No Environment</span>
+            {state.kind === 'path' ? (
+              <span className="env-var-env path">Path</span>
+            ) : (
+              state.source !== 'collection' && (
+                activeEnvironment
+                  ? <span className="env-var-env">{activeEnvironment.name}</span>
+                  : <span className="env-var-env no-env">No Environment</span>
+              )
             )}
           </div>
           {(() => {

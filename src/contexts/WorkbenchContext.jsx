@@ -219,6 +219,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
           body: tab.request.body, body_type: tab.request.body_type, form_data: tab.request.form_data,
           auth_type: tab.request.auth_type, auth_token: tab.request.auth_token,
           pre_script: tab.request.pre_script, post_script: tab.request.post_script,
+          path_variables: tab.request.path_variables,
         });
       } else if (tab.type === 'example' && tab.example) {
         originals[tab.id] = JSON.stringify({
@@ -438,6 +439,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
           body_type: currentSaveState.selectedRequest.body_type, auth_type: currentSaveState.selectedRequest.auth_type,
           auth_token: currentSaveState.selectedRequest.auth_token, params: currentSaveState.selectedRequest.params,
           pre_script: currentSaveState.selectedRequest.pre_script, post_script: currentSaveState.selectedRequest.post_script,
+          path_variables: currentSaveState.selectedRequest.path_variables,
         });
       }
     };

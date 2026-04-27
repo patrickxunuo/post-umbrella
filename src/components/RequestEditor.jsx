@@ -7,6 +7,7 @@ import { RequestBodyEditor } from './RequestBodyEditor';
 import { ScriptEditor } from './ScriptEditor';
 import { parseCurl } from './ImportCurlModal';
 import { useToast } from './Toast';
+import { reconcilePathVariables, sanitizeUrlForPathVars } from '../utils/substituteVariables';
 
 // Parse URL query string to params array
 function parseUrlParams(url) {
@@ -128,6 +129,7 @@ export function RequestEditor({
   const [authType, setAuthType] = useState('none');
   const [authToken, setAuthToken] = useState('');
   const [params, setParams] = useState([{ key: '', value: '', enabled: true }]);
+  const [pathVariables, setPathVariables] = useState([]);
   const [preScript, setPreScript] = useState('');
   const [postScript, setPostScript] = useState('');
   const [showSaveDropdown, setShowSaveDropdown] = useState(false);
@@ -135,19 +137,6 @@ export function RequestEditor({
   const [exampleName, setExampleName] = useState('');
   const lastUrlRef = useRef(url);
   const saveDropdownRef = useRef(null);
-
-  // Substitute environment variables in text
-  const substituteVariables = (text) => {
-    if (!text || !activeEnvironment) return text;
-    let result = text;
-    for (const v of activeEnvironment.variables) {
-      if (v.enabled && v.key) {
-        const regex = new RegExp(`\\{\\{${v.key}\\}\\}`, 'g');
-        result = result.replace(regex, v.value || '');
-      }
-    }
-    return result;
-  };
 
   // Initialize params from saved data or parse from URL
   const initializeParams = (savedParams, urlString) => {
@@ -185,6 +174,7 @@ export function RequestEditor({
       setAuthType(reqData.auth_type || 'none');
       setAuthToken(reqData.auth_token || '');
       setParams(initializeParams(reqData.params, reqData.url));
+      setPathVariables(reconcilePathVariables(reqData.url || '', reqData.path_variables || []));
       lastUrlRef.current = reqData.url || '';
     } else if (request) {
       setMethod(request.method || 'GET');
@@ -204,11 +194,12 @@ export function RequestEditor({
       setAuthType(request.auth_type || 'none');
       setAuthToken(request.auth_token || '');
       setParams(initializeParams(request.params, request.url));
+      setPathVariables(reconcilePathVariables(request.url || '', request.path_variables || []));
       setPreScript(request.pre_script || '');
       setPostScript(request.post_script || '');
       lastUrlRef.current = request.url || '';
     }
-  }, [isExample, example?.id, example?.request_data, request?.id, request?.method, request?.url, request?.headers, request?.body, request?.body_type, request?.form_data, request?.auth_type, request?.auth_token, request?.params, request?.pre_script, request?.post_script]);
+  }, [isExample, example?.id, example?.request_data, request?.id, request?.method, request?.url, request?.headers, request?.body, request?.body_type, request?.form_data, request?.auth_type, request?.auth_token, request?.params, request?.path_variables, request?.pre_script, request?.post_script]);
 
   // Helper to wrap changes for examples
   const notifyChange = (updates) => {
@@ -229,7 +220,9 @@ export function RequestEditor({
     notifyChange({ method: newMethod });
   };
 
-  const handleUrlChange = (newUrl) => {
+  const handleUrlChange = (rawUrl) => {
+    // Strip stray `:` followed by reserved chars (e.g. typing `/:/` collapses to `//`)
+    const newUrl = sanitizeUrlForPathVars(rawUrl);
     setUrl(newUrl);
 
     // Sync params from URL while preserving disabled params
@@ -248,8 +241,12 @@ export function RequestEditor({
     }
 
     setParams(mergedParams);
+
+    const newPathVars = reconcilePathVariables(newUrl, pathVariables);
+    setPathVariables(newPathVars);
+
     lastUrlRef.current = newUrl;
-    notifyChange({ url: newUrl, params: mergedParams });
+    notifyChange({ url: newUrl, params: mergedParams, path_variables: newPathVars });
   };
 
   const handleUrlPaste = async (e) => {
@@ -259,10 +256,12 @@ export function RequestEditor({
     try {
       const parsed = parseCurl(text);
       if (!parsed.url) return;
+      const pastedPathVars = reconcilePathVariables(parsed.url, []);
       setMethod(parsed.method);
       setUrl(parsed.url);
       setHeaders(parsed.headers);
       setParams(parseUrlParams(parsed.url).concat([{ key: '', value: '', enabled: true }]));
+      setPathVariables(pastedPathVars);
       lastUrlRef.current = parsed.url;
       if (parsed.bodyType === 'form-data' && parsed.formData?.length > 0) {
         setBodyType('form-data');
@@ -275,6 +274,7 @@ export function RequestEditor({
           body: '',
           body_type: 'form-data',
           form_data: parsed.formData,
+          path_variables: pastedPathVars,
         });
       } else {
         setBodyType(parsed.bodyType);
@@ -285,6 +285,7 @@ export function RequestEditor({
           headers: parsed.headers,
           body: parsed.body,
           body_type: parsed.bodyType,
+          path_variables: pastedPathVars,
         });
       }
       // Extract auth from parsed headers
@@ -366,6 +367,7 @@ export function RequestEditor({
         preScript,
         postScript,
         collectionId: request?.collection_id,
+        pathVariables,
       });
     }
   };
@@ -376,6 +378,7 @@ export function RequestEditor({
 
     // Filter out empty params but keep disabled ones
     const paramsToSave = params.filter((p) => p.key.trim()).map(p => ({ ...p, value: trimVars(p.value) }));
+    const pathVarsToSave = pathVariables.map(pv => ({ ...pv, value: trimVars(pv.value) }));
     const trimmedUrl = trimVars(url).trim();
     const trimmedBody = trimVars(body);
     const trimmedHeaders = headers.filter((h) => h.key).map(h => ({ ...h, value: trimVars(h.value) }));
@@ -395,6 +398,7 @@ export function RequestEditor({
           auth_type: authType,
           auth_token: trimmedAuthToken,
           params: paramsToSave,
+          path_variables: pathVarsToSave,
         },
         response_data: example?.response_data,
       });
@@ -409,6 +413,7 @@ export function RequestEditor({
         auth_type: authType,
         auth_token: trimmedAuthToken,
         params: paramsToSave,
+        path_variables: pathVarsToSave,
         pre_script: preScript,
         post_script: postScript,
       });
@@ -428,6 +433,7 @@ export function RequestEditor({
       auth_type: authType,
       auth_token: authToken,
       params: paramsToSave,
+      path_variables: pathVariables,
     };
     const responseData = response ? {
       status: response.status,
@@ -498,6 +504,14 @@ export function RequestEditor({
           collectionVariables={collectionVariables}
           rootCollectionId={rootCollectionId}
           onEnvironmentUpdate={onEnvironmentUpdate}
+          pathVariables={pathVariables}
+          onPathVariableValueChange={(key, newValue) => {
+            const updated = pathVariables.map(p =>
+              p.key === key ? { ...p, value: newValue } : p
+            );
+            setPathVariables(updated);
+            notifyChange({ path_variables: updated });
+          }}
           disabled={!canEdit}
         />
         {isExample ? (
@@ -513,6 +527,7 @@ export function RequestEditor({
               authType,
               authToken,
               exampleName: example?.name,
+              pathVariables,
             })}
             disabled={!url}
             title="Open in a new temporary tab to send request"
@@ -619,82 +634,137 @@ export function RequestEditor({
       <div className="request-content">
         {activeDetailTab === 'params' && (
           <div className="params-editor">
-            <table>
-              <thead>
-                <tr>
-                  <th style={{ width: '30px' }}></th>
-                  <th>Key</th>
-                  <th>Value</th>
-                  <th style={{ width: '40px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {params.map((param, index) => (
-                  <tr key={index}>
-                    <td>
-                      <Checkbox
-                        checked={param.enabled !== false}
-                        onChange={(e) => {
-                          const newParams = [...params];
-                          newParams[index] = { ...param, enabled: e.target.checked };
-                          handleParamsChange(newParams);
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        placeholder="Key"
-                        value={param.key}
-                        onChange={(e) => {
-                          const newParams = [...params];
-                          newParams[index] = { ...param, key: e.target.value };
-                          // Add empty row if editing last row
-                          if (index === params.length - 1 && e.target.value) {
-                            newParams.push({ key: '', value: '', enabled: true });
-                          }
-                          handleParamsChange(newParams);
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <EnvVariableInput
-                        value={param.value}
-                        onChange={(e) => {
-                          const newParams = [...params];
-                          newParams[index] = { ...param, value: e.target.value };
-                          handleParamsChange(newParams);
-                        }}
-                        placeholder="Value"
-                        activeEnvironment={activeEnvironment}
-                        collectionVariables={collectionVariables}
-                        rootCollectionId={rootCollectionId}
-                        onEnvironmentUpdate={onEnvironmentUpdate}
-                      />
-                    </td>
-                    <td>
-                      {param.key && (
-                        <button
-                          className="btn-icon small danger"
-                          onClick={() => {
-                            const newParams = params.filter((_, i) => i !== index);
-                            if (newParams.length === 0) {
+            <div className="kv-section">
+              <div className="kv-section-header">
+                <span className="kv-section-title">Query Params</span>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ width: '30px' }}></th>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th style={{ width: '40px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {params.map((param, index) => (
+                    <tr key={index}>
+                      <td>
+                        <Checkbox
+                          checked={param.enabled !== false}
+                          onChange={(e) => {
+                            const newParams = [...params];
+                            newParams[index] = { ...param, enabled: e.target.checked };
+                            handleParamsChange(newParams);
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          placeholder="Key"
+                          value={param.key}
+                          onChange={(e) => {
+                            const newParams = [...params];
+                            newParams[index] = { ...param, key: e.target.value };
+                            if (index === params.length - 1 && e.target.value) {
                               newParams.push({ key: '', value: '', enabled: true });
                             }
                             handleParamsChange(newParams);
                           }}
-                        >
-                          ×
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="hint" style={{ marginTop: '12px' }}>
-              Query parameters sync with the URL automatically
-            </p>
+                        />
+                      </td>
+                      <td>
+                        <EnvVariableInput
+                          value={param.value}
+                          onChange={(e) => {
+                            const newParams = [...params];
+                            newParams[index] = { ...param, value: e.target.value };
+                            handleParamsChange(newParams);
+                          }}
+                          placeholder="Value"
+                          activeEnvironment={activeEnvironment}
+                          collectionVariables={collectionVariables}
+                          rootCollectionId={rootCollectionId}
+                          onEnvironmentUpdate={onEnvironmentUpdate}
+                        />
+                      </td>
+                      <td>
+                        {param.key && (
+                          <button
+                            className="btn-icon small danger"
+                            onClick={() => {
+                              const newParams = params.filter((_, i) => i !== index);
+                              if (newParams.length === 0) {
+                                newParams.push({ key: '', value: '', enabled: true });
+                              }
+                              handleParamsChange(newParams);
+                            }}
+                          >
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pathVariables.length > 0 && (
+              <div className="kv-section" data-testid="path-variables-section">
+                <div className="kv-section-header">
+                  <span className="kv-section-title">Path Variables</span>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '30px' }}></th>
+                      <th>Key</th>
+                      <th>Value</th>
+                      <th style={{ width: '40px' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pathVariables.map((pv) => (
+                      <tr key={pv.key} data-testid={`path-variable-row-${pv.key}`}>
+                        <td></td>
+                        <td>
+                          <input
+                            type="text"
+                            className="path-var-key-readonly"
+                            value={pv.key}
+                            readOnly
+                            tabIndex={-1}
+                            data-testid={`path-variable-key-${pv.key}`}
+                            title="Edit the URL above to change this key"
+                          />
+                        </td>
+                        <td>
+                          <EnvVariableInput
+                            value={pv.value}
+                            onChange={(e) => {
+                              const updated = pathVariables.map(p =>
+                                p.key === pv.key ? { ...p, value: e.target.value } : p
+                              );
+                              setPathVariables(updated);
+                              notifyChange({ path_variables: updated });
+                            }}
+                            placeholder="Value"
+                            activeEnvironment={activeEnvironment}
+                            collectionVariables={collectionVariables}
+                            rootCollectionId={rootCollectionId}
+                            onEnvironmentUpdate={onEnvironmentUpdate}
+                            data-testid={`path-variable-value-input-${pv.key}`}
+                          />
+                        </td>
+                        <td></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -760,61 +830,63 @@ export function RequestEditor({
 
         {activeDetailTab === 'headers' && (
           <div className="headers-editor">
-            <table>
-              <thead>
-                <tr>
-                  <th></th>
-                  <th>Key</th>
-                  <th>Value</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {headers.map((header, index) => (
-                  <tr key={index}>
-                    <td>
-                      <Checkbox
-                        checked={header.enabled !== false}
-                        onChange={(e) => updateHeader(index, 'enabled', e.target.checked)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="text"
-                        placeholder="Header name"
-                        value={header.key}
-                        onChange={(e) => {
-                          const newHeaders = [...headers];
-                          newHeaders[index] = { ...header, key: e.target.value };
-                          if (index === headers.length - 1 && e.target.value) {
-                            newHeaders.push({ key: '', value: '', enabled: true });
-                          }
-                          handleHeadersChange(newHeaders);
-                        }}
-                      />
-                    </td>
-                    <td>
-                      <EnvVariableInput
-                        value={header.value}
-                        onChange={(e) => updateHeader(index, 'value', e.target.value)}
-                        placeholder="Value"
-                        activeEnvironment={activeEnvironment}
-                        collectionVariables={collectionVariables}
-                        rootCollectionId={rootCollectionId}
-                        onEnvironmentUpdate={onEnvironmentUpdate}
-                      />
-                    </td>
-                    <td>
-                      {header.key && (
-                        <button className="btn-icon small" onClick={() => removeHeader(index)}>
-                          ×
-                        </button>
-                      )}
-                    </td>
+            <div className="kv-section">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {headers.map((header, index) => (
+                    <tr key={index}>
+                      <td>
+                        <Checkbox
+                          checked={header.enabled !== false}
+                          onChange={(e) => updateHeader(index, 'enabled', e.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          placeholder="Header name"
+                          value={header.key}
+                          onChange={(e) => {
+                            const newHeaders = [...headers];
+                            newHeaders[index] = { ...header, key: e.target.value };
+                            if (index === headers.length - 1 && e.target.value) {
+                              newHeaders.push({ key: '', value: '', enabled: true });
+                            }
+                            handleHeadersChange(newHeaders);
+                          }}
+                        />
+                      </td>
+                      <td>
+                        <EnvVariableInput
+                          value={header.value}
+                          onChange={(e) => updateHeader(index, 'value', e.target.value)}
+                          placeholder="Value"
+                          activeEnvironment={activeEnvironment}
+                          collectionVariables={collectionVariables}
+                          rootCollectionId={rootCollectionId}
+                          onEnvironmentUpdate={onEnvironmentUpdate}
+                        />
+                      </td>
+                      <td>
+                        {header.key && (
+                          <button className="btn-icon small" onClick={() => removeHeader(index)}>
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

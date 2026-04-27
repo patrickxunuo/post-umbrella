@@ -81,6 +81,7 @@ const useWorkbenchStore = create((set, get) => ({
           body: request.body, body_type: request.body_type, form_data: request.form_data,
           auth_type: request.auth_type, auth_token: request.auth_token,
           pre_script: request.pre_script, post_script: request.post_script,
+          path_variables: request.path_variables,
         });
         const dirty = current !== _originalRequests[tab.id];
         return { ...tab, request, dirty };
@@ -94,6 +95,7 @@ const useWorkbenchStore = create((set, get) => ({
           body: request.body, body_type: request.body_type, form_data: request.form_data,
           auth_type: request.auth_type, auth_token: request.auth_token,
           pre_script: request.pre_script, post_script: request.post_script,
+          path_variables: request.path_variables,
         });
         const dirty = current !== _originalRequests[tab.id];
         return (dirty && previewTabId === tab.id) ? null : previewTabId;

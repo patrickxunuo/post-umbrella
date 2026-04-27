@@ -1291,13 +1291,17 @@
   background: var(--bg-elevated);
   border: 1px solid var(--border-secondary);
   border-radius: var(--radius-md);
-  /* Two-layer shadow: a subtle accent ring for presence + an ambient shadow
-     so the dock reads clearly against both light and dark JSON content. */
+  max-width: calc(100% - 24px);
+  transition: width 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Two-layer shadow appears only on hover or when the search input/buttons
+   are focused. Keeps the dock visually quiet at rest. */
+.response-json-dock:hover,
+.response-json-dock:focus-within {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent-primary) 14%, transparent),
     var(--shadow-lg);
-  max-width: calc(100% - 24px);
-  transition: width 0.15s ease;
 }
 
 .response-json-dock-btn {

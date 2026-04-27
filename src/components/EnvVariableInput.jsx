@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as data from '../data/index.js';
 import { useVariablePopover } from './VariablePopover';
+import { extractPathVarTokens } from '../utils/substituteVariables';
 
 // Component that wraps an input and adds hover-to-edit for environment variables
 export function EnvVariableInput({
@@ -14,7 +15,10 @@ export function EnvVariableInput({
   collectionVariables,
   rootCollectionId,
   onEnvironmentUpdate,
+  pathVariables,
+  onPathVariableValueChange,
   disabled = false,
+  ...rest
 }) {
   const variablePopover = useVariablePopover();
   // Autocomplete state
@@ -25,20 +29,35 @@ export function EnvVariableInput({
   const inputRef = useRef(null);
   const suggestionsRef = useRef(null);
 
-  // Find the variable at a given position in the text
+  // Find the variable at a given position in the text (env or path)
   const findVariableAtPosition = (text, pos) => {
-    const regex = /\{\{([^}]+)\}\}/g;
+    const envRegex = /\{\{([^}]+)\}\}/g;
     let match;
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = envRegex.exec(text)) !== null) {
       const start = match.index;
       const end = match.index + match[0].length;
       if (pos >= start && pos <= end) {
         return {
+          kind: 'env',
           name: match[1].trim(),
           start,
           end,
           fullMatch: match[0],
         };
+      }
+    }
+    if (pathVariables && pathVariables.length > 0) {
+      const tokens = extractPathVarTokens(text);
+      for (const t of tokens) {
+        if (pos >= t.start && pos <= t.end) {
+          return {
+            kind: 'path',
+            name: t.key,
+            start: t.start,
+            end: t.end,
+            fullMatch: text.slice(t.start, t.end),
+          };
+        }
       }
     }
     return null;
@@ -66,8 +85,9 @@ export function EnvVariableInput({
     return null;
   };
 
-  // Check if the value contains any variables
-  const hasVariables = /\{\{[^}]+\}\}/.test(value);
+  // Check if the value contains any variables (env or path)
+  const hasVariables = /\{\{[^}]+\}\}/.test(value || '')
+    || (pathVariables?.length > 0 && extractPathVarTokens(value || '').length > 0);
 
   // Get filtered variables for autocomplete (merged collection + env vars)
   const getFilteredVariables = useCallback((filterText) => {
@@ -251,36 +271,56 @@ export function EnvVariableInput({
     };
   }, [showSuggestions]);
 
-  // Render highlighted text with variables styled
+  // Render highlighted text with variables styled (env + path)
   const renderHighlightedText = () => {
     if (!value) return null;
 
-    const parts = [];
-    const regex = /(\{\{[^}]+\}\})/g;
-    const segments = value.split(regex);
+    const tokens = [];
+    const envRegex = /\{\{[^}]+\}\}/g;
+    let m;
+    while ((m = envRegex.exec(value)) !== null) {
+      tokens.push({ start: m.index, end: m.index + m[0].length, kind: 'env', text: m[0] });
+    }
+    if (pathVariables && pathVariables.length > 0) {
+      for (const t of extractPathVarTokens(value)) {
+        tokens.push({
+          start: t.start,
+          end: t.end,
+          kind: 'path',
+          text: value.slice(t.start, t.end),
+          name: t.key,
+        });
+      }
+    }
+    tokens.sort((a, b) => a.start - b.start);
 
-    segments.forEach((segment, index) => {
-      if (segment.match(/^\{\{[^}]+\}\}$/)) {
-        // This is a variable
-        const varName = segment.slice(2, -2).trim();
+    const segments = [];
+    let cursor = 0;
+    for (const tok of tokens) {
+      if (tok.start < cursor) continue;
+      if (tok.start > cursor) segments.push({ text: value.slice(cursor, tok.start), isVar: false });
+      segments.push({ text: tok.text, isVar: true, kind: tok.kind, name: tok.name });
+      cursor = tok.end;
+    }
+    if (cursor < value.length) segments.push({ text: value.slice(cursor), isVar: false });
+
+    return segments.map((seg, i) => {
+      if (!seg.isVar) return <span key={i}>{seg.text}</span>;
+      if (seg.kind === 'env') {
+        const varName = seg.text.slice(2, -2).trim();
         const source = getVariableSource(varName);
         let varClass;
         if (!source && !activeEnvironment) varClass = 'no-env';
         else if (!source) varClass = 'unresolved';
         else if (source === 'collection') varClass = 'collection';
         else varClass = 'resolved';
-        parts.push(
-          <span key={index} className={`env-var-highlight ${varClass}`}>
-            {segment}
-          </span>
-        );
-      } else if (segment) {
-        // Regular text
-        parts.push(<span key={index}>{segment}</span>);
+        return <span key={i} className={`env-var-highlight ${varClass}`}>{seg.text}</span>;
       }
+      // kind === 'path'
+      const pv = pathVariables.find(p => p.key === seg.name);
+      const varClass = pv?.value ? 'path-resolved' : 'path-unresolved';
+      return <span key={i} className={`env-var-highlight ${varClass}`}>{seg.text}</span>;
     });
-
-    return parts;
   };
 
   // Handle mouse move to detect hover over variables → show shared popover
@@ -302,10 +342,23 @@ export function EnvVariableInput({
     if (variable) {
       const varStartX = rect.left + paddingLeft + (variable.start * charWidth);
       const varEndX = rect.left + paddingLeft + (variable.end * charWidth);
-      variablePopover.show({
-        varName: variable.name,
-        rect: { left: varStartX, right: varEndX, top: rect.top, bottom: rect.bottom },
-      });
+      const popoverRect = { left: varStartX, right: varEndX, top: rect.top, bottom: rect.bottom };
+      if (variable.kind === 'path') {
+        variablePopover.show({
+          varName: variable.name,
+          rect: popoverRect,
+          kind: 'path',
+          pathVariables,
+          onPathVarChange: (key, newValue) => {
+            onPathVariableValueChange?.(key, newValue);
+          },
+        });
+      } else {
+        variablePopover.show({
+          varName: variable.name,
+          rect: popoverRect,
+        });
+      }
     } else {
       variablePopover.hide();
     }
@@ -315,8 +368,10 @@ export function EnvVariableInput({
     variablePopover?.hide();
   };
 
+  const { 'data-testid': dataTestId, ...inputRest } = rest;
+
   return (
-    <div className="env-variable-input-wrapper">
+    <div className="env-variable-input-wrapper" data-testid={dataTestId}>
       {hasVariables && (
         <div className="env-var-overlay" aria-hidden="true">
           {renderHighlightedText()}
@@ -328,6 +383,7 @@ export function EnvVariableInput({
         className={`${className} ${hasVariables ? 'has-env-vars' : ''}`}
         placeholder={placeholder}
         value={value}
+        {...inputRest}
         onChange={handleInputChange}
         onKeyDown={handleInputKeyDown}
         onPaste={onPaste}

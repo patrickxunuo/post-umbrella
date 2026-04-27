@@ -1635,6 +1635,17 @@ body {
   background: rgba(var(--accent-warning-rgb), 0.15);
 }
 
+.env-var-highlight.path-resolved {
+  color: var(--accent-success);
+  background: rgba(var(--accent-success-rgb), 0.15);
+}
+
+.env-var-highlight.path-unresolved {
+  color: var(--accent-warning);
+  background: rgba(var(--accent-warning-rgb), 0.15);
+  text-decoration: underline dotted;
+}
+
 /* ============================================
    Request Actions Menu - Three Dot Menu
    ============================================ */

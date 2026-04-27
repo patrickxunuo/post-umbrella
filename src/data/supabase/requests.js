@@ -8,6 +8,9 @@ const parseRequest = (request) => ({
   headers: typeof request.headers === 'string' ? JSON.parse(request.headers || '[]') : (request.headers || []),
   params: typeof request.params === 'string' ? JSON.parse(request.params || '[]') : (request.params || []),
   form_data: typeof request.form_data === 'string' ? JSON.parse(request.form_data || '[]') : (request.form_data || []),
+  path_variables: typeof request.path_variables === 'string'
+    ? JSON.parse(request.path_variables || '[]')
+    : (request.path_variables || []),
 });
 
 export const getRequests = async (collectionId) => {
@@ -44,6 +47,7 @@ export const createRequest = async (request) => {
       body_type: request.body_type || 'none',
       form_data: request.form_data ? JSON.stringify(request.form_data) : null,
       params: request.params ? JSON.stringify(request.params) : null,
+      path_variables: request.path_variables ? JSON.stringify(request.path_variables) : '[]',
       auth_type: request.auth_type || 'none',
       auth_token: request.auth_token || '',
       pre_script: request.pre_script || '',
@@ -72,6 +76,7 @@ export const updateRequest = async (id, updates) => {
   if (updates.body_type !== undefined) updateData.body_type = updates.body_type;
   if (updates.form_data !== undefined) updateData.form_data = JSON.stringify(updates.form_data);
   if (updates.params !== undefined) updateData.params = JSON.stringify(updates.params);
+  if (updates.path_variables !== undefined) updateData.path_variables = JSON.stringify(updates.path_variables);
   if (updates.auth_type !== undefined) updateData.auth_type = updates.auth_type;
   if (updates.auth_token !== undefined) updateData.auth_token = updates.auth_token;
   if (updates.pre_script !== undefined) updateData.pre_script = updates.pre_script;
