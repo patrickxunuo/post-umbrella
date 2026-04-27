@@ -1184,6 +1184,32 @@
   color: var(--text-primary);
 }
 
+/* Compact TypeSelector inside .kv-section rows — match cell input height */
+.kv-section .type-selector-trigger,
+.kv-section .form-data-editor .type-selector-trigger {
+  height: 24px;
+  padding: 0 4px 0 6px;
+  gap: 4px;
+}
+
+.kv-section .type-selector-icon {
+  width: 14px;
+  height: 14px;
+  background: transparent;
+  border-radius: 0;
+}
+
+.kv-section .type-selector-value {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.kv-section .btn-select-file {
+  padding: 4px var(--space-2);
+  font-size: 11px;
+  gap: 4px;
+}
+
 .file-input-wrapper {
   display: flex;
   align-items: center;
@@ -1268,5 +1294,52 @@
 .btn-example:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Compact key/value sections (Query Params + Path Variables share this) */
+.kv-section + .kv-section {
+  margin-top: var(--space-3);
+}
+
+.kv-section-header {
+  padding: var(--space-1) var(--space-3) var(--space-1);
+}
+
+.kv-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.kv-section table th {
+  padding: var(--space-1) var(--space-3);
+  font-size: 9px;
+}
+
+.kv-section td {
+  padding: 2px var(--space-1);
+}
+
+.kv-section input[type="text"] {
+  padding: 4px var(--space-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.path-var-key-readonly {
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: default;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  width: 100%;
+}
+
+.path-var-key-readonly:focus {
+  outline: none;
+  border-color: var(--border-primary);
+  background: var(--bg-input);
 }
 

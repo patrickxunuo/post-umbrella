@@ -12,8 +12,8 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 39 / 40 flows
-- Current batch: Complete
+- Completed: 39 / 40 baseline flows + 22 path-variables tests
+- Current batch: Path Variables (#38) complete
 
 ---
 
@@ -195,6 +195,19 @@
 - [x] workspace-settings — e2e/admin.spec.ts — 1 test
 - [x] workspace-members — e2e/admin.spec.ts — 1 test
 - [x] theme-toggle — e2e/admin.spec.ts — 1 test
+
+### Batch 10: Path Variables (P0, issue #38) — 22 tests ✓
+- [x] f1-pure-substitute-url — e2e/path-variables.spec.ts
+- [x] f1-path-var-with-env-interp — e2e/path-variables.spec.ts
+- [x] f1-port-not-treated-as-pathvar — e2e/path-variables.spec.ts (`scheme://host:port` parser guard)
+- [x] f1-query-colon-not-pathvar — e2e/path-variables.spec.ts (`?` / `#` parser guard)
+- [x] f2-typing-colon-adds-row, f2-typing-just-colon-no-row, f2-multiple-path-vars-ordered — URL parsing
+- [x] f2-reserved-char-strips-colon, f2-trailing-colon-preserved, f2-removing-name-removes-row — URL editing
+- [x] f2-key-readonly, f2-value-edit-in-list, f2-persistence-across-reload — list interactions
+- [x] f2-curl-preview-matches, f2-duplicate-name-single-row, f2-section-hidden-when-no-path-vars — UX
+- [x] f2-params-and-pathvars-coexist — query params + path vars side-by-side
+- [x] f3-overlay-highlight-on-url, f3-overlay-no-highlight-in-headers — visual scoping
+- [x] f3-popover-opens-on-hover, f3-popover-edits-value, f3-prefix-not-confused — popover behavior
 
 ---
 

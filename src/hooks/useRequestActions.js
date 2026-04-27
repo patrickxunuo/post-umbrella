@@ -168,6 +168,7 @@ export function useRequestActions({
       auth_token: fullRequest.auth_token,
       pre_script: fullRequest.pre_script,
       post_script: fullRequest.post_script,
+      path_variables: fullRequest.path_variables,
     });
 
     const hasBody = fullRequest.body_type && fullRequest.body_type !== 'none';

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
+import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 
 function stripJsonComments(text) {
   if (!text?.trim()) return text;
@@ -135,34 +136,24 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           }
         }
 
-        // Substitute environment variables
-        const substitute = (text) => {
-          if (!text) return text;
-          let result = text;
-          for (const v of collectionVars) {
-            if (v.enabled && v.key) {
-              result = result.replace(new RegExp(`\\{\\{\\s*${v.key}\\s*\\}\\}`, 'g'), v.value || v.current_value || v.initial_value || '');
-            }
-          }
-          if (currentEnv) {
-            for (const v of currentEnv.variables) {
-              if (v.enabled && v.key) {
-                result = result.replace(new RegExp(`\\{\\{\\s*${v.key}\\s*\\}\\}`, 'g'), v.value || v.current_value || v.initial_value || '');
-              }
-            }
-          }
-          return result;
-        };
+        const subEnv = (text) => substituteEnv(text, {
+          environment: currentEnv,
+          collectionVariables: collectionVars,
+        });
 
-        const resolvedUrl = substitute(request.url);
+        const resolvedUrl = substituteUrl(request.url, {
+          environment: currentEnv,
+          collectionVariables: collectionVars,
+          pathVariables: request.path_variables || [],
+        });
         const resolvedHeaders = (request.headers || [])
           .filter(h => h.enabled !== false)
-          .map(h => ({ ...h, key: substitute(h.key), value: substitute(h.value) }));
-        const resolvedBody = substitute(request.body);
-        const resolvedAuthToken = substitute(authToken);
+          .map(h => ({ ...h, key: subEnv(h.key), value: subEnv(h.value) }));
+        const resolvedBody = subEnv(request.body);
+        const resolvedAuthToken = subEnv(authToken);
         const resolvedFormData = (request.form_data || [])
           .filter(f => f.enabled !== false)
-          .map(f => ({ ...f, key: substitute(f.key), value: f.type === 'file' ? f.value : substitute(f.value) }));
+          .map(f => ({ ...f, key: subEnv(f.key), value: f.type === 'file' ? f.value : subEnv(f.value) }));
 
         const bodyType = request.body_type || 'none';
 

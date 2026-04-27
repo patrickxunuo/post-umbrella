@@ -7,6 +7,7 @@ import { EditorView } from '@codemirror/view';
 import { generateCurl } from './RequestEditor';
 import { useWorkbench } from '../contexts/WorkbenchContext';
 import { useToast } from './Toast';
+import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 
 const curlEditorTheme = EditorView.theme({
   '&': {
@@ -106,36 +107,15 @@ export function CurlPanel({ width, theme, onResize, onClose }) {
       }
     }
 
-    const sub = (text) => {
-      if (!text) return text;
-      // Build merged map: collection (lower priority) then env (higher priority overrides).
-      // Single substitution pass so env truly overrides — otherwise replacing collection first
-      // erases the {{key}} pattern before env ever sees it.
-      const resolved = new Map();
-      if (collectionVariables && collectionVariables.length > 0) {
-        for (const v of collectionVariables) {
-          if (v.enabled === false || !v.key) continue;
-          resolved.set(v.key, v.value || v.current_value || v.initial_value || '');
-        }
-      }
-      if (activeEnvironment?.variables) {
-        for (const v of activeEnvironment.variables) {
-          if (v.enabled === false || !v.key) continue;
-          resolved.set(v.key, v.value || v.current_value || v.initial_value || '');
-        }
-      }
-      let result = text;
-      for (const [key, value] of resolved) {
-        result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value);
-      }
-      return result;
-    };
+    const envOpts = { environment: activeEnvironment, collectionVariables };
+    const sub = (text) => substituteEnv(text, envOpts);
+    const subUrl = (url) => substituteUrl(url, { ...envOpts, pathVariables: req.path_variables || [] });
 
     const headers = (req.headers || []).map(h => ({ ...h, key: sub(h.key), value: sub(h.value) }));
     const fd = (req.form_data || []).map(f => ({ ...f, key: sub(f.key), value: f.type === 'file' ? f.value : sub(f.value) }));
     return generateCurl(
       req.method || 'GET',
-      sub(req.url || ''),
+      subUrl(req.url || ''),
       headers,
       sub(req.body || ''),
       req.body_type || 'none',

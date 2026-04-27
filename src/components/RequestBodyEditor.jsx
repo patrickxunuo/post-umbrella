@@ -86,6 +86,7 @@ export function RequestBodyEditor({
 
       {bodyType === 'form-data' && (
         <div className="form-data-editor">
+          <div className="kv-section">
           <table>
             <thead>
               <tr>
@@ -197,6 +198,7 @@ export function RequestBodyEditor({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

@@ -5,6 +5,7 @@ v0.1.8 released — Workflow Builder, Collection Variables, Auth Inheritance
 
 ## Log
 <!-- Newest entries first. Format: - YYYY-MM-DDTHH:MMZ [status] feature-name — notes -->
+- 2026-04-27T00:00Z [DONE] path-variables — Postman-style path variable support (`/users/:id`). New `path_variables` JSONB column on `requests`; new shared `src/utils/substituteVariables.js` consolidating env/path-var substitution previously duplicated across `useResponseExecution`, `useWorkflowExecution`, `CurlPanel` (also fixes pre-existing workflow override bug where env couldn't override same-named collection var). Path Variables section inside Params tab below query params. URL parser skips `:` inside `scheme://host:port` and stops at `?`/`#`. EnvVariableInput overlay highlights `:name` green (via `--accent-success`) when caller passes `pathVariables` prop; VariablePopover extended with `kind:'path'` for hover-edit. Closes #38.
 - 2026-04-16T00:00Z [DONE] response-download — Download button on response toolbar for all body types (binary/JSON/text). New `src/utils/downloadResponse.js` helper; new Tauri `write_binary_file` command. Closes #29
 - 2026-04-16T00:00Z [DONE] v0.1.8 release — Changelog, README, website features updated
 - 2026-03-25T00:00Z [DONE] variable-popover-shared — Extracted VariablePopover to top-level context provider, shared across EnvVariableInput and JsonEditor

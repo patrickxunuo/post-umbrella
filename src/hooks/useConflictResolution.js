@@ -45,6 +45,7 @@ export function useConflictResolution({
         auth_token: updated.auth_token,
         pre_script: savedPreScript,
         post_script: savedPostScript,
+        path_variables: updated.path_variables,
       });
 
       setOpenTabs((prev) => prev.map((item) => (
@@ -175,6 +176,7 @@ export function useConflictResolution({
           auth_token: tab.request.auth_token,
           params: tab.request.params,
           form_data: tab.request.form_data,
+          path_variables: tab.request.path_variables,
         });
         openRequestInTab(newRequest);
       }
