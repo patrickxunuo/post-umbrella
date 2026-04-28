@@ -817,13 +817,13 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                   key={jsonViewKey}
                   value={jsonBody}
                   displayDataTypes={false}
+                  // Disable the library's click-to-toggle string truncation: it
+                  // collapses on mouseup after a drag-select, breaking copy.
+                  shortenTextAfterLength={0}
                   {...(activeExpandSet
                     ? {
                         shouldExpandNodeInitially: (isExpanded, { keys }) =>
                           activeExpandSet.has(JSON.stringify(keys)) || isExpanded,
-                        // Only disable string truncation while actively searching — once the user
-                        // has stopped typing the sticky set stays but long strings truncate again.
-                        ...(forceExpandSet ? { shortenTextAfterLength: 0 } : {}),
                       }
                     : {
                         collapsed: collapseMode === 'all-collapsed' ? true : false,
