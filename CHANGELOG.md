@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.16
+
+### Fixed
+
+- **JSON Response String Truncation Broke Copy-Paste** — `@uiw/react-json-view` truncates long string values to 30 chars and toggles between truncated/full on click. Because the toggle was wired to a plain `onClick` on the same `<span>` that holds the text, drag-selecting inside the expanded value to copy fired a second `click` on `mouseup` and collapsed it before the user could finish — making partial copies impossible. Truncation is now disabled outright (`shortenTextAfterLength={0}`); existing wrap CSS (`.w-rjv-line { word-break: break-all; white-space: pre-wrap; }`) keeps long values visible without horizontal scroll. Also simplifies the search code path that previously had to disable truncation only while a query was active.
+
 ## v0.1.15
 
 ### New
