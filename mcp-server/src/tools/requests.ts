@@ -43,6 +43,7 @@ export function registerRequestTools(server: McpServer, getClient: () => Supabas
       body: z.string().optional().describe('Request body'),
       body_type: z.enum(['none', 'json', 'raw', 'form-data']).default('none').describe('Body type'),
       params: z.string().optional().describe('JSON string of params array: [{"key":"...","value":"...","enabled":true}]'),
+      path_variables: z.string().optional().describe('JSON string of path variables array: [{"key":"id","value":"123"}]. Order must match the order of :name occurrences in the URL.'),
       auth_type: z.enum(['none', 'bearer']).default('none').describe('Auth type'),
       auth_token: z.string().optional().describe('Bearer token value (can use {{variables}})'),
       pre_script: z.string().optional().describe('Pre-request JavaScript'),
@@ -61,6 +62,7 @@ export function registerRequestTools(server: McpServer, getClient: () => Supabas
       if (args.headers) insert.headers = args.headers;
       if (args.body) insert.body = args.body;
       if (args.params) insert.params = args.params;
+      if (args.path_variables) insert.path_variables = args.path_variables;
       if (args.auth_token) insert.auth_token = args.auth_token;
       if (args.pre_script) insert.pre_script = args.pre_script;
       if (args.post_script) insert.post_script = args.post_script;
@@ -83,6 +85,7 @@ export function registerRequestTools(server: McpServer, getClient: () => Supabas
       body: z.string().optional().describe('Request body'),
       body_type: z.enum(['none', 'json', 'raw', 'form-data']).optional().describe('Body type'),
       params: z.string().optional().describe('JSON string of params array'),
+      path_variables: z.string().optional().describe('JSON string of path variables array: [{"key":"id","value":"123"}]. Order must match :name occurrences in the URL.'),
       auth_type: z.enum(['none', 'bearer']).optional().describe('Auth type'),
       auth_token: z.string().optional().describe('Bearer token'),
       pre_script: z.string().optional().describe('Pre-request JavaScript'),
