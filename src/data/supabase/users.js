@@ -1,5 +1,5 @@
 // User profiles, workspaces, members, presence, config
-import { supabase } from './client.js';
+import { supabase, PROXY_FUNCTION_URL } from './client.js';
 import { checkAuth } from './helpers.js';
 
 // ============================================
