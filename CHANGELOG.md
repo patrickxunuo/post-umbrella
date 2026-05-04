@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.17
+
+### Fixed
+
+- **Invite User / Delete User / Add Workspace Member Threw `PROXY_FUNCTION_URL is not defined`** — `src/data/supabase/users.js` referenced `PROXY_FUNCTION_URL` when building the Edge Function URLs for `inviteUser`, `deleteUser`, and `addWorkspaceMember`, but only `supabase` was imported from `./client.js`. Every admin-side user management action threw a `ReferenceError` at the `fetch(` call. Added `PROXY_FUNCTION_URL` to the import.
+
 ## v0.1.16
 
 ### Fixed
