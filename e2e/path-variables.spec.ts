@@ -362,6 +362,35 @@ test.describe('Path Variables', () => {
     await expect(page.locator('[data-testid="path-variables-section"]')).toHaveCount(0);
   });
 
+  // AC-F2.x — Inserting `:` between two existing slashes must not strip the colon
+  test('f2-insert-colon-between-segments', async ({ page }) => {
+    await createTestRequest(page, uniqueName('PV F2 InsertBetween'));
+
+    const urlInput = page.locator('.url-input');
+    await urlInput.click();
+    // Start with a literal segment between two slashes, like a user editing an existing URL
+    await urlInput.fill('https://example.com/something/123/detail');
+
+    // Select the literal segment "123" and delete it.
+    // 'https://example.com/something/' is 30 chars (0..29); '123' occupies 30..32, so selection range is [30, 33).
+    await urlInput.evaluate((el: HTMLInputElement) => {
+      el.focus();
+      el.setSelectionRange(30, 33);
+    });
+    await page.keyboard.press('Delete');
+    await expect(urlInput).toHaveValue('https://example.com/something//detail');
+
+    // Now caret sits between the two slashes — type ':id'
+    await urlInput.pressSequentially(':id', { delay: 30 });
+
+    await expect(urlInput).toHaveValue('https://example.com/something/:id/detail');
+
+    await openParamsTab(page);
+    const section = page.locator('[data-testid="path-variables-section"]');
+    await expect(section).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="path-variable-row-id"]')).toBeVisible();
+  });
+
   // AC-F2.8
   test('f2-key-readonly', async ({ page }) => {
     await createTestRequest(page, uniqueName('PV F2 ReadOnly'));

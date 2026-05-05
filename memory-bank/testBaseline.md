@@ -12,8 +12,8 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 39 / 40 baseline flows + 22 path-variables tests
-- Current batch: Path Variables (#38) complete
+- Completed: 39 / 40 baseline flows + 23 path-variables tests
+- Current batch: Path Variables (#38) complete; #40 caret-insert regression test added
 
 ---
 

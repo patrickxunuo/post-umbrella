@@ -125,9 +125,14 @@ export function extractPathVarTokens(url) {
 }
 
 // Strip stray `:` followed immediately by a reserved char (or a non-name char).
+// Caret-aware: a colon at index `c` is stripped only if `caretPos === c + 2`
+// — i.e. the caret sits immediately past the reserved char, meaning the user
+// just typed the reserved char right after typing the colon. When caretPos is
+// undefined or any other value, the colon is preserved.
+//
 // Trailing `:` at end-of-string is preserved (user may still be typing).
 // `:` inside the host portion (scheme://host:port) is preserved.
-export function sanitizeUrlForPathVars(url) {
+export function sanitizeUrlForPathVars(url, caretPos) {
   if (!url) return url;
   const { pathStart, pathEnd } = computePathRange(url);
   let result = '';
@@ -136,7 +141,12 @@ export function sanitizeUrlForPathVars(url) {
     // Only sanitize within the path portion
     if (ch === ':' && i >= pathStart && i < pathEnd) {
       const next = url[i + 1];
-      if (next !== undefined && PATH_VAR_RESERVED.has(next) && next !== ':') {
+      if (
+        next !== undefined &&
+        next !== ':' &&
+        PATH_VAR_RESERVED.has(next) &&
+        caretPos === i + 2
+      ) {
         continue;
       }
     }
