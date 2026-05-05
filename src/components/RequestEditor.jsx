@@ -220,9 +220,8 @@ export function RequestEditor({
     notifyChange({ method: newMethod });
   };
 
-  const handleUrlChange = (rawUrl) => {
-    // Strip stray `:` followed by reserved chars (e.g. typing `/:/` collapses to `//`)
-    const newUrl = sanitizeUrlForPathVars(rawUrl);
+  const handleUrlChange = (rawUrl, caretPos) => {
+    const newUrl = sanitizeUrlForPathVars(rawUrl, caretPos);
     setUrl(newUrl);
 
     // Sync params from URL while preserving disabled params
@@ -497,7 +496,7 @@ export function RequestEditor({
           className="url-input"
           placeholder="Enter request URL or paste cURL"
           value={url}
-          onChange={(e) => handleUrlChange(e.target.value)}
+          onChange={(e) => handleUrlChange(e.target.value, e.target.selectionStart)}
           onKeyDown={(e) => e.key === 'Enter' && !isExample && handleSend()}
           onPaste={canEdit ? handleUrlPaste : undefined}
           activeEnvironment={activeEnvironment}
