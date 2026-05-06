@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.18
+
+### Fixed
+
+- **Cannot Insert `:` Between Existing URL Segments to Create a Path Variable** — `sanitizeUrlForPathVars` in `src/utils/substituteVariables.js` stripped any `:` immediately followed by a URL-reserved character on every keystroke. That worked when typing from end-of-URL (the user types `:`, then `/`, and the colon collapses), but it also fired when the user *inserted* `:` to the left of an existing `/`. So changing `/items/123/detail` to `/items/:id/detail` was impossible — selecting `123`, deleting it, and typing `:` produced `/items/:/detail` for one keystroke before sanitize stripped the colon, leaving `/items//detail`. Sanitize is now caret-aware: a `:` at index `c` is stripped only when `caretPos === c + 2` (the user just typed the reserved character right after the colon). Inserting `:` between existing segments succeeds; the original v0.1.15 strip rule for typed-from-end `:/` is preserved unchanged. Closes #40. (#41)
+
 ## v0.1.17
 
 ### Fixed
