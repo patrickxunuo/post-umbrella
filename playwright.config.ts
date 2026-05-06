@@ -35,7 +35,21 @@ export default defineConfig({
         storageState: STORAGE_STATE_PATH,
       },
       dependencies: ['setup'],
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, /marketing\.spec\.ts/],
+    },
+
+    // Marketing screenshots - opt-in via `npm run screenshots`. Higher-DPI viewport
+    // for retina-quality PNGs landing in docs/screenshots/.
+    {
+      name: 'screenshots',
+      testMatch: /marketing\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: STORAGE_STATE_PATH,
+        viewport: { width: 1440, height: 900 },
+        deviceScaleFactor: 2,
+      },
+      dependencies: ['setup'],
     },
   ],
 

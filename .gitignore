@@ -83,6 +83,9 @@ temp
 e2e/.auth/
 e2e/screenshots
 
+# Marketing screenshots (uploaded to GitHub asset CDN, not committed)
+docs/screenshots/*.png
+
 # MCP server
 mcp-server/node_modules
 mcp-server/dist

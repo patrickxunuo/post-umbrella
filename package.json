@@ -12,7 +12,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "screenshots": "playwright test --project=screenshots --reporter=list"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^10.1.0",
