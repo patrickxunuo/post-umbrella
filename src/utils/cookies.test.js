@@ -8,6 +8,7 @@ import {
   removeCookie,
   removeDomain,
   extractSetCookies,
+  buildCookieHeader,
 } from './cookies.js';
 
 // Helper to build a Cookie object with spec defaults.
@@ -439,5 +440,110 @@ describe('extractSetCookies', () => {
     const snapshot = JSON.parse(JSON.stringify(result));
     extractSetCookies(result);
     expect(result).toEqual(snapshot);
+  });
+});
+
+describe('buildCookieHeader', () => {
+  // Note: expiry/domain/path/secure filtering is enforced upstream by
+  // cookiesForUrl (covered by the 'cookiesForUrl' tests above), so
+  // buildCookieHeader does not retest that — its jar input is pre-filtered.
+
+  // --- Criterion 1: jar cookies present -> header contains them ---
+  it('serializes a single jar cookie as name=value', () => {
+    expect(buildCookieHeader([cookie('a', '1')])).toBe('a=1');
+  });
+
+  it('serializes multiple jar cookies joined by "; " in order', () => {
+    const jar = [cookie('a', '1'), cookie('b', '2'), cookie('c', '3')];
+    expect(buildCookieHeader(jar)).toBe('a=1; b=2; c=3');
+  });
+
+  // --- Criterion 2: empty jar (and no manual) -> '' ---
+  it('returns empty string for an empty jar and no manual value', () => {
+    expect(buildCookieHeader([])).toBe('');
+  });
+
+  it('returns empty string for an empty jar and an empty manual value', () => {
+    expect(buildCookieHeader([], '')).toBe('');
+  });
+
+  it('returns empty string when both inputs are absent', () => {
+    expect(buildCookieHeader([], undefined)).toBe('');
+  });
+
+  // --- Criterion 3: manual preserved + merged, manual wins on collision ---
+  it('preserves a manual Cookie value when the jar is empty', () => {
+    expect(buildCookieHeader([], 'a=1; b=2')).toBe('a=1; b=2');
+  });
+
+  it('keeps the manual value verbatim on a name collision (manual wins)', () => {
+    const jar = [cookie('a', 'JAR')];
+    expect(buildCookieHeader(jar, 'a=MANUAL')).toBe('a=MANUAL');
+  });
+
+  it('uses the manual value (not the jar value) for a colliding name even with other cookies present', () => {
+    const jar = [cookie('session', 'jarSession'), cookie('extra', 'jarExtra')];
+    const result = buildCookieHeader(jar, 'session=manualSession');
+    expect(result).toContain('session=manualSession');
+    expect(result).not.toContain('session=jarSession');
+    expect(result).toContain('extra=jarExtra');
+  });
+
+  // --- Criterion 3/4: non-colliding manual cookies kept alongside jar; ordering ---
+  it('keeps non-colliding manual cookies alongside jar cookies, manual first then jar-only', () => {
+    const jar = [cookie('jarOnly', 'jv')];
+    expect(buildCookieHeader(jar, 'm1=1; m2=2')).toBe('m1=1; m2=2; jarOnly=jv');
+  });
+
+  it('orders manual cookies first then jar-only cookies, dropping jar duplicates', () => {
+    const jar = [cookie('a', 'jarA'), cookie('z', 'jarZ')];
+    // 'a' collides -> manual wins and stays in manual position; 'z' is jar-only and appended
+    expect(buildCookieHeader(jar, 'a=manualA; b=manualB')).toBe('a=manualA; b=manualB; z=jarZ');
+  });
+
+  it('matches collision names case-sensitively (different case = not a collision)', () => {
+    const jar = [cookie('Session', 'jarValue')];
+    // manual 'session' (lowercase) does NOT collide with jar 'Session'
+    const result = buildCookieHeader(jar, 'session=manualValue');
+    expect(result).toBe('session=manualValue; Session=jarValue');
+  });
+
+  // --- Edge cases: whitespace, no '=', empty segments, falsy manual ---
+  it('trims whitespace around manual segment names and values', () => {
+    const jar = [cookie('c', '3')];
+    expect(buildCookieHeader(jar, ' a = 1 ; b=2 ')).toBe('a=1; b=2; c=3');
+  });
+
+  it('treats a manual segment with no "=" as a name with an empty value', () => {
+    // Spec: split each segment on the FIRST '='; only empty/empty-name
+    // segments are dropped. A bare token has a non-empty name -> value ''.
+    expect(buildCookieHeader([], 'a=1; justaflag; b=2')).toBe('a=1; justaflag=; b=2');
+  });
+
+  it('ignores empty manual segments', () => {
+    expect(buildCookieHeader([], 'a=1;; ; b=2;')).toBe('a=1; b=2');
+  });
+
+  it('ignores a manual segment with an empty name', () => {
+    expect(buildCookieHeader([], '=novalue; a=1')).toBe('a=1');
+  });
+
+  it('splits a manual segment on the FIRST "=" only (value may contain "=")', () => {
+    expect(buildCookieHeader([], 'token=a=b=c')).toBe('token=a=b=c');
+  });
+
+  it('treats undefined manualCookieValue as no manual cookies', () => {
+    const jar = [cookie('a', '1')];
+    expect(buildCookieHeader(jar, undefined)).toBe('a=1');
+  });
+
+  it('treats empty-string manualCookieValue as no manual cookies', () => {
+    const jar = [cookie('a', '1')];
+    expect(buildCookieHeader(jar, '')).toBe('a=1');
+  });
+
+  it('returns the manual value alone when the jar is empty after dedupe', () => {
+    const jar = [cookie('a', 'jar')];
+    expect(buildCookieHeader(jar, 'a=manual')).toBe('a=manual');
   });
 });

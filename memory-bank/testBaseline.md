@@ -215,6 +215,7 @@
 
 ### Flows
 - [ ] cookie-capture — Set-Cookie from a response populates the jar (GH-45) — **E2E deferred**: no UI surface yet; jar only observable via `localStorage['pu_cookie_jar']`, and capture requires the proxy/Tauri transports (browser-direct cannot read Set-Cookie). Fully covered by Vitest unit tests (`extractSetCookies`, `setCookiesFromResponse` expiry-removal). Add E2E with the future cookie-management UI issue.
+- [ ] cookie-inject — Jar cookies sent as a `Cookie` header on outgoing requests (GH-46) — **E2E deferred**: same rationale as cookie-capture — no UI surface, and verifying the Cookie header actually reaches the server requires the proxy/Tauri transports (browser-direct forbids/drops the Cookie header). Core merge logic (`buildCookieHeader`, manual-wins-on-collision, expiry filtering via `cookiesForUrl`) fully covered by Vitest unit tests in `src/utils/cookies.test.js`. Add E2E with the future cookie-management UI issue.
 
 ---
 

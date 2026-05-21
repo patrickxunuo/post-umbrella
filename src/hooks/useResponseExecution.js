@@ -6,7 +6,7 @@ import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 import useWorkbenchStore from '../stores/workbenchStore';
 import useConsoleStore from '../stores/consoleStore';
 import useCookieStore from '../stores/cookieStore';
-import { extractSetCookies } from '../utils/cookies.js';
+import { extractSetCookies, buildCookieHeader } from '../utils/cookies.js';
 
 // Convert JSON5 (with comments) to standard JSON
 function stripJsonComments(text) {
@@ -219,6 +219,22 @@ export function useResponseExecution({
           value: `Bearer ${resolvedAuthToken}`,
           enabled: true,
         });
+      }
+
+      // Inject jar cookies as a Cookie header (manual values win on name collision).
+      // The browser-direct fetch path forbids the Cookie header and the browser drops it
+      // silently; the proxy and Tauri paths forward it. No error is raised in any case.
+      const jarCookies = useCookieStore.getState().getCookiesForUrl(resolvedUrl);
+      if (jarCookies.length > 0) {
+        const existing = resolvedHeaders.find(
+          (h) => h.key.toLowerCase() === 'cookie' && h.enabled !== false
+        );
+        const mergedCookie = buildCookieHeader(jarCookies, existing?.value);
+        if (existing) {
+          existing.value = mergedCookie;
+        } else {
+          resolvedHeaders.push({ key: 'Cookie', value: mergedCookie, enabled: true });
+        }
       }
 
       const requestPayload = {
