@@ -228,6 +228,8 @@ const sendDirectRequest = async (data, signal) => {
     } else {
       responseBody = await response.text();
     }
+    // Set-Cookie is a forbidden response header that fetch cannot read, so no
+    // cookies are captured on the direct browser path.
     const responseHeaders = [];
     response.headers.forEach((value, key) => { responseHeaders.push({ key, value }); });
 
