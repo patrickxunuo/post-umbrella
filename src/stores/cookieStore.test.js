@@ -62,6 +62,86 @@ describe('useCookieStore - setCookiesFromResponse', () => {
   });
 });
 
+// Returns the cookie names stored under a domain key (robust to the key being absent).
+function namesForDomain(jar, domain) {
+  return (jar[domain] || []).map((c) => c.name);
+}
+
+describe('useCookieStore - setCookiesFromResponse expiry removal', () => {
+  it('removes a matching cookie when a Max-Age=0 Set-Cookie arrives for the same name', () => {
+    useCookieStore.setState({ jar: {} });
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=abc; Path=/']);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).toContain('sid');
+
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=; Path=/; Max-Age=0']);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).not.toContain('sid');
+  });
+
+  it('removes a matching cookie when a past Expires Set-Cookie arrives for the same name', () => {
+    useCookieStore.setState({ jar: {} });
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=abc; Path=/']);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).toContain('sid');
+
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', [
+      'sid=x; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+    ]);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).not.toContain('sid');
+  });
+
+  it('treats a cookie whose expiry exactly equals now as expired and removes it', () => {
+    vi.useFakeTimers();
+    const now = 1_700_000_000_000;
+    vi.setSystemTime(now);
+
+    useCookieStore.setState({ jar: {} });
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=abc; Path=/']);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).toContain('sid');
+
+    // Max-Age=0 -> expires === now, which is <= Date.now()
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=; Path=/; Max-Age=0']);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).not.toContain('sid');
+  });
+
+  it('upserts the live cookie and removes the expired one in a single mixed call', () => {
+    useCookieStore.setState({ jar: {} });
+    // Seed two cookies so one can be removed by expiry.
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', [
+      'keep=1; Path=/',
+      'drop=2; Path=/',
+    ]);
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com').sort()).toEqual(['drop', 'keep']);
+
+    // One live (new) + one expired (existing name) in the same call.
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', [
+      'fresh=9; Path=/',
+      'drop=; Path=/; Max-Age=0',
+    ]);
+
+    const names = namesForDomain(useCookieStore.getState().jar, 'example.com');
+    expect(names).toContain('keep');
+    expect(names).toContain('fresh');
+    expect(names).not.toContain('drop');
+  });
+
+  it('persists the jar to localStorage after an expiry removal', () => {
+    useCookieStore.setState({ jar: {} });
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=abc; Path=/']);
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['sid=; Path=/; Max-Age=0']);
+
+    expect(persistedJar()).toEqual(useCookieStore.getState().jar);
+  });
+
+  it('is a no-op when an expired Set-Cookie targets a name that is not present', () => {
+    useCookieStore.setState({ jar: {} });
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['keep=1; Path=/']);
+
+    useCookieStore.getState().setCookiesFromResponse('https://example.com/', ['ghost=; Path=/; Max-Age=0']);
+
+    expect(namesForDomain(useCookieStore.getState().jar, 'example.com')).toEqual(['keep']);
+    expect(persistedJar()).toEqual(useCookieStore.getState().jar);
+  });
+});
+
 describe('useCookieStore - upsert / removeCookie / removeDomain / getDomains', () => {
   const cookieA = {
     name: 'a',

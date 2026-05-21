@@ -3,6 +3,8 @@ import JSON5 from 'json5';
 import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
+import useCookieStore from '../stores/cookieStore';
+import { extractSetCookies } from '../utils/cookies.js';
 
 function stripJsonComments(text) {
   if (!text?.trim()) return text;
@@ -188,6 +190,11 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         const result = await data.sendRequest(payload, { signal: controller.signal });
 
         if (controller.signal.aborted) break;
+
+        const setCookieValues = extractSetCookies(result);
+        if (setCookieValues.length > 0) {
+          useCookieStore.getState().setCookiesFromResponse(resolvedUrl, setCookieValues);
+        }
 
         stepLogs.push({
           type: result.error ? 'error' : 'info',

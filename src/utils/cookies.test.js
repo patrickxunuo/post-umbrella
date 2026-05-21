@@ -7,6 +7,7 @@ import {
   upsertCookie,
   removeCookie,
   removeDomain,
+  extractSetCookies,
 } from './cookies.js';
 
 // Helper to build a Cookie object with spec defaults.
@@ -379,5 +380,64 @@ describe('removeDomain', () => {
     const snapshot = JSON.parse(JSON.stringify(jar));
     removeDomain(jar, 'example.com');
     expect(jar).toEqual(snapshot);
+  });
+});
+
+describe('extractSetCookies', () => {
+  it('returns result.setCookies verbatim (proxy path)', () => {
+    expect(extractSetCookies({ setCookies: ['a=1', 'b=2'] })).toEqual(['a=1', 'b=2']);
+  });
+
+  it('reads set-cookie values from a headers array, case-insensitively, in order (Tauri path)', () => {
+    const result = {
+      headers: [
+        { key: 'Set-Cookie', value: 'a=1; Path=/' },
+        { key: 'Content-Type', value: 'text/html' },
+        { key: 'set-cookie', value: 'b=2' },
+      ],
+    };
+    expect(extractSetCookies(result)).toEqual(['a=1; Path=/', 'b=2']);
+  });
+
+  it('returns [] when a headers array has no set-cookie entries (browser path)', () => {
+    expect(extractSetCookies({ headers: [{ key: 'Content-Type', value: 'text/html' }] })).toEqual([]);
+  });
+
+  it('returns [] for an empty object', () => {
+    expect(extractSetCookies({})).toEqual([]);
+  });
+
+  it('returns [] for null', () => {
+    expect(extractSetCookies(null)).toEqual([]);
+  });
+
+  it('returns [] for undefined', () => {
+    expect(extractSetCookies(undefined)).toEqual([]);
+  });
+
+  it('lets setCookies take precedence over headers (does not also scan headers)', () => {
+    const result = { setCookies: ['x=1'], headers: [{ key: 'set-cookie', value: 'y=2' }] };
+    expect(extractSetCookies(result)).toEqual(['x=1']);
+  });
+
+  it('is null-safe for header entries that lack a key', () => {
+    const result = {
+      headers: [
+        { value: 'orphan' },
+        null,
+        { key: 'set-cookie', value: 'a=1' },
+      ],
+    };
+    expect(extractSetCookies(result)).toEqual(['a=1']);
+  });
+
+  it('does NOT mutate its input', () => {
+    const result = {
+      setCookies: ['a=1', 'b=2'],
+      headers: [{ key: 'set-cookie', value: 'c=3' }],
+    };
+    const snapshot = JSON.parse(JSON.stringify(result));
+    extractSetCookies(result);
+    expect(result).toEqual(snapshot);
   });
 });

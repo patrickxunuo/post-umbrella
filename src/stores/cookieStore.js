@@ -42,7 +42,11 @@ const useCookieStore = create((set, get) => {
         }
         if (!domain) continue;
 
-        newJar = upsertCookie(newJar, domain, c);
+        if (c.expires != null && c.expires <= Date.now()) {
+          newJar = removeCookieFromJar(newJar, domain, c.name);
+        } else {
+          newJar = upsertCookie(newJar, domain, c);
+        }
       }
 
       set({ jar: newJar });

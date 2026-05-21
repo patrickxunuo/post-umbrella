@@ -5,6 +5,8 @@ import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 import useWorkbenchStore from '../stores/workbenchStore';
 import useConsoleStore from '../stores/consoleStore';
+import useCookieStore from '../stores/cookieStore';
+import { extractSetCookies } from '../utils/cookies.js';
 
 // Convert JSON5 (with comments) to standard JSON
 function stripJsonComments(text) {
@@ -245,6 +247,11 @@ export function useResponseExecution({
 
       // If cancelled while awaiting, skip everything
       if (controller.signal.aborted) return;
+
+      const setCookieValues = extractSetCookies(result);
+      if (setCookieValues.length > 0) {
+        useCookieStore.getState().setCookiesFromResponse(resolvedUrl, setCookieValues);
+      }
 
       consoleLogs.push({
         type: result.error ? 'error' : 'info',

@@ -148,10 +148,17 @@ serve(async (req: Request) => {
         responseHeaders.push({ key, value });
       });
 
+      // Collect un-folded Set-Cookie values (forEach above folds them into one entry)
+      const setCookies =
+        typeof response.headers.getSetCookie === "function"
+          ? response.headers.getSetCookie()
+          : [];
+
       const result = {
         status: response.status,
         statusText: response.statusText,
         headers: responseHeaders,
+        setCookies,
         body: responseBody,
         time: endTime - startTime,
         size: JSON.stringify(responseBody).length,

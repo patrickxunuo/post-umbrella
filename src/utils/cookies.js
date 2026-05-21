@@ -176,3 +176,14 @@ export function removeDomain(jar, domain) {
   delete result[key];
   return result;
 }
+
+export function extractSetCookies(result) {
+  if (!result) return [];
+  if (Array.isArray(result.setCookies)) return result.setCookies;
+  if (Array.isArray(result.headers)) {
+    return result.headers
+      .filter((entry) => entry && typeof entry.key === 'string' && entry.key.toLowerCase() === 'set-cookie')
+      .map((entry) => entry.value);
+  }
+  return [];
+}
