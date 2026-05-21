@@ -4,7 +4,7 @@ import * as data from '../data/index.js';
 import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
 import useCookieStore from '../stores/cookieStore';
-import { extractSetCookies } from '../utils/cookies.js';
+import { extractSetCookies, buildCookieHeader } from '../utils/cookies.js';
 
 function stripJsonComments(text) {
   if (!text?.trim()) return text;
@@ -170,6 +170,22 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           const filtered = resolvedHeaders.filter(h => h.key.toLowerCase() !== 'authorization');
           resolvedHeaders.length = 0;
           resolvedHeaders.push(...filtered, { key: 'Authorization', value: `Bearer ${resolvedAuthToken}`, enabled: true });
+        }
+
+        // Inject jar cookies as a Cookie header (manual values win on name collision).
+        // The browser-direct fetch path forbids the Cookie header and the browser drops it
+        // silently; the proxy and Tauri paths forward it. No error is raised in any case.
+        const jarCookies = useCookieStore.getState().getCookiesForUrl(resolvedUrl);
+        if (jarCookies.length > 0) {
+          const existing = resolvedHeaders.find(
+            (h) => h.key.toLowerCase() === 'cookie' && h.enabled !== false
+          );
+          const mergedCookie = buildCookieHeader(jarCookies, existing?.value);
+          if (existing) {
+            existing.value = mergedCookie;
+          } else {
+            resolvedHeaders.push({ key: 'Cookie', value: mergedCookie, enabled: true });
+          }
         }
 
         const payload = {

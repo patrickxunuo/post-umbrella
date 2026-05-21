@@ -139,6 +139,34 @@ export function serializeCookieHeader(cookies) {
   return cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
+function parseCookieHeader(headerValue) {
+  if (!headerValue) return [];
+  const pairs = [];
+  for (const segment of headerValue.split(';')) {
+    const trimmed = segment.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    const name = (eq === -1 ? trimmed : trimmed.slice(0, eq)).trim();
+    if (!name) continue;
+    const value = eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+    pairs.push({ name, value });
+  }
+  return pairs;
+}
+
+export function buildCookieHeader(jarCookies, manualCookieValue) {
+  const manualPairs = parseCookieHeader(manualCookieValue);
+  const manualNames = new Set(manualPairs.map((p) => p.name));
+  const merged = manualPairs.slice();
+
+  for (const cookie of jarCookies || []) {
+    if (manualNames.has(cookie.name)) continue;
+    merged.push({ name: cookie.name, value: cookie.value });
+  }
+
+  return serializeCookieHeader(merged);
+}
+
 export function upsertCookie(jar, domain, cookie) {
   const key = domain.toLowerCase();
   const existing = jar[key] || [];
