@@ -103,6 +103,10 @@ All CRUD in `src/data/supabase/index.js`:
 - Helper functions: `can_edit()`, `get_user_workspace_ids()`, `is_workspace_member()`
 - Per-user values pattern: base table + `_user_values` join table (environments, collection variables)
 
+## Testing
+- **Unit tests**: Vitest (`npm run test:unit` → `vitest run`), jsdom env, `vitest.config.js`. Specs live next to source as `*.test.js` under `src/` (e.g. `src/utils/cookies.test.js`). jsdom provides `localStorage` for store tests; `vi.useFakeTimers()` for time-dependent logic; `vi.resetModules()` + dynamic `import()` to test fresh store re-init from persisted state. Introduced in GH-44 (cookie jar).
+- **E2E tests**: Playwright (`npm run test:e2e`), specs under `e2e/`. Run against a real backend — never mocked.
+
 ## Known Pitfalls
 - CodeMirror internal CSS class names (`.ͼd` etc.) are unstable — use `HighlightStyle.define()` instead
 - `overflow: hidden` on parent clips `position: fixed` children — use portals
