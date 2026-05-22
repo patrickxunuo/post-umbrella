@@ -839,11 +839,11 @@ export function RequestEditor({
             <div className="auth-cookie-entry">
               <button
                 type="button"
-                className="btn-secondary compact"
+                className="btn-secondary compact cookie-entry-btn"
                 data-testid="open-cookie-manager"
                 onClick={() => setShowCookieManager(true)}
               >
-                <Cookie size={14} />
+                <Cookie size={13} />
                 Cookies
               </button>
               <p className="hint">

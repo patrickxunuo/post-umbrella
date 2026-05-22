@@ -571,6 +571,32 @@
   font-weight: 500;
 }
 
+/* Value column: capped width, single-line truncation by default.
+   The cap lives on an inner block element because `max-width` is ignored on a
+   table cell under `table-layout: auto` — a long value would otherwise widen the
+   column. Reveal the full value by wrapping (never widening) on hover or toggle. */
+.response-cookies td.cookie-value-td {
+  padding: 0;
+}
+
+.response-cookies .cookie-value-cell {
+  display: block;
+  max-width: 280px;
+  padding: var(--space-3) var(--space-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.response-cookies .cookie-value-cell:hover,
+.response-cookies .cookie-value-cell--expanded {
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+
 /* Examples Dropdown */
 .examples-dropdown {
   position: relative;
