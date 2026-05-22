@@ -8,6 +8,8 @@ import { generateCurl } from './RequestEditor';
 import { useWorkbench } from '../contexts/WorkbenchContext';
 import { useToast } from './Toast';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
+import useCookieStore from '../stores/cookieStore';
+import { cookiesForUrl } from '../utils/cookies.js';
 
 const curlEditorTheme = EditorView.theme({
   '&': {
@@ -82,6 +84,7 @@ function resolveInheritedAuth(collectionId, collections) {
 export function CurlPanel({ width, theme, onResize, onClose }) {
   const toast = useToast();
   const { activeTab, selectedRequest, selectedExample, activeEnvironment, collections, collectionVariables } = useWorkbench();
+  const jar = useCookieStore(s => s.jar);
 
   const curlPreview = useMemo(() => {
     const req = activeTab?.type === 'example'
@@ -113,6 +116,7 @@ export function CurlPanel({ width, theme, onResize, onClose }) {
 
     const headers = (req.headers || []).map(h => ({ ...h, key: sub(h.key), value: sub(h.value) }));
     const fd = (req.form_data || []).map(f => ({ ...f, key: sub(f.key), value: f.type === 'file' ? f.value : sub(f.value) }));
+    const cookies = cookiesForUrl(jar, subUrl(req.url || ''));
     return generateCurl(
       req.method || 'GET',
       subUrl(req.url || ''),
@@ -121,9 +125,10 @@ export function CurlPanel({ width, theme, onResize, onClose }) {
       req.body_type || 'none',
       fd,
       authType,
-      sub(authToken)
+      sub(authToken),
+      cookies
     );
-  }, [selectedRequest, selectedExample, activeTab?.type, activeEnvironment, collections, collectionVariables]);
+  }, [selectedRequest, selectedExample, activeTab?.type, activeEnvironment, collections, collectionVariables, jar]);
 
   return (
     <>

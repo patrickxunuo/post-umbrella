@@ -1,5 +1,27 @@
 import { useState } from 'react';
 import { X, Terminal } from 'lucide-react';
+import { serializeCookieHeader } from '../utils/cookies.js';
+
+// Merge cookie sources ('name=value; name2=value2' strings) into one normalized
+// Cookie header value. First occurrence wins on duplicate name (RFC 6265, case-sensitive).
+function mergeCookieSources(sources) {
+  const seen = new Set();
+  const pairs = [];
+  for (const source of sources) {
+    if (!source) continue;
+    for (const segment of source.split(';')) {
+      const trimmed = segment.trim();
+      if (!trimmed) continue;
+      const eq = trimmed.indexOf('=');
+      const name = (eq === -1 ? trimmed : trimmed.slice(0, eq)).trim();
+      if (!name || seen.has(name)) continue;
+      const value = eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+      seen.add(name);
+      pairs.push({ name, value });
+    }
+  }
+  return serializeCookieHeader(pairs);
+}
 
 // Parse cURL command
 export function parseCurl(curlCommand) {
@@ -70,22 +92,30 @@ export function parseCurl(curlCommand) {
     tokens.push(current);
   }
 
+  // Cookie data collected from -b/--cookie and Cookie: headers, merged after the loop
+  const cookieSources = [];
+
   // Parse tokens
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
 
     if (token === '-X' || token === '--request') {
       result.method = tokens[++i]?.toUpperCase() || 'GET';
+    } else if (token === '-b' || token === '--cookie') {
+      const cookieData = tokens[++i];
+      if (cookieData) cookieSources.push(cookieData);
     } else if (token === '-H' || token === '--header') {
       const header = tokens[++i];
       if (header) {
         const colonIndex = header.indexOf(':');
         if (colonIndex > 0) {
-          result.headers.push({
-            key: header.slice(0, colonIndex).trim(),
-            value: header.slice(colonIndex + 1).trim(),
-            enabled: true,
-          });
+          const key = header.slice(0, colonIndex).trim();
+          const value = header.slice(colonIndex + 1).trim();
+          if (key.toLowerCase() === 'cookie') {
+            cookieSources.push(value);
+          } else {
+            result.headers.push({ key, value, enabled: true });
+          }
         }
       }
     } else if (token === '-d' || token === '--data' || token === '--data-raw' || token === '--data-binary') {
@@ -119,6 +149,14 @@ export function parseCurl(curlCommand) {
       // Skip flags we don't need
     } else if (!token.startsWith('-') && !result.url) {
       result.url = token;
+    }
+  }
+
+  // Merge all collected cookie sources into a single Cookie header
+  if (cookieSources.length > 0) {
+    const merged = mergeCookieSources(cookieSources);
+    if (merged) {
+      result.headers.push({ key: 'Cookie', value: merged, enabled: true });
     }
   }
 
