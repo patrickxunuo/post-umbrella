@@ -205,6 +205,29 @@ export function removeDomain(jar, domain) {
   return result;
 }
 
+export function getResponseCookies(response) {
+  const raw = extractSetCookies(response);
+  const fallbackDomain = getDomainFromUrl(response?.resolvedUrl);
+  const rows = [];
+
+  for (const headerValue of raw) {
+    const cookie = parseSetCookie(headerValue);
+    if (!cookie) continue;
+    rows.push({
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain || fallbackDomain || '',
+      path: cookie.path,
+      expires: cookie.expires,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      sameSite: cookie.sameSite,
+    });
+  }
+
+  return rows;
+}
+
 export function extractSetCookies(result) {
   if (!result) return [];
   if (Array.isArray(result.setCookies)) return result.setCookies;

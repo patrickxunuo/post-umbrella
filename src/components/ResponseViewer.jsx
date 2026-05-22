@@ -5,6 +5,7 @@ import { JsonEditor } from './JsonEditor';
 import { BinaryViewToggle } from './BinaryViewToggle';
 import { useToast } from './Toast';
 import { downloadResponse } from '../utils/downloadResponse';
+import { getResponseCookies } from '../utils/cookies';
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -298,6 +299,15 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     [isExample, displayResponse?.headers]
   );
 
+  const responseCookies = useMemo(() => getResponseCookies(displayResponse), [displayResponse]);
+  const hasCookies = responseCookies.length > 0;
+
+  // If the active tab is Cookies but the current response has no cookies
+  // (e.g. a new response arrived), fall back to Body.
+  useEffect(() => {
+    if (activeTab === 'cookies' && !hasCookies) setActiveTab('body');
+  }, [activeTab, hasCookies]);
+
   // Normalized query — strips boundary quotes so `"route_id"` matches key route_id.
   const effectiveSearchQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
 
@@ -564,6 +574,15 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           >
             Headers
           </button>
+          {hasCookies && (
+            <button
+              className={activeTab === 'cookies' ? 'active' : ''}
+              onClick={() => setActiveTab('cookies')}
+              data-testid="response-tab-cookies"
+            >
+              Cookies
+            </button>
+          )}
           {/* Console tab moved to global bottom panel */}
         </div>
         <div className="response-meta">
@@ -978,6 +997,39 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
             ) : (
               <p>No headers</p>
             )}
+          </div>
+        )}
+
+        {activeTab === 'cookies' && (
+          <div className="response-cookies" data-testid="response-cookies">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Value</th>
+                  <th>Domain</th>
+                  <th>Path</th>
+                  <th>Expires</th>
+                  <th>Secure</th>
+                  <th>HttpOnly</th>
+                  <th>SameSite</th>
+                </tr>
+              </thead>
+              <tbody>
+                {responseCookies.map((cookie, index) => (
+                  <tr key={index} data-testid="cookie-row">
+                    <td>{cookie.name}</td>
+                    <td>{cookie.value}</td>
+                    <td>{cookie.domain}</td>
+                    <td>{cookie.path}</td>
+                    <td>{cookie.expires == null ? 'Session' : new Date(cookie.expires).toLocaleString()}</td>
+                    <td>{cookie.secure ? '✓ Yes' : '—'}</td>
+                    <td>{cookie.httpOnly ? '✓ Yes' : '—'}</td>
+                    <td>{cookie.sameSite}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
