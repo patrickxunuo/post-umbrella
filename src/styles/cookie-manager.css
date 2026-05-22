@@ -19,8 +19,8 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  width: 720px;
-  height: 560px;
+  width: 860px;
+  height: 680px;
   max-width: calc(100vw - var(--space-8));
   max-height: calc(100vh - var(--space-8));
   margin: var(--space-4);
@@ -128,9 +128,16 @@
   white-space: nowrap;
 }
 
+.cookie-add-cookie.cookie-add-cookie {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  gap: 4px;
+}
+
 /* ---- Body / domain list ---- */
 .cookie-manager-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-4) var(--space-5);
   display: flex;
@@ -139,6 +146,7 @@
 }
 
 .cookie-domain-item {
+  flex-shrink: 0;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -208,6 +216,7 @@
 .cookie-domain-cookies {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .cookie-tag-list {
@@ -271,7 +280,9 @@
 
 /* ---- Inline value editor (renders below the tag list, full width) ---- */
 .cookie-value-edit {
-  width: 100%;
+  width: auto;
+  box-sizing: border-box;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -284,6 +295,8 @@
 
 .cookie-value-textarea {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   resize: vertical;
   min-height: 60px;
   padding: 8px 10px;
