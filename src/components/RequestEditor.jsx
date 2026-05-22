@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { ExternalLink, Upload, X, ChevronDown, Play, Code } from 'lucide-react';
+import { ExternalLink, Upload, X, ChevronDown, Play, Code, Cookie } from 'lucide-react';
+import CookieManagerModal from './CookieManagerModal';
 import { Checkbox } from './Checkbox';
 import { EnvVariableInput } from './EnvVariableInput';
 import { MethodSelector } from './MethodSelector';
@@ -135,6 +136,7 @@ export function RequestEditor({
   const [showSaveDropdown, setShowSaveDropdown] = useState(false);
   const [showExampleModal, setShowExampleModal] = useState(false);
   const [exampleName, setExampleName] = useState('');
+  const [showCookieManager, setShowCookieManager] = useState(false);
   const lastUrlRef = useRef(url);
   const saveDropdownRef = useRef(null);
 
@@ -824,6 +826,20 @@ export function RequestEditor({
                 </p>
               </div>
             )}
+            <div className="auth-cookie-entry">
+              <button
+                type="button"
+                className="btn-secondary compact"
+                data-testid="open-cookie-manager"
+                onClick={() => setShowCookieManager(true)}
+              >
+                <Cookie size={14} />
+                Cookies
+              </button>
+              <p className="hint">
+                Manage the cookie jar shared across requests on this workspace.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1007,6 +1023,11 @@ console.log("message")`}</pre>
           </div>
         </div>
       )}
+
+      <CookieManagerModal
+        isOpen={showCookieManager}
+        onClose={() => setShowCookieManager(false)}
+      />
 
     </div>
   );

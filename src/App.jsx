@@ -47,6 +47,7 @@ import './styles/workflow-editor.css';
 import './styles/collection-docs.css';
 import './styles/error-boundary.css';
 import './styles/bottom-bar.css';
+import './styles/cookie-manager.css';
 
 import useModalStore from './stores/modalStore';
 
