@@ -273,17 +273,15 @@ export default function CookieManagerModal({ isOpen, onClose }) {
                       No cookies in this domain yet.
                     </p>
                   ) : (
-                    <div className="cookie-tag-list">
-                      {cookies.map((cookie) => (
-                        <div
-                          className="cookie-tag-wrap"
-                          key={`${cookie.name}::${cookie.path}`}
-                        >
+                    <div className="cookie-domain-cookies">
+                      <div className="cookie-tag-list">
+                        {cookies.map((cookie) => (
                           <div
                             className={`cookie-tag${
                               isEditing(domain, cookie) ? ' cookie-tag-active' : ''
                             }`}
                             data-testid="cookie-tag"
+                            key={`${cookie.name}::${cookie.path}`}
                             role="button"
                             tabIndex={0}
                             onClick={() => openEditor(domain, cookie)}
@@ -309,38 +307,38 @@ export default function CookieManagerModal({ isOpen, onClose }) {
                               <X size={12} />
                             </button>
                           </div>
+                        ))}
+                      </div>
 
-                          {isEditing(domain, cookie) && (
-                            <div className="cookie-value-edit">
-                              <textarea
-                                ref={editorRef}
-                                className="cookie-value-textarea"
-                                data-testid="cookie-value-editor"
-                                value={editValue}
-                                onChange={(e) => setEditValue(e.target.value)}
-                                rows={3}
-                                spellCheck={false}
-                              />
-                              <div className="cookie-value-actions">
-                                <button
-                                  className="btn-secondary compact"
-                                  data-testid="cookie-value-cancel"
-                                  onClick={cancelEditor}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  className="btn-primary compact"
-                                  data-testid="cookie-value-save"
-                                  onClick={saveEditor}
-                                >
-                                  Save
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                      {editing && editing.domain === domain && (
+                        <div className="cookie-value-edit">
+                          <textarea
+                            ref={editorRef}
+                            className="cookie-value-textarea"
+                            data-testid="cookie-value-editor"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            rows={3}
+                            spellCheck={false}
+                          />
+                          <div className="cookie-value-actions">
+                            <button
+                              className="btn-secondary compact cookie-value-btn"
+                              data-testid="cookie-value-cancel"
+                              onClick={cancelEditor}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              className="btn-primary compact cookie-value-btn"
+                              data-testid="cookie-value-save"
+                              onClick={saveEditor}
+                            >
+                              Save
+                            </button>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                 </div>

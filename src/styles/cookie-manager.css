@@ -19,9 +19,10 @@
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  width: 100%;
-  max-width: 560px;
-  max-height: 80vh;
+  width: 860px;
+  height: 680px;
+  max-width: calc(100vw - var(--space-8));
+  max-height: calc(100vh - var(--space-8));
   margin: var(--space-4);
   animation: confirmSlideIn 0.2s ease;
   overflow: hidden;
@@ -127,9 +128,16 @@
   white-space: nowrap;
 }
 
+.cookie-add-cookie.cookie-add-cookie {
+  padding: 3px 8px;
+  font-size: 11.5px;
+  gap: 4px;
+}
+
 /* ---- Body / domain list ---- */
 .cookie-manager-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: var(--space-4) var(--space-5);
   display: flex;
@@ -138,6 +146,7 @@
 }
 
 .cookie-domain-item {
+  flex-shrink: 0;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
@@ -203,17 +212,18 @@
 }
 
 /* ---- Cookie tags ---- */
+/* Stacks the tag row above the single shared value editor within a domain item. */
+.cookie-domain-cookies {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
 .cookie-tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-3);
-}
-
-.cookie-tag-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
 .cookie-tag {
@@ -223,7 +233,7 @@
   padding: 4px 4px 4px 10px;
   background: var(--bg-input);
   border: 1px solid var(--border-primary);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
   max-width: 100%;
@@ -268,13 +278,15 @@
   color: var(--accent-danger);
 }
 
-/* ---- Inline value editor ---- */
+/* ---- Inline value editor (renders below the tag list, full width) ---- */
 .cookie-value-edit {
-  flex-basis: 100%;
-  width: 100%;
+  width: auto;
+  box-sizing: border-box;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  margin: 0 var(--space-3) var(--space-3);
   padding: var(--space-3);
   background: var(--bg-sunken);
   border: 1px solid var(--border-primary);
@@ -283,6 +295,8 @@
 
 .cookie-value-textarea {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   resize: vertical;
   min-height: 60px;
   padding: 8px 10px;
@@ -305,6 +319,12 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* Compact Cancel/Save buttons — smaller than the standard compact variant. */
+.cookie-value-actions .cookie-value-btn.compact {
+  padding: 3px 10px;
+  font-size: 11.5px;
 }
 
 /* ---- Empty state ---- */
@@ -352,4 +372,11 @@
 
 .auth-cookie-entry .hint {
   margin: 0;
+}
+
+/* Compact entry button — smaller than the standard btn-secondary compact. */
+.cookie-entry-btn.cookie-entry-btn {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  gap: 5px;
 }

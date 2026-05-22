@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { cleanupTestCollections } from './helpers/cleanup';
 
 // Unique per-run names so parallel / repeated runs don't collide.
@@ -163,5 +163,81 @@ test.describe('Cookie Manager dialog', () => {
     await expect(
       page.locator('[data-testid="cookie-domain-item"]').filter({ hasText: COOKIE_DOMAIN })
     ).toHaveCount(0, { timeout: 5000 });
+  });
+
+  // Add a domain + a cookie, then add a cookie via the chained name → value prompts.
+  // The value prompt contains "Value for" (per the existing test's prompt-handling pattern).
+  async function addCookie(page: Page, domainItem: Locator, name: string, value: string) {
+    await domainItem.locator('[data-testid="cookie-add-cookie"]').first().click();
+    const namePrompt = page.locator('.prompt-modal');
+    await expect(namePrompt).toBeVisible({ timeout: 5000 });
+    await namePrompt.locator('.prompt-input').fill(name);
+    await namePrompt.locator('.prompt-btn-confirm').click();
+
+    const valuePrompt = page.locator('.prompt-modal');
+    await expect(valuePrompt).toContainText('Value for', { timeout: 5000 });
+    await valuePrompt.locator('.prompt-input').fill(value);
+    await valuePrompt.locator('.prompt-btn-confirm').click();
+    await expect(page.locator('.prompt-modal')).not.toBeVisible({ timeout: 5000 });
+  }
+
+  // GH-57 item 4 — structural tag/editor layout.
+  // The value editor must be a single shared element rendered OUTSIDE the cookie tags,
+  // not one editor per tag and not nested inside a tag.
+  test('value editor is a single shared element rendered outside cookie tags', async ({ page }) => {
+    const collectionName = uniqueName('Cookie Manager Layout Collection');
+    await createTestRequest(page, collectionName);
+
+    await openCookieManager(page);
+
+    // Add a fresh domain.
+    await page.locator('[data-testid="cookie-add-domain"]').click();
+    await fillPrompt(page, COOKIE_DOMAIN);
+
+    const domainItem = page
+      .locator('[data-testid="cookie-domain-item"]')
+      .filter({ hasText: COOKIE_DOMAIN });
+    await expect(domainItem).toBeVisible({ timeout: 5000 });
+
+    // Add the first cookie.
+    await addCookie(page, domainItem, 'sid', 'abc123');
+    const sidTag = domainItem.locator('[data-testid="cookie-tag"]').filter({ hasText: 'sid' });
+    await expect(sidTag).toBeVisible({ timeout: 5000 });
+
+    // No editor exists before any tag is clicked.
+    await expect(page.locator('[data-testid="cookie-value-editor"]')).toHaveCount(0);
+
+    // Capture the tag count so we can assert opening the editor does not change it.
+    const tagCountBefore = await page.locator('[data-testid="cookie-tag"]').count();
+
+    // Click the tag to open the editor.
+    await sidTag.click();
+
+    // Exactly ONE editor exists in the whole DOM.
+    await expect(page.locator('[data-testid="cookie-value-editor"]')).toHaveCount(1);
+
+    // The editor is NOT a descendant of any cookie-tag.
+    await expect(
+      page.locator('[data-testid="cookie-tag"] [data-testid="cookie-value-editor"]')
+    ).toHaveCount(0);
+
+    // Opening the editor does not change the number of cookie tags.
+    await expect(page.locator('[data-testid="cookie-tag"]')).toHaveCount(tagCountBefore);
+
+    // Add a second cookie to the same domain.
+    await addCookie(page, domainItem, 'token', 'xyz789');
+    const tokenTag = domainItem.locator('[data-testid="cookie-tag"]').filter({ hasText: 'token' });
+    await expect(tokenTag).toBeVisible({ timeout: 5000 });
+
+    // Open the first tag's editor, then switch to the second tag.
+    await sidTag.click();
+    await expect(page.locator('[data-testid="cookie-value-editor"]')).toHaveCount(1);
+    await tokenTag.click();
+
+    // Still exactly ONE editor in the DOM — a single shared editor, not one per tag.
+    await expect(page.locator('[data-testid="cookie-value-editor"]')).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="cookie-tag"] [data-testid="cookie-value-editor"]')
+    ).toHaveCount(0);
   });
 });

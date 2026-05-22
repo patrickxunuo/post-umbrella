@@ -242,6 +242,8 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   // back to the pre-search state. Cleared only on explicit Collapse/Expand-all
   // or on a new response.
   const [persistentForceSet, setPersistentForceSet] = useState(null);
+  // Cookie Value cells the user has clicked to keep expanded (set of row indices).
+  const [expandedCookieRows, setExpandedCookieRows] = useState(() => new Set());
   const searchInputRef = useRef(null);
   const rootRef = useRef(null);
   const downloadingRef = useRef(false);
@@ -266,6 +268,7 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     setSearchQuery('');
     setSearchActiveIndex(0);
     setPersistentForceSet(null);
+    setExpandedCookieRows(new Set());
   }, [displayResponse]);
 
   // Parse JSON body - must be before any early returns!
@@ -301,6 +304,15 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
 
   const responseCookies = useMemo(() => getResponseCookies(displayResponse), [displayResponse]);
   const hasCookies = responseCookies.length > 0;
+
+  const toggleCookieRow = (index) => {
+    setExpandedCookieRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   // If the active tab is Cookies but the current response has no cookies
   // (e.g. a new response arrived), fall back to Body.
@@ -1019,7 +1031,26 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                 {responseCookies.map((cookie, index) => (
                   <tr key={index} data-testid="cookie-row">
                     <td>{cookie.name}</td>
-                    <td>{cookie.value}</td>
+                    <td className="cookie-value-td">
+                      <div
+                        className={`cookie-value-cell${
+                          expandedCookieRows.has(index) ? ' cookie-value-cell--expanded' : ''
+                        }`}
+                        data-testid="cookie-value-cell"
+                        title={cookie.value}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => toggleCookieRow(index)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            toggleCookieRow(index);
+                          }
+                        }}
+                      >
+                        {cookie.value}
+                      </div>
+                    </td>
                     <td>{cookie.domain}</td>
                     <td>{cookie.path}</td>
                     <td>{cookie.expires == null ? 'Session' : new Date(cookie.expires).toLocaleString()}</td>
