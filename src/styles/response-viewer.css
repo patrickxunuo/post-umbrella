@@ -525,6 +525,52 @@
   font-weight: 500;
 }
 
+/* Cookies table — mirrors the read-only Headers table, wider column set */
+.response-cookies {
+  overflow-x: auto;
+}
+
+.response-cookies table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.response-cookies th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+  white-space: nowrap;
+}
+
+.response-cookies td {
+  padding: var(--space-3) var(--space-4);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.response-cookies tr:last-child td {
+  border-bottom: none;
+}
+
+.response-cookies td:first-child {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
 /* Examples Dropdown */
 .examples-dropdown {
   position: relative;
