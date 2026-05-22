@@ -198,7 +198,29 @@ const REQUESTS = {
     responseStatusClass: 'success',
     responseTime: '89 ms',
     responseSize: '256 B',
-    responseHeaderCount: 4,
+    responseHeaderCount: 5,
+    responseCookies: [
+      {
+        name: 'session_id',
+        value: 'sess_8x4f2y9r3k1n',
+        domain: 'api.example.com',
+        path: '/',
+        expires: null,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+      },
+      {
+        name: 'csrf_token',
+        value: 'csrf_a1b2c3d4',
+        domain: 'api.example.com',
+        path: '/',
+        expires: null,
+        httpOnly: false,
+        secure: false,
+        sameSite: 'Strict',
+      },
+    ],
     responseBody: (
       <>
         <JsonLine num={1}><P>{'{'}</P></JsonLine>
@@ -493,6 +515,12 @@ export default function AppMockup({ theme, onToggleTheme }) {
                       className={`m-detail-tab clickable ${responseDetailTab === 'Headers' ? 'active' : ''}`}
                       onClick={() => setResponseDetailTab('Headers')}
                     >Headers <span className="count">{activeRequest.responseHeaderCount}</span></span>
+                    {activeRequest.responseCookies?.length > 0 && (
+                      <span
+                        className={`m-detail-tab clickable ${responseDetailTab === 'Cookies' ? 'active' : ''}`}
+                        onClick={() => setResponseDetailTab('Cookies')}
+                      >Cookies <span className="count">{activeRequest.responseCookies.length}</span></span>
+                    )}
                   </div>
                   <div className="m-response-meta">
                     {showResponse ? (
@@ -555,11 +583,45 @@ export default function AppMockup({ theme, onToggleTheme }) {
                       dockSearchOpen && activeRequest.responseBodyHighlighted
                         ? activeRequest.responseBodyHighlighted
                         : activeRequest.responseBody
+                    ) : responseDetailTab === 'Cookies' && activeRequest.responseCookies ? (
+                      <div className="m-cookies-wrap">
+                        <table className="m-cookies-table">
+                          <thead>
+                            <tr>
+                              <th>Name</th>
+                              <th>Value</th>
+                              <th>Domain</th>
+                              <th>Path</th>
+                              <th>Expires</th>
+                              <th>Secure</th>
+                              <th>HttpOnly</th>
+                              <th>SameSite</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {activeRequest.responseCookies.map((c) => (
+                              <tr key={c.name}>
+                                <td>{c.name}</td>
+                                <td className="m-cookie-value" title={c.value}>{c.value}</td>
+                                <td>{c.domain || '—'}</td>
+                                <td>{c.path || '—'}</td>
+                                <td>{c.expires == null ? 'Session' : new Date(c.expires).toLocaleString()}</td>
+                                <td>{c.secure ? 'Yes' : '—'}</td>
+                                <td>{c.httpOnly ? 'Yes' : '—'}</td>
+                                <td>{c.sameSite || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     ) : (
                       <>
                         <JsonLine num={1}><K>content-type</K><P>: </P><S>application/json; charset=utf-8</S></JsonLine>
                         <JsonLine num={2}><K>x-request-id</K><P>: </P><S>req_7f8g9h0i</S></JsonLine>
                         <JsonLine num={3}><K>cache-control</K><P>: </P><S>no-cache</S></JsonLine>
+                        {activeRequest.responseCookies?.length > 0 && (
+                          <JsonLine num={4}><K>set-cookie</K><P>: </P><S>{activeRequest.responseCookies[0].name}={activeRequest.responseCookies[0].value}; Path=/; HttpOnly; SameSite=Lax</S></JsonLine>
+                        )}
                       </>
                     )
                   ) : null}

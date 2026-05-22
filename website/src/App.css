@@ -1003,6 +1003,62 @@ a:hover { color: var(--accent-hover); }
   pointer-events: none;
 }
 
+/* Cookies tab — mirrors the real app's .response-cookies table, scaled to mockup density */
+.m-cookies-wrap {
+  /* Break out of .m-code's 12/16 padding so the table sits edge-to-edge,
+     and allow horizontal scroll if the 8 columns exceed the response panel width. */
+  margin: -8px -10px;
+  overflow-x: auto;
+}
+
+.m-cookies-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-family: var(--font-mono);
+}
+
+.m-cookies-table th {
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 9px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.m-cookies-table td {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-light);
+  white-space: nowrap;
+}
+
+.m-cookies-table tr:last-child td {
+  border-bottom: none;
+}
+
+.m-cookies-table td:first-child {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* Value column: capped width, ellipsis — same UX as the real app after #57 polish */
+.m-cookies-table .m-cookie-value {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .mh-theme-toggle.clickable:hover {
   background: var(--white-alpha-08);
 }
