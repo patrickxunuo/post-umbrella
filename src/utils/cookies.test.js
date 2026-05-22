@@ -9,6 +9,7 @@ import {
   removeDomain,
   extractSetCookies,
   buildCookieHeader,
+  getResponseCookies,
 } from './cookies.js';
 
 // Helper to build a Cookie object with spec defaults.
@@ -545,5 +546,144 @@ describe('buildCookieHeader', () => {
   it('returns the manual value alone when the jar is empty after dedupe', () => {
     const jar = [cookie('a', 'jar')];
     expect(buildCookieHeader(jar, 'a=manual')).toBe('a=manual');
+  });
+});
+
+describe('getResponseCookies', () => {
+  it('returns [] for null / undefined / empty response', () => {
+    expect(getResponseCookies(null)).toEqual([]);
+    expect(getResponseCookies(undefined)).toEqual([]);
+    expect(getResponseCookies({})).toEqual([]);
+  });
+
+  it('returns [] when headers carry no Set-Cookie', () => {
+    expect(getResponseCookies({ headers: [{ key: 'Content-Type', value: 'text/html' }] })).toEqual([]);
+  });
+
+  it('builds a row from the proxy setCookies array with attributes parsed', () => {
+    const rows = getResponseCookies({
+      setCookies: ['sid=abc; Path=/; HttpOnly'],
+      resolvedUrl: 'https://api.example.com/login',
+    });
+    expect(rows).toEqual([
+      {
+        name: 'sid',
+        value: 'abc',
+        domain: 'api.example.com',
+        path: '/',
+        expires: null,
+        secure: false,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
+    ]);
+  });
+
+  it('parses Secure and SameSite attributes through', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['a=1; Domain=example.com; Secure; SameSite=None'],
+      resolvedUrl: 'https://www.example.com/',
+    });
+    expect(row.domain).toBe('example.com');
+    expect(row.secure).toBe(true);
+    expect(row.sameSite).toBe('None');
+  });
+
+  it('extracts cookies from Tauri-style Set-Cookie header entries (mixed case)', () => {
+    const rows = getResponseCookies({
+      headers: [
+        { key: 'Set-Cookie', value: 'a=1' },
+        { key: 'Content-Type', value: 'text/html' },
+        { key: 'set-cookie', value: 'b=2' },
+      ],
+      resolvedUrl: 'http://h.test/',
+    });
+    expect(rows.map((r) => r.name)).toEqual(['a', 'b']);
+    expect(rows.every((r) => r.domain === 'h.test')).toBe(true);
+  });
+
+  it('falls back to the resolvedUrl host when the cookie has no Domain attribute', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['t=1'],
+      resolvedUrl: 'https://sub.example.org/path',
+    });
+    expect(row.domain).toBe('sub.example.org');
+  });
+
+  it('prefers an explicit Domain attribute over the URL host', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['t=1; Domain=example.org'],
+      resolvedUrl: 'https://sub.example.org/path',
+    });
+    expect(row.domain).toBe('example.org');
+  });
+
+  it('honors an explicit Domain even when resolvedUrl is missing', () => {
+    const [row] = getResponseCookies({ setCookies: ['t=1; Domain=example.org'] });
+    expect(row.domain).toBe('example.org');
+  });
+
+  it('passes expires through as epoch ms', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['t=1; Expires=Wed, 21 Oct 2099 07:28:00 GMT'],
+      resolvedUrl: 'https://example.com/',
+    });
+    expect(typeof row.expires).toBe('number');
+    expect(row.expires).toBe(Date.parse('Wed, 21 Oct 2099 07:28:00 GMT'));
+  });
+
+  it('leaves expires null for session cookies', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['t=1'],
+      resolvedUrl: 'https://example.com/',
+    });
+    expect(row.expires).toBeNull();
+  });
+
+  it('preserves the order of multiple cookies', () => {
+    const rows = getResponseCookies({
+      setCookies: ['a=1', 'b=2', 'c=3'],
+      resolvedUrl: 'https://example.com/',
+    });
+    expect(rows.map((r) => r.name)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('skips unparseable Set-Cookie values but keeps order of the rest', () => {
+    const rows = getResponseCookies({
+      setCookies: ['a=1', 'novalue', 'b=2'],
+      resolvedUrl: 'https://example.com/',
+    });
+    expect(rows.map((r) => r.name)).toEqual(['a', 'b']);
+  });
+
+  it('sets domain to "" when resolvedUrl is missing and cookie has no Domain', () => {
+    const [row] = getResponseCookies({ setCookies: ['t=1'] });
+    expect(row.domain).toBe('');
+  });
+
+  it('does not throw when resolvedUrl is unparseable', () => {
+    expect(() => getResponseCookies({ setCookies: ['t=1'], resolvedUrl: 'not a url' })).not.toThrow();
+    const [row] = getResponseCookies({ setCookies: ['t=1'], resolvedUrl: 'not a url' });
+    expect(row.domain).toBe('');
+  });
+
+  it('does not mutate its input', () => {
+    const response = {
+      setCookies: ['a=1; Path=/x'],
+      resolvedUrl: 'https://example.com/',
+    };
+    const snapshot = JSON.parse(JSON.stringify(response));
+    getResponseCookies(response);
+    expect(response).toEqual(snapshot);
+  });
+
+  it('produces exactly the frozen CookieRow shape (8 fields)', () => {
+    const [row] = getResponseCookies({
+      setCookies: ['a=1'],
+      resolvedUrl: 'https://example.com/',
+    });
+    expect(Object.keys(row).sort()).toEqual(
+      ['domain', 'expires', 'httpOnly', 'name', 'path', 'sameSite', 'secure', 'value'].sort()
+    );
   });
 });

@@ -5,6 +5,7 @@ import { JsonEditor } from './JsonEditor';
 import { BinaryViewToggle } from './BinaryViewToggle';
 import { useToast } from './Toast';
 import { downloadResponse } from '../utils/downloadResponse';
+import { getResponseCookies } from '../utils/cookies';
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -267,6 +268,13 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     setPersistentForceSet(null);
   }, [displayResponse]);
 
+  // If the Cookies tab is active but the current response set no cookies (e.g. a new
+  // response just arrived without Set-Cookie), fall back to the Body tab so the tab bar
+  // never shows an active tab whose content is gone.
+  useEffect(() => {
+    if (activeTab === 'cookies' && !hasCookies) setActiveTab('body');
+  }, [activeTab, hasCookies]);
+
   // Parse JSON body - must be before any early returns!
   const jsonBody = useMemo(() => {
     const body = displayResponse?.body;
@@ -297,6 +305,10 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     () => !isExample && isPdfResponse(displayResponse?.headers),
     [isExample, displayResponse?.headers]
   );
+
+  // Cookies set by this response (Set-Cookie), normalized across proxy/Tauri transports.
+  const responseCookies = useMemo(() => getResponseCookies(displayResponse), [displayResponse]);
+  const hasCookies = responseCookies.length > 0;
 
   // Normalized query — strips boundary quotes so `"route_id"` matches key route_id.
   const effectiveSearchQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
@@ -564,6 +576,15 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
           >
             Headers
           </button>
+          {hasCookies && (
+            <button
+              className={activeTab === 'cookies' ? 'active' : ''}
+              onClick={() => setActiveTab('cookies')}
+              data-testid="response-tab-cookies"
+            >
+              Cookies <span className="response-tab-count">{responseCookies.length}</span>
+            </button>
+          )}
           {/* Console tab moved to global bottom panel */}
         </div>
         <div className="response-meta">
@@ -977,6 +998,43 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               </table>
             ) : (
               <p>No headers</p>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'cookies' && (
+          <div className="response-cookies" data-testid="response-cookies">
+            {hasCookies ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Value</th>
+                    <th>Domain</th>
+                    <th>Path</th>
+                    <th>Expires</th>
+                    <th>Secure</th>
+                    <th>HttpOnly</th>
+                    <th>SameSite</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {responseCookies.map((cookie, index) => (
+                    <tr key={index} data-testid="cookie-row">
+                      <td>{cookie.name}</td>
+                      <td>{cookie.value}</td>
+                      <td>{cookie.domain || '—'}</td>
+                      <td>{cookie.path}</td>
+                      <td>{cookie.expires == null ? 'Session' : new Date(cookie.expires).toLocaleString()}</td>
+                      <td>{cookie.secure ? 'Yes' : '—'}</td>
+                      <td>{cookie.httpOnly ? 'Yes' : '—'}</td>
+                      <td>{cookie.sameSite || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>No cookies</p>
             )}
           </div>
         )}
