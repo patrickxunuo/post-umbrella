@@ -9,6 +9,7 @@ import { ScriptEditor } from './ScriptEditor';
 import { parseCurl } from './ImportCurlModal';
 import { useToast } from './Toast';
 import { reconcilePathVariables, sanitizeUrlForPathVars } from '../utils/substituteVariables';
+import { buildCookieHeader } from '../utils/cookies.js';
 
 // Parse URL query string to params array
 function parseUrlParams(url) {
@@ -52,7 +53,7 @@ function escapeShellArg(str) {
 }
 
 // Generate cURL command from request
-export function generateCurl(method, url, headers, body, bodyType, formData, authType, authToken) {
+export function generateCurl(method, url, headers, body, bodyType, formData, authType, authToken, cookies) {
   const parts = ['curl'];
 
   // Add method
@@ -67,12 +68,21 @@ export function generateCurl(method, url, headers, body, bodyType, formData, aut
   const enabledHeaders = headers.filter(h => h.enabled !== false && h.key);
   for (const header of enabledHeaders) {
     if (authType === 'bearer' && authToken && header.key.toLowerCase() === 'authorization') continue;
+    // Cookies are emitted via -b instead, never as -H 'Cookie: ...'
+    if (header.key.toLowerCase() === 'cookie') continue;
     parts.push(`-H '${escapeShellArg(header.key)}: ${escapeShellArg(header.value)}'`);
   }
 
   // Add auth header
   if (authType === 'bearer' && authToken) {
     parts.push(`-H 'Authorization: Bearer ${escapeShellArg(authToken)}'`);
+  }
+
+  // Add cookies as a single -b flag (merging jar cookies with a manual Cookie header)
+  const manualCookie = enabledHeaders.find(h => h.key.toLowerCase() === 'cookie');
+  const cookieStr = buildCookieHeader(cookies || [], manualCookie?.value);
+  if (cookieStr) {
+    parts.push(`-b '${escapeShellArg(cookieStr)}'`);
   }
 
   // Add body based on type
