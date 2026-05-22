@@ -21,6 +21,10 @@ export function PromptProvider({ children }) {
     confirmText: 'OK',
     cancelText: 'Cancel',
     resolve: null,
+    // Bumped on every prompt() call so the PromptModal remounts fresh.
+    // Without this, two prompts shown back-to-back (e.g. cookie name → value)
+    // reuse the same instance and leak the previous input value.
+    seq: 0,
   });
 
   const prompt = useCallback(({
@@ -32,7 +36,7 @@ export function PromptProvider({ children }) {
     cancelText = 'Cancel',
   }) => {
     return new Promise((resolve) => {
-      setState({
+      setState(prev => ({
         isOpen: true,
         title,
         message,
@@ -41,7 +45,8 @@ export function PromptProvider({ children }) {
         confirmText,
         cancelText,
         resolve,
-      });
+        seq: prev.seq + 1,
+      }));
     });
   }, []);
 
@@ -60,6 +65,7 @@ export function PromptProvider({ children }) {
       {children}
       {state.isOpen && (
         <PromptModal
+          key={state.seq}
           title={state.title}
           message={state.message}
           defaultValue={state.defaultValue}

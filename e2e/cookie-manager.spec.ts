@@ -91,16 +91,20 @@ test.describe('Cookie Manager dialog', () => {
     const domainItem = page.locator('[data-testid="cookie-domain-item"]').filter({ hasText: COOKIE_DOMAIN });
     await expect(domainItem).toBeVisible({ timeout: 5000 });
 
-    // d — add a cookie within that domain. Implementation may use one or two
-    // sequential prompts (name, then value). Handle up to two defensively.
+    // d — add a cookie. The dialog chains two prompts (name → value), so the
+    // name prompt is replaced by the value prompt rather than closing — don't
+    // assert it disappears between them; instead wait for the value prompt.
     await domainItem.locator('[data-testid="cookie-add-cookie"]').click();
-    await fillPrompt(page, 'sid'); // cookie name
-    const secondPrompt = page.locator('.prompt-modal');
-    if (await secondPrompt.isVisible().catch(() => false)) {
-      await secondPrompt.locator('.prompt-input').fill('abc123'); // cookie value
-      await secondPrompt.locator('.prompt-btn-confirm').click();
-      await expect(secondPrompt).not.toBeVisible({ timeout: 5000 });
-    }
+    const namePrompt = page.locator('.prompt-modal');
+    await expect(namePrompt).toBeVisible({ timeout: 5000 });
+    await namePrompt.locator('.prompt-input').fill('sid'); // cookie name
+    await namePrompt.locator('.prompt-btn-confirm').click();
+
+    const valuePrompt = page.locator('.prompt-modal');
+    await expect(valuePrompt).toContainText('Value for', { timeout: 5000 });
+    await valuePrompt.locator('.prompt-input').fill('abc123'); // cookie value
+    await valuePrompt.locator('.prompt-btn-confirm').click();
+    await expect(page.locator('.prompt-modal')).not.toBeVisible({ timeout: 5000 });
 
     const sidTag = domainItem.locator('[data-testid="cookie-tag"]').filter({ hasText: 'sid' });
     await expect(sidTag).toBeVisible({ timeout: 5000 });
