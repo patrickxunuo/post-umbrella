@@ -146,6 +146,12 @@ export function useResponseExecution({
         }
       }
 
+      // Transient variables set during pre-scripts (pm.variables.set /
+      // pm.environment.set). Tracked separately so they resolve in the request
+      // even when no environment is active — the env-persistence path below is
+      // gated on currentEnv, but substitution must not be (GH-59).
+      let scriptVars = {};
+
       // Execute all pre-scripts in order
       for (const script of allPreScripts) {
         const preResult = await executeScript(script, {
@@ -162,10 +168,13 @@ export function useResponseExecution({
           toast.error(`Pre-script error: ${preResult.errors[0]?.message || 'Unknown error'}`);
         }
 
-        if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
-          currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
-          await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
-          setActiveEnvironment(currentEnv);
+        if (Object.keys(preResult.envUpdates).length > 0) {
+          scriptVars = { ...scriptVars, ...preResult.envUpdates };
+          if (currentEnv) {
+            currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
+            await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
+            setActiveEnvironment(currentEnv);
+          }
         }
 
         if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootCollectionId) {
@@ -177,12 +186,14 @@ export function useResponseExecution({
       const subEnv = (text) => substituteEnv(text, {
         environment: currentEnv,
         collectionVariables: collectionVars,
+        scriptVariables: scriptVars,
       });
 
       const resolvedUrl = substituteUrl(url, {
         environment: currentEnv,
         collectionVariables: collectionVars,
         pathVariables,
+        scriptVariables: scriptVars,
       });
       const resolvedHeaders = headers.map((header) => ({
         ...header,

@@ -61,6 +61,12 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
 
     let currentEnv = activeEnvironment;
 
+    // Transient variables set during scripts (pm.variables.set / pm.environment.set).
+    // Run-wide so a value set in one step (or the root pre-script) resolves in later
+    // steps even when no environment is active — substitution must not be gated on
+    // currentEnv (GH-59).
+    let scriptVars = {};
+
     setRunState({ running: true, currentStep: startFromIndex, results, startTime: Date.now() });
 
     // Run root collection pre-script (once, before all steps)
@@ -72,10 +78,13 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         environment: currentEnv,
         collectionVariables: collectionVars,
       });
-      if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
-        currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
-        await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
-        setActiveEnvironment?.(currentEnv);
+      if (Object.keys(preResult.envUpdates).length > 0) {
+        scriptVars = { ...scriptVars, ...preResult.envUpdates };
+        if (currentEnv) {
+          currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
+          await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
+          setActiveEnvironment?.(currentEnv);
+        }
       }
       if (Object.keys(preResult.collectionVarUpdates).length > 0 && collectionId) {
         await data.updateCollectionVariableCurrentValues(collectionId, preResult.collectionVarUpdates);
@@ -127,10 +136,13 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           if (!preResult.success) {
             stepLogs.push({ type: 'error', source: 'pre-script', message: `Error: ${preResult.errors[0]?.message || 'Unknown error'}` });
           }
-          if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
-            currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
-            await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
-            setActiveEnvironment?.(currentEnv);
+          if (Object.keys(preResult.envUpdates).length > 0) {
+            scriptVars = { ...scriptVars, ...preResult.envUpdates };
+            if (currentEnv) {
+              currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
+              await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
+              setActiveEnvironment?.(currentEnv);
+            }
           }
           if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootId) {
             await data.updateCollectionVariableCurrentValues(rootId, preResult.collectionVarUpdates);
@@ -141,12 +153,14 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         const subEnv = (text) => substituteEnv(text, {
           environment: currentEnv,
           collectionVariables: collectionVars,
+          scriptVariables: scriptVars,
         });
 
         const resolvedUrl = substituteUrl(request.url, {
           environment: currentEnv,
           collectionVariables: collectionVars,
           pathVariables: request.path_variables || [],
+          scriptVariables: scriptVars,
         });
         const resolvedHeaders = (request.headers || [])
           .filter(h => h.enabled !== false)
@@ -231,10 +245,13 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           if (!postResult.success) {
             stepLogs.push({ type: 'error', source: 'post-script', message: `Error: ${postResult.errors[0]?.message || 'Unknown error'}` });
           }
-          if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {
-            currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
-            await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
-            setActiveEnvironment?.(currentEnv);
+          if (Object.keys(postResult.envUpdates).length > 0) {
+            scriptVars = { ...scriptVars, ...postResult.envUpdates };
+            if (currentEnv) {
+              currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
+              await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
+              setActiveEnvironment?.(currentEnv);
+            }
           }
           if (Object.keys(postResult.collectionVarUpdates).length > 0 && rootId) {
             await data.updateCollectionVariableCurrentValues(rootId, postResult.collectionVarUpdates);
@@ -272,10 +289,13 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         environment: currentEnv,
         collectionVariables: collectionVars,
       });
-      if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {
-        currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
-        await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
-        setActiveEnvironment?.(currentEnv);
+      if (Object.keys(postResult.envUpdates).length > 0) {
+        scriptVars = { ...scriptVars, ...postResult.envUpdates };
+        if (currentEnv) {
+          currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
+          await data.updateCurrentValues(currentEnv.id, postResult.envUpdates);
+          setActiveEnvironment?.(currentEnv);
+        }
       }
       if (Object.keys(postResult.collectionVarUpdates).length > 0 && collectionId) {
         await data.updateCollectionVariableCurrentValues(collectionId, postResult.collectionVarUpdates);
