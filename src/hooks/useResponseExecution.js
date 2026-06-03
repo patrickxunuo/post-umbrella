@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
-import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
+import { applyCollectionVariableUpdates, applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
+import useCollectionStore from '../stores/collectionStore';
 import useWorkbenchStore from '../stores/workbenchStore';
 import useConsoleStore from '../stores/consoleStore';
 import useCookieStore from '../stores/cookieStore';
@@ -181,8 +182,12 @@ export function useResponseExecution({
         }
 
         if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          // Apply in-memory (parity with applyEnvironmentUpdates) so vars set —
+          // including brand-new keys — resolve in this request, then persist and
+          // notify consumers (e.g. VariablePopover) to refresh. (GH-62)
+          collectionVars = applyCollectionVariableUpdates(collectionVars, preResult.collectionVarUpdates);
           await data.updateCollectionVariableCurrentValues(rootCollectionId, preResult.collectionVarUpdates);
-          collectionVars = await data.getCollectionVariables(rootCollectionId);
+          useCollectionStore.getState().bumpCollectionVars();
         }
       }
 
@@ -322,8 +327,9 @@ export function useResponseExecution({
         }
 
         if (Object.keys(postResult.collectionVarUpdates).length > 0 && rootCollectionId) {
+          collectionVars = applyCollectionVariableUpdates(collectionVars, postResult.collectionVarUpdates);
           await data.updateCollectionVariableCurrentValues(rootCollectionId, postResult.collectionVarUpdates);
-          collectionVars = await data.getCollectionVariables(rootCollectionId);
+          useCollectionStore.getState().bumpCollectionVars();
         }
       }
 

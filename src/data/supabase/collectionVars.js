@@ -152,6 +152,7 @@ export const saveCollectionVariables = async (collectionId, variables) => {
 // Update user's current values for collection variables (private)
 export const updateCollectionVariableCurrentValues = async (collectionId, currentValues) => {
   const user = await checkAuth();
+  const now = Math.floor(Date.now() / 1000);
 
   // Get variables for this collection to map keys to IDs
   const { data: vars } = await supabase
@@ -163,12 +164,41 @@ export const updateCollectionVariableCurrentValues = async (collectionId, curren
   (vars || []).forEach(v => {
     keyToId[v.key] = v.id;
   });
+  let nextSortOrder = (vars || []).length;
 
   const entries = Object.entries(currentValues);
 
   for (const [keyOrId, currentValue] of entries) {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(keyOrId);
-    const variableId = isUuid ? keyOrId : keyToId[keyOrId];
+    let variableId = isUuid ? keyOrId : keyToId[keyOrId];
+
+    // Auto-create an undeclared collection variable set from a script (GH-62).
+    // Mirrors pm.environment.set(), which appends a new env variable. The new
+    // key becomes a shared declaration (empty initial_value); the script value
+    // is stored below as the per-user current_value. Upsert on the
+    // (collection_id, key) unique constraint is idempotent across concurrent
+    // scripts in the same run.
+    if (!variableId && !isUuid) {
+      const { data: created, error: createError } = await supabase
+        .from('collection_variables')
+        .upsert({
+          collection_id: collectionId,
+          key: keyOrId,
+          initial_value: '',
+          enabled: true,
+          sort_order: nextSortOrder++,
+          created_at: now,
+          updated_at: now,
+        }, {
+          onConflict: 'collection_id,key',
+        })
+        .select('id')
+        .single();
+      if (createError) throw new Error(createError.message);
+      variableId = created?.id;
+      if (variableId) keyToId[keyOrId] = variableId;
+    }
+
     if (!variableId) continue;
 
     if (currentValue === null || currentValue === undefined || currentValue === '') {

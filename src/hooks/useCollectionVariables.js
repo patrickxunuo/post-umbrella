@@ -1,11 +1,13 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useWorkbench } from '../contexts/WorkbenchContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
+import useCollectionStore from '../stores/collectionStore';
 import * as data from '../data/index.js';
 
 export function useCollectionVariables() {
   const { activeTab, selectedRequest, collections, loadEnvironments } = useWorkbench();
   const { activeWorkspace } = useWorkspace();
+  const collectionVarsVersion = useCollectionStore((s) => s.collectionVarsVersion);
   const [collectionVariables, setCollectionVariables] = useState([]);
 
   const activeCollectionId = useMemo(() => {
@@ -37,6 +39,15 @@ export function useCollectionVariables() {
     if (!rootCollectionId) { setCollectionVariables([]); return; }
     reloadCollectionVariables();
   }, [rootCollectionId, reloadCollectionVariables]);
+
+  // Reload when a script/workflow set a collection variable (GH-62), so the
+  // VariablePopover prop reflects the live value without switching collections.
+  // Skip the initial render — the effect above already did the first load.
+  const didMountRef = useRef(false);
+  useEffect(() => {
+    if (!didMountRef.current) { didMountRef.current = true; return; }
+    reloadCollectionVariables();
+  }, [collectionVarsVersion, reloadCollectionVariables]);
 
   const onEnvironmentUpdate = useCallback(() => {
     if (activeWorkspace?.id) loadEnvironments(activeWorkspace.id);

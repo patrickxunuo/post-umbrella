@@ -237,4 +237,62 @@ test.describe('Collection Variables', () => {
 
     await page.screenshot({ path: 'e2e/screenshots/coll-var-script-set.png' });
   });
+
+  // GH-62 Part 1: pm.collectionVariables.set() on an UNDECLARED key must
+  // auto-create the variable (mirroring pm.environment.set), so it resolves in
+  // the request AND shows up in the Variables tab — previously it was silently
+  // dropped unless the key was pre-declared.
+  test('pre-script auto-creates an undeclared collection variable (GH-62)', async ({ page }) => {
+    const autoCollName = uniqueName('Auto Var Test');
+    await createCollection(page, autoCollName);
+
+    // Intentionally do NOT declare any variable in the Variables tab.
+
+    // Add a request to this collection.
+    const header = page.locator('.collection-header').filter({ hasText: autoCollName });
+    await header.hover();
+    const moreBtn = header.locator('.btn-menu');
+    await expect(moreBtn).toBeVisible();
+    await moreBtn.click();
+    const menu = page.locator('.collection-menu');
+    await expect(menu).toBeVisible();
+    await menu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
+    await expect(page.locator('.request-editor')).toBeVisible({ timeout: 5000 });
+
+    // URL uses the not-yet-declared {{auto_token}} against local Supabase REST.
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 'http://127.0.0.1:54321';
+    const urlInput = page.locator('.url-input');
+    await urlInput.fill(`${supabaseUrl}/rest/v1/?key={{auto_token}}`);
+
+    // Pre-request script creates the undeclared key on the fly.
+    await page.locator('.request-tabs button').filter({ hasText: 'Pre-script' }).click();
+    await expect(page.locator('.script-editor-wrapper')).toBeVisible({ timeout: 5000 });
+    const cmEditor = page.locator('.script-codemirror .cm-content');
+    await cmEditor.click();
+    await page.keyboard.type('pm.collectionVariables.set("auto_token", "created_on_the_fly");');
+
+    await page.locator('.btn-save').click();
+    await page.waitForTimeout(1000);
+
+    // Send — the pre-script runs, persists the new key, and substitutes it.
+    await page.locator('.btn-send').click();
+    await expect(page.locator('.response-viewer .status')).toBeVisible({ timeout: 30000 });
+    await page.waitForTimeout(1000);
+
+    // Open the collection Variables tab and assert the key was auto-created.
+    const collHeader = page.locator('.collection-header').filter({ hasText: autoCollName });
+    await collHeader.locator('.collection-name').click();
+    await expect(page.locator('.collection-editor')).toBeVisible({ timeout: 5000 });
+    const varsTab = page.locator('.collection-editor-tab').filter({ hasText: 'Variables' });
+    await varsTab.click();
+    await expect(page.locator('.collection-variables-tab')).toBeVisible({ timeout: 5000 });
+
+    // A row for the previously-undeclared key now exists with the script value.
+    const keyInput = page.locator('.env-var-table tbody tr').first().locator('td.col-key input');
+    await expect(keyInput).toHaveValue('auto_token', { timeout: 5000 });
+    const valueInput = page.locator('.env-var-table tbody tr').first().locator('td.col-value input');
+    await expect(valueInput).toHaveValue('created_on_the_fly', { timeout: 5000 });
+
+    await page.screenshot({ path: 'e2e/screenshots/coll-var-auto-created.png' });
+  });
 });

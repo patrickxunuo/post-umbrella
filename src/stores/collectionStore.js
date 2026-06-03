@@ -11,12 +11,17 @@ const useCollectionStore = create((set, get) => ({
   environments: [],
   activeEnvironment: null,
   currentRootCollectionId: null,
+  // Bumped whenever collection variables change outside the Variables tab (e.g.
+  // a pre/post script or workflow sets one). Consumers watch this to reload the
+  // collection-variable list — same idea as setActiveEnvironment for env vars. (GH-62)
+  collectionVarsVersion: 0,
 
   setCollections: stateSetter('collections')(set),
   setExamples: stateSetter('examples')(set),
   setEnvironments: stateSetter('environments')(set),
   setActiveEnvironment: stateSetter('activeEnvironment')(set),
   setCurrentRootCollectionId: (v) => set({ currentRootCollectionId: v }),
+  bumpCollectionVars: () => set((s) => ({ collectionVarsVersion: s.collectionVarsVersion + 1 })),
 
   loadCollections: async (user, activeWorkspace, onCollectionsLoaded) => {
     if (!user) return;
@@ -83,6 +88,7 @@ const useCollectionStore = create((set, get) => ({
     environments: [],
     activeEnvironment: null,
     currentRootCollectionId: null,
+    collectionVarsVersion: 0,
   }),
 }));
 
