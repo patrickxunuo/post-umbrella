@@ -146,11 +146,17 @@ export function useResponseExecution({
         }
       }
 
+      // Transient local variables (pm.variables.set) accumulated across pre-scripts.
+      // Kept independent of the active environment so vars first created in a
+      // pre-script resolve in the request even with no active environment (GH-59).
+      let localVars = {};
+
       // Execute all pre-scripts in order
       for (const script of allPreScripts) {
         const preResult = await executeScript(script, {
           environment: currentEnv,
           collectionVariables: collectionVars,
+          localVariables: localVars,
           request: { method, url, headers, body },
         });
 
@@ -160,6 +166,12 @@ export function useResponseExecution({
         if (!preResult.success) {
           consoleLogs.push({ type: 'error', source: 'pre-script', message: `Error: ${preResult.errors[0]?.message || 'Unknown error'}`, timestamp: Date.now() });
           toast.error(`Pre-script error: ${preResult.errors[0]?.message || 'Unknown error'}`);
+        }
+
+        // varUpdates is the authoritative full local scope (seed + changes),
+        // so assign (not merge) — this also propagates pm.variables.unset().
+        if (preResult.varUpdates) {
+          localVars = preResult.varUpdates;
         }
 
         if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
@@ -177,11 +189,13 @@ export function useResponseExecution({
       const subEnv = (text) => substituteEnv(text, {
         environment: currentEnv,
         collectionVariables: collectionVars,
+        localVariables: localVars,
       });
 
       const resolvedUrl = substituteUrl(url, {
         environment: currentEnv,
         collectionVariables: collectionVars,
+        localVariables: localVars,
         pathVariables,
       });
       const resolvedHeaders = headers.map((header) => ({
@@ -282,6 +296,7 @@ export function useResponseExecution({
         const postResult = await executeScript(script, {
           environment: currentEnv,
           collectionVariables: collectionVars,
+          localVariables: localVars,
           response: result,
         });
 
@@ -291,6 +306,10 @@ export function useResponseExecution({
         if (!postResult.success) {
           consoleLogs.push({ type: 'error', source: 'post-script', message: `Error: ${postResult.errors[0]?.message || 'Unknown error'}`, timestamp: Date.now() });
           toast.error(`Post-script error: ${postResult.errors[0]?.message || 'Unknown error'}`);
+        }
+
+        if (postResult.varUpdates) {
+          localVars = postResult.varUpdates;
         }
 
         if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {

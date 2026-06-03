@@ -28,6 +28,7 @@ function createPmObject(context) {
     environment,
     onEnvironmentUpdate,
     collectionVariables,
+    localVariables,
     request,
     response,
     onRequestUpdate,
@@ -36,6 +37,9 @@ function createPmObject(context) {
   // Store for variables set during script execution
   const envUpdates = {};
   const collectionVarUpdates = {};
+  // Transient local scope (pm.variables) — seeded with vars set by earlier
+  // scripts in the same request execution, accumulated as this script runs.
+  const localUpdates = { ...(localVariables || {}) };
 
   const pm = {
     // Environment operations
@@ -160,10 +164,28 @@ function createPmObject(context) {
       },
     } : null,
 
-    // Variables (simplified - just aliases to environment for now)
+    // Variables — Postman's transient "local" scope. Distinct from the
+    // environment: pm.variables.set does NOT persist to the active environment
+    // (and works even when there is no active environment). Resolution order on
+    // get: local > environment > collection. (GH-59)
     variables: {
-      get: (key) => pm.environment.get(key),
-      set: (key, value) => pm.environment.set(key, value),
+      get: (key) => {
+        if (key in localUpdates) {
+          return tryParseJson(localUpdates[key]);
+        }
+        const envVal = pm.environment.get(key);
+        if (envVal !== undefined) return envVal;
+        return pm.collectionVariables.get(key);
+      },
+      set: (key, value) => {
+        if (value === undefined || value === null) { localUpdates[key] = ''; return; }
+        localUpdates[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      },
+      unset: (key) => {
+        delete localUpdates[key];
+      },
+      // Internal: Get all local variables (seed + script-set) for substitution.
+      _getUpdates: () => localUpdates,
     },
 
     // Test function (simplified - just logs for now)
@@ -234,7 +256,9 @@ function createPmObject(context) {
  */
 export async function executeScript(script, context) {
   if (!script || !script.trim()) {
-    return { success: true, logs: [], errors: [], envUpdates: {} };
+    // Preserve the seeded local scope so an empty/whitespace script in a chain
+    // doesn't wipe vars set by earlier scripts in the same request execution.
+    return { success: true, logs: [], errors: [], envUpdates: {}, collectionVarUpdates: {}, varUpdates: { ...(context?.localVariables || {}) } };
   }
 
   const logs = [];
@@ -282,6 +306,7 @@ export async function executeScript(script, context) {
       errors,
       envUpdates: pm.environment._getUpdates(),
       collectionVarUpdates: pm.collectionVariables._getUpdates(),
+      varUpdates: pm.variables._getUpdates(),
     };
   } catch (error) {
     errors.push({
@@ -296,6 +321,7 @@ export async function executeScript(script, context) {
       errors,
       envUpdates: pm.environment._getUpdates(),
       collectionVarUpdates: pm.collectionVariables._getUpdates(),
+      varUpdates: pm.variables._getUpdates(),
     };
   }
 }

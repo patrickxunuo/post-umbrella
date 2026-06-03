@@ -60,6 +60,10 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
     }));
 
     let currentEnv = activeEnvironment;
+    // Transient local variables (pm.variables.set) from the root collection
+    // pre-script — seed each step so vars first created there resolve even with
+    // no active environment (GH-59).
+    let rootLocalVars = {};
 
     setRunState({ running: true, currentStep: startFromIndex, results, startTime: Date.now() });
 
@@ -72,6 +76,9 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         environment: currentEnv,
         collectionVariables: collectionVars,
       });
+      if (preResult.varUpdates) {
+        rootLocalVars = preResult.varUpdates;
+      }
       if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
         currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
         await data.updateCurrentValues(currentEnv.id, preResult.envUpdates);
@@ -116,16 +123,26 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           try { collectionVars = await data.getCollectionVariables(rootId); } catch {}
         }
 
+        // Transient local variables for this step, seeded from the root
+        // collection pre-script. Local scope is per request execution (GH-59).
+        let localVars = { ...rootLocalVars };
+
         // Execute pre-scripts
         for (const script of allPreScripts) {
           const preResult = await executeScript(script, {
             environment: currentEnv,
             collectionVariables: collectionVars,
+            localVariables: localVars,
             request: { method: request.method, url: request.url, headers: request.headers, body: request.body },
           });
           preResult.logs.forEach(l => stepLogs.push({ ...l, source: 'pre-script' }));
           if (!preResult.success) {
             stepLogs.push({ type: 'error', source: 'pre-script', message: `Error: ${preResult.errors[0]?.message || 'Unknown error'}` });
+          }
+          // Authoritative full local scope (seed + changes) — assign, not merge,
+          // so pm.variables.unset() propagates across scripts.
+          if (preResult.varUpdates) {
+            localVars = preResult.varUpdates;
           }
           if (Object.keys(preResult.envUpdates).length > 0 && currentEnv) {
             currentEnv = applyEnvironmentUpdates(currentEnv, preResult.envUpdates);
@@ -141,11 +158,13 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
         const subEnv = (text) => substituteEnv(text, {
           environment: currentEnv,
           collectionVariables: collectionVars,
+          localVariables: localVars,
         });
 
         const resolvedUrl = substituteUrl(request.url, {
           environment: currentEnv,
           collectionVariables: collectionVars,
+          localVariables: localVars,
           pathVariables: request.path_variables || [],
         });
         const resolvedHeaders = (request.headers || [])
@@ -225,11 +244,15 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
           const postResult = await executeScript(script, {
             environment: currentEnv,
             collectionVariables: collectionVars,
+            localVariables: localVars,
             response: result,
           });
           postResult.logs.forEach(l => stepLogs.push({ ...l, source: 'post-script' }));
           if (!postResult.success) {
             stepLogs.push({ type: 'error', source: 'post-script', message: `Error: ${postResult.errors[0]?.message || 'Unknown error'}` });
+          }
+          if (postResult.varUpdates) {
+            localVars = postResult.varUpdates;
           }
           if (Object.keys(postResult.envUpdates).length > 0 && currentEnv) {
             currentEnv = applyEnvironmentUpdates(currentEnv, postResult.envUpdates);
