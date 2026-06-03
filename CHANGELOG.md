@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.1.20
+
+### Fixed
+
+- **Variables Set in a Pre-Request Script Now Resolve in Headers / URL / Body** — `pm.variables.set("token", …)` in a pre-request script had no effect when the variable wasn't already defined somewhere (collection/environment): the request was sent with the literal `{{token}}` left unresolved. The substitution step read from a scope snapshotted before the script ran, so newly-created variables never made it in. `pm.variables` is now a proper transient **local scope** — seeded from earlier scripts in the same execution and accumulated as each script runs — that resolves across URL, query params, headers, body, and auth, with priority **local > environment > collection**. It resolves even when no environment is active, and `pm.variables.unset()` propagates correctly. `pm.environment.set()` continues to create new keys as before. Closes #59. (#61)
+- **`pm.collectionVariables.set()` No Longer Silently Drops Undeclared Keys** — Setting a collection variable from a pre/post script only worked if the key was already declared in the collection's Variables tab; a brand-new key was silently discarded at the data layer (no `collection_variables` row to attach the per-user value to), so `{{key}}` stayed unresolved. `updateCollectionVariableCurrentValues` now auto-creates the missing variable (shared declaration with empty `initial_value`, script value stored as the per-user `current_value`) — mirroring how `pm.environment.set()` appends a new env variable. Postman parity. Affects both pre-request and post-response scripts, and the workflow runner. Closes #62. (#63)
+- **Variable Popover Reflects Script-Set Collection Variables** — After a pre/post script set a collection variable, hovering the `{{var}}` token still showed the stale value — the execution hooks persisted the change but never refreshed the popover's `collectionVariables` source. The hooks now trigger a collection-variable reload after applying script updates, so the popover shows the current value (matching the environment-variable behavior, which already refreshed). (#63)
+
+### Database
+
+- No migration required. Auto-created collection variables are written through the existing `collection_variables` / `collection_variable_user_values` tables.
+
 ## v0.1.19
 
 ### New
