@@ -6,10 +6,16 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Single-pass merge — collection first, env overrides. Avoids the bug where
-// running collection sub then env sub sequentially makes env unable to override
-// because the first pass already replaced the {{key}} pattern.
-function buildEnvMap({ environment, collectionVariables }) {
+// Single-pass merge — collection first, env overrides, local (script-set) vars
+// win over both. Avoids the bug where running collection sub then env sub
+// sequentially makes env unable to override because the first pass already
+// replaced the {{key}} pattern.
+//
+// Priority (low → high): collection < environment < local. `localVariables` is
+// the transient scope produced by pm.variables.set in a pre-request script
+// (GH-59); it must override predefined env/collection values and resolve even
+// when there is no active environment.
+function buildEnvMap({ environment, collectionVariables, localVariables }) {
   const resolved = new Map();
   if (collectionVariables) {
     for (const v of collectionVariables) {
@@ -21,6 +27,12 @@ function buildEnvMap({ environment, collectionVariables }) {
     for (const v of environment.variables) {
       if (v.enabled === false || !v.key) continue;
       resolved.set(v.key, v.value ?? v.current_value ?? v.initial_value ?? '');
+    }
+  }
+  if (localVariables) {
+    for (const [key, value] of Object.entries(localVariables)) {
+      if (!key) continue;
+      resolved.set(key, value ?? '');
     }
   }
   return resolved;
@@ -64,21 +76,21 @@ function computePathRange(url) {
   return { pathStart, pathEnd };
 }
 
-// Substitute {{env}} and {{collection}} variables in arbitrary text.
+// Substitute {{env}}/{{collection}}/{{local}} variables in arbitrary text.
 // Used for headers, body, auth, form-data, query params.
-export function substituteEnv(text, { environment, collectionVariables } = {}) {
+export function substituteEnv(text, { environment, collectionVariables, localVariables } = {}) {
   if (!text) return text;
-  return applyEnvSubstitution(text, buildEnvMap({ environment, collectionVariables }));
+  return applyEnvSubstitution(text, buildEnvMap({ environment, collectionVariables, localVariables }));
 }
 
 // Substitute the URL: applies path-vars first (with their values env-resolved),
 // then env substitution on whatever remains.
 export function substituteUrl(
   url,
-  { environment, collectionVariables, pathVariables } = {}
+  { environment, collectionVariables, localVariables, pathVariables } = {}
 ) {
   if (!url) return url;
-  const envMap = buildEnvMap({ environment, collectionVariables });
+  const envMap = buildEnvMap({ environment, collectionVariables, localVariables });
 
   let result = url;
   if (pathVariables && pathVariables.length > 0) {
