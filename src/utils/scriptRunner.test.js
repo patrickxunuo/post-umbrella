@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { executeScript } from './scriptRunner';
+import { applyCollectionVariableUpdates, executeScript } from './scriptRunner';
 import { substituteEnv, substituteUrl } from './substituteVariables';
 
 // GH-59: A variable first CREATED inside a pre-request script (pm.variables.set)
@@ -112,5 +112,64 @@ describe('GH-59: pre-request script local variables resolve in substitution', ()
       localVariables: { token: 'abc123' },
     });
     expect(out).toBe('https://api/abc123');
+  });
+});
+
+// GH-62 Part 1: pm.collectionVariables.set() must auto-create undeclared keys —
+// parity with applyEnvironmentUpdates so the new key resolves in the request.
+describe('GH-62: applyCollectionVariableUpdates (collection-scope create-on-set)', () => {
+  it('appends a brand-new collection variable set from a script', () => {
+    const out = applyCollectionVariableUpdates([], { token: 'abc123' });
+    const tokenVar = out.find(v => v.key === 'token');
+    expect(tokenVar).toBeTruthy();
+    expect(tokenVar.current_value).toBe('abc123');
+    expect(tokenVar.initial_value).toBe('');
+    expect(tokenVar.enabled).toBe(true);
+  });
+
+  it('a newly created var resolves in substitution via the value field', () => {
+    const updated = applyCollectionVariableUpdates([], { token: 'abc123' });
+    expect(substituteEnv('Bearer {{token}}', { collectionVariables: updated })).toBe('Bearer abc123');
+  });
+
+  it('updates the current_value of an already-declared collection variable', () => {
+    const existing = [{ key: 'host', initial_value: 'old', current_value: 'old', value: 'old', enabled: true }];
+    const out = applyCollectionVariableUpdates(existing, { host: 'new' });
+    const hostVar = out.find(v => v.key === 'host');
+    expect(hostVar.current_value).toBe('new');
+    expect(out.filter(v => v.key === 'host')).toHaveLength(1);
+    // Does not mutate the input array.
+    expect(existing[0].current_value).toBe('old');
+  });
+
+  it('a null update clears the current_value but keeps the declaration', () => {
+    const existing = [{ key: 'host', initial_value: 'fallback', current_value: 'live', value: 'live', enabled: true }];
+    const out = applyCollectionVariableUpdates(existing, { host: null });
+    const hostVar = out.find(v => v.key === 'host');
+    expect(hostVar).toBeTruthy();
+    expect(hostVar.current_value).toBe('');
+    expect(hostVar.value).toBe('fallback');
+  });
+
+  it('an empty-string update clears the current_value and falls back to initial_value (parity with persistence)', () => {
+    const existing = [{ key: 'host', initial_value: 'fallback', current_value: 'live', value: 'live', enabled: true }];
+    const out = applyCollectionVariableUpdates(existing, { host: '' });
+    const hostVar = out.find(v => v.key === 'host');
+    expect(hostVar.current_value).toBe('');
+    expect(hostVar.value).toBe('fallback');
+  });
+
+  it('returns the list unchanged when there are no updates', () => {
+    const existing = [{ key: 'host', value: 'x', enabled: true }];
+    expect(applyCollectionVariableUpdates(existing, {})).toEqual(existing);
+  });
+
+  it('end-to-end: a pre-script that sets an undeclared collection var resolves in the request', async () => {
+    const result = await executeScript('pm.collectionVariables.set("token", "abc123");', {
+      environment: null,
+      collectionVariables: [],
+    });
+    const collectionVariables = applyCollectionVariableUpdates([], result.collectionVarUpdates);
+    expect(substituteEnv('Bearer {{token}}', { collectionVariables })).toBe('Bearer abc123');
   });
 });

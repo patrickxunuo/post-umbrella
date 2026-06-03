@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
 import JSON5 from 'json5';
 import * as data from '../data/index.js';
-import { applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
+import { applyCollectionVariableUpdates, applyEnvironmentUpdates, executeScript } from '../utils/scriptRunner';
 import { substituteEnv, substituteUrl } from '../utils/substituteVariables';
+import useCollectionStore from '../stores/collectionStore';
 import useCookieStore from '../stores/cookieStore';
 import { extractSetCookies, buildCookieHeader } from '../utils/cookies.js';
 
@@ -86,6 +87,7 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
       }
       if (Object.keys(preResult.collectionVarUpdates).length > 0 && collectionId) {
         await data.updateCollectionVariableCurrentValues(collectionId, preResult.collectionVarUpdates);
+        useCollectionStore.getState().bumpCollectionVars();
       }
     }
 
@@ -150,8 +152,11 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
             setActiveEnvironment?.(currentEnv);
           }
           if (Object.keys(preResult.collectionVarUpdates).length > 0 && rootId) {
+            // Apply in-memory (incl. new keys) so they resolve in this step,
+            // then persist + notify consumers to refresh. (GH-62)
+            collectionVars = applyCollectionVariableUpdates(collectionVars, preResult.collectionVarUpdates);
             await data.updateCollectionVariableCurrentValues(rootId, preResult.collectionVarUpdates);
-            collectionVars = await data.getCollectionVariables(rootId);
+            useCollectionStore.getState().bumpCollectionVars();
           }
         }
 
@@ -260,8 +265,9 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
             setActiveEnvironment?.(currentEnv);
           }
           if (Object.keys(postResult.collectionVarUpdates).length > 0 && rootId) {
+            collectionVars = applyCollectionVariableUpdates(collectionVars, postResult.collectionVarUpdates);
             await data.updateCollectionVariableCurrentValues(rootId, postResult.collectionVarUpdates);
-            collectionVars = await data.getCollectionVariables(rootId);
+            useCollectionStore.getState().bumpCollectionVars();
           }
         }
 
@@ -302,6 +308,7 @@ export function useWorkflowExecution({ activeEnvironment, collections, openTabs,
       }
       if (Object.keys(postResult.collectionVarUpdates).length > 0 && collectionId) {
         await data.updateCollectionVariableCurrentValues(collectionId, postResult.collectionVarUpdates);
+        useCollectionStore.getState().bumpCollectionVars();
       }
     }
 

@@ -104,7 +104,8 @@
 - [x] coll-var-create — e2e/collection-variables.spec.ts — 1 test
 - [x] coll-var-edit — e2e/collection-variables.spec.ts — 1 test
 - [x] coll-var-substitution — e2e/collection-variables.spec.ts — 1 test
-- [ ] coll-var-script-set — Post-script sets collection variable via pm.collectionVariables.set() — complex
+- [x] coll-var-script-set — Post-script sets collection variable via pm.collectionVariables.set() — e2e/collection-variables.spec.ts — 1 test
+- [x] coll-var-script-autocreate — Pre-script sets an UNDECLARED collection var; it is auto-created + resolves (GH-62 regression) — e2e/collection-variables.spec.ts — 1 test (executed & passing 2026-06-03, real local Supabase + Vite dev server). Red→green also captured at the data layer in src/data/supabase/collectionVars.test.js (Vitest, mocked Supabase) and the parity helper in src/utils/scriptRunner.test.js.
 
 ---
 
@@ -235,7 +236,7 @@
 
 ## Bugs Discovered
 <!-- Format: - [JIRA-ID] description (found in flow-name) — status -->
-(none yet)
+- [GH-62] pm.collectionVariables.set() silently dropped undeclared keys (no collection_variables row to attach a current_value to) + VariablePopover showed a stale collection-var value after a script ran (coll-var-script-autocreate) — FIXED (auto-create on set, mirroring pm.environment.set; collectionVarsVersion bump refreshes the popover).
 
 ## Design Discrepancies
 <!-- Intentional differences between Figma/specs and implementation -->

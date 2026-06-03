@@ -375,3 +375,52 @@ export function applyEnvironmentUpdates(environment, updates) {
 
   return { ...environment, variables };
 }
+
+/**
+ * Apply collection-variable updates to the in-memory collection variables list.
+ * Parity with applyEnvironmentUpdates (GH-62): a key set from a script that is
+ * not yet declared is appended (empty initial_value + script current_value) so
+ * it resolves in the current request — mirroring pm.environment.set. Updates the
+ * per-user current_value, never the shared initial_value.
+ * @param {Array} collectionVariables - Current collection variables (key/value/current_value/...)
+ * @param {Object} updates - Updates from script execution ({ key: value | null })
+ * @returns {Array} Updated collection variables list
+ */
+export function applyCollectionVariableUpdates(collectionVariables, updates) {
+  const variables = [...(collectionVariables || [])];
+  if (!updates || Object.keys(updates).length === 0) {
+    return variables;
+  }
+
+  Object.entries(updates).forEach(([key, value]) => {
+    if (!key) return;
+    const existingIndex = variables.findIndex(v => v.key === key);
+
+    // Empty/null clears the per-user current_value — matching the persistence
+    // layer (updateCollectionVariableCurrentValues), which deletes the user
+    // value so the variable falls back to its shared initial_value. Keeping the
+    // two layers symmetric avoids a brief mismatch between the in-request value
+    // and what the popover shows after the post-execution reload.
+    if (value === null || value === '') {
+      if (existingIndex >= 0) {
+        variables[existingIndex] = {
+          ...variables[existingIndex],
+          current_value: '',
+          value: variables[existingIndex].initial_value || '',
+        };
+      }
+      // An undeclared key cleared to empty has nothing meaningful to create.
+    } else if (existingIndex >= 0) {
+      variables[existingIndex] = {
+        ...variables[existingIndex],
+        current_value: value,
+        value,
+      };
+    } else {
+      // Auto-create on set, like the environment scope.
+      variables.push({ key, initial_value: '', current_value: value, value, enabled: true });
+    }
+  });
+
+  return variables;
+}
