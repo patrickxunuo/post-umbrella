@@ -7,7 +7,16 @@ import { getCollectionVariables } from './collectionVars.js';
 
 // Import/Export
 // Helper: Parse URL into Postman format
-function parseUrl(urlString) {
+export function parseUrl(urlString) {
+  // Template-variable URLs can't be parsed reliably by `new URL()` — it either
+  // throws (no scheme, e.g. `{{base_url}}/api`) or silently percent-encodes the
+  // `{{var}}` segments in the path/query (e.g. `https://{{host}}/{{id}}` →
+  // `%7B%7Bid%7D%7D`), corrupting the variable. Either way real Postman ends up
+  // with no usable `host`/`path` and renders an empty URL (GH-64). Parse these
+  // manually so the variables survive verbatim.
+  if (typeof urlString === 'string' && urlString.includes('{{')) {
+    return parseTemplatedUrl(urlString);
+  }
   try {
     const url = new URL(urlString);
     return {
@@ -18,8 +27,65 @@ function parseUrl(urlString) {
       query: [...url.searchParams].map(([key, value]) => ({ key, value })),
     };
   } catch {
-    return { raw: urlString };
+    // Scheme-less hosts (`api.example.com/x`) also throw — split manually so the
+    // exported `url` object still carries `host`/`path`.
+    return parseTemplatedUrl(urlString);
   }
+}
+
+// Fallback parser for URLs `new URL()` can't handle. Splits the raw string into
+// Postman's structured host/path/query/protocol parts, preserving `{{var}}`
+// segments verbatim (matching Postman's own export shape, e.g.
+// `{{base_url}}/bearer` → host `['{{base_url}}']`, path `['bearer']`).
+function parseTemplatedUrl(urlString) {
+  if (typeof urlString !== 'string' || urlString === '') {
+    return {};
+  }
+  let rest = urlString;
+
+  // Pull off a leading scheme (`https://`); a templated scheme like
+  // `{{scheme}}://` isn't a clean scheme and is left in the host part.
+  let protocol;
+  const schemeMatch = rest.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
+  if (schemeMatch) {
+    protocol = schemeMatch[1];
+    rest = rest.slice(schemeMatch[0].length);
+  }
+
+  // Drop any fragment, then split off the query string.
+  const hashIdx = rest.indexOf('#');
+  if (hashIdx !== -1) rest = rest.slice(0, hashIdx);
+
+  let query = [];
+  const qIdx = rest.indexOf('?');
+  if (qIdx !== -1) {
+    const queryStr = rest.slice(qIdx + 1);
+    rest = rest.slice(0, qIdx);
+    query = queryStr.split('&').filter(Boolean).map((pair) => {
+      const eq = pair.indexOf('=');
+      return eq === -1
+        ? { key: pair, value: '' }
+        : { key: pair.slice(0, eq), value: pair.slice(eq + 1) };
+    });
+  }
+
+  // Everything before the first `/` is the host; the remainder is the path.
+  const slashIdx = rest.indexOf('/');
+  const hostPart = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+  const pathPart = slashIdx === -1 ? '' : rest.slice(slashIdx + 1);
+
+  const result = {
+    host: hostPart ? hostPart.split('.') : [],
+    path: pathPart.split('/').filter(Boolean),
+    query,
+  };
+  if (protocol) result.protocol = protocol;
+  return result;
+}
+
+// Helper: Build a Postman `url` object (raw + structured parts) from a URL string.
+function buildPostmanUrl(rawUrl) {
+  return { raw: rawUrl, ...parseUrl(rawUrl) };
 }
 
 // Build a Postman-shaped `auth` object from our auth_type / auth_token.
@@ -48,7 +114,7 @@ function buildPostmanEvents(preScript, postScript) {
 }
 
 // Helper: Build Postman request format
-function buildPostmanRequest(req, examples, parentAuth) {
+export function buildPostmanRequest(req, examples, parentAuth) {
   const headers = Array.isArray(req.headers) ? req.headers : [];
 
   const request = {
@@ -58,10 +124,7 @@ function buildPostmanRequest(req, examples, parentAuth) {
       value: h.value,
       disabled: h.enabled === false,
     })),
-    url: {
-      raw: req.url,
-      ...parseUrl(req.url),
-    },
+    url: buildPostmanUrl(req.url),
   };
 
   if (req.body && req.body_type !== 'none') {
@@ -89,7 +152,7 @@ function buildPostmanRequest(req, examples, parentAuth) {
             key: h.key,
             value: h.value,
           })),
-          url: { raw: exReqData.url || req.url },
+          url: buildPostmanUrl(exReqData.url || req.url),
           body: exReqData.body ? { mode: 'raw', raw: exReqData.body } : undefined,
         },
         status: exResData.statusText || '',

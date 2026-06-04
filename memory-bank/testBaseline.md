@@ -85,6 +85,7 @@
 - [x] import-curl — e2e/import.spec.ts — 1 test
 - [x] import-postman — e2e/import.spec.ts — 1 test
 - [ ] export-collection — User exports collection to Postman format — simple
+- [x] export-url-serialization (GH-64) — Unit regression src/data/supabase/sync.test.js (10 cases). Templated URLs (`{{base_url}}/...`) must export with structured `host`/`path` (not bare `{raw}`) so real Postman renders the URL instead of blank. Red→green captured. Non-UI-surfaceable (round-trip is into *real* Postman), so guarded at unit level rather than E2E — consistent with the serialization nature of the bug.
 
 ---
 
