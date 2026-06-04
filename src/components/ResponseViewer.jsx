@@ -6,6 +6,7 @@ import { BinaryViewToggle } from './BinaryViewToggle';
 import { useToast } from './Toast';
 import { downloadResponse } from '../utils/downloadResponse';
 import { getResponseCookies } from '../utils/cookies';
+import { reinsertJsonCommas } from '../utils/jsonCopyFix';
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -545,6 +546,21 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     }
   };
 
+  // GH-65: @uiw/react-json-view omits the separating commas from the selectable
+  // DOM text, so a manual cursor-drag copy yields invalid JSON. Intercept the
+  // copy and reinsert the missing commas. The library's own copy button uses
+  // navigator.clipboard directly and never fires this event, so it's unaffected.
+  const handleJsonCopy = (e) => {
+    const selection = window.getSelection?.();
+    if (!selection || selection.isCollapsed) return;
+    const selected = selection.toString();
+    if (!selected) return;
+    const fixed = reinsertJsonCommas(selected);
+    if (fixed === selected) return; // nothing to repair — let the native copy proceed
+    e.clipboardData?.setData('text/plain', fixed);
+    e.preventDefault();
+  };
+
   const handleRootKeyDown = (e) => {
     const isFind = (e.ctrlKey || e.metaKey) && typeof e.key === 'string' && e.key.toLowerCase() === 'f';
     if (isFind && isJsonBody && !isExample) {
@@ -843,7 +859,7 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
                 )}
               </div>
 
-              <div className="json-view-wrapper">
+              <div className="json-view-wrapper" onCopy={handleJsonCopy}>
                 <JsonView
                   key={jsonViewKey}
                   value={jsonBody}

@@ -480,6 +480,17 @@
   background: var(--bg-hover);
 }
 
+/* GH-65: the "N items" size badge and collapsed-node ellipsis are decorative,
+   not part of the JSON. Keep them visible but exclude them from text selection
+   so a manual cursor-drag copy yields valid JSON (the helper in jsonCopyFix.js
+   strips any that still leak through). */
+.json-view-wrapper .w-rjv-object-size,
+.json-view-wrapper .w-rjv-object-extra,
+.json-view-wrapper .w-rjv-ellipsis {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Ensure string values wrap properly */
 .json-view-wrapper [data-testid="value-string"] {
   white-space: pre-wrap;
