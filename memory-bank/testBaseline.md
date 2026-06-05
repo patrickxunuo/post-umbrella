@@ -224,6 +224,13 @@
 
 ---
 
+## Module: Response Viewer — JSON copy (P1)
+
+### Flows
+- [ ] json-copy-commas — Manual cursor-selection copy of a JSON response yields valid, comma-separated JSON (GH-65) — **regression captured; E2E authored, not yet executed in CI/worktree**: `@uiw/react-json-view` omits the inter-sibling commas from the selectable DOM text, so a native drag-select copy dropped them and produced invalid JSON. Fix intercepts the wrapper's `onCopy` and reinserts commas via the pure helper `reinsertJsonCommas` (`src/utils/jsonCopyFix.js`). Red → green captured by `src/utils/jsonCopyFix.test.js` (10 Vitest cases: flat/nested/array repair, partial-selection separation, no comma after container-open, no comma before a closer, idempotence on already-valid text, brace-in-string safety, single-value passthrough). E2E `e2e/response-viewer-copy-commas.spec.ts` selects the rendered tree, copies via the real clipboard path, and asserts `JSON.parse` succeeds — authored but unrunnable in this worktree (no Supabase backend creds; `auth.setup` returns 401). Run with the cookie-tab batch once a real backend is available.
+
+---
+
 ## Skipped / Deferred
 - auth-unauthorized — Requires separate test user setup, defer to later
 - export-collection — Low priority, can test manually
@@ -238,6 +245,7 @@
 ## Bugs Discovered
 <!-- Format: - [JIRA-ID] description (found in flow-name) — status -->
 - [GH-62] pm.collectionVariables.set() silently dropped undeclared keys (no collection_variables row to attach a current_value to) + VariablePopover showed a stale collection-var value after a script ran (coll-var-script-autocreate) — FIXED (auto-create on set, mirroring pm.environment.set; collectionVarsVersion bump refreshes the popover).
+- [GH-65] Manual cursor-selection copy of a JSON response dropped the inter-sibling commas (react-json-view omits them from selectable DOM text), producing invalid JSON; the built-in copy button was unaffected (json-copy-commas) — FIXED (wrapper `onCopy` reinserts commas via `reinsertJsonCommas`; red→green captured in `src/utils/jsonCopyFix.test.js`).
 
 ## Design Discrepancies
 <!-- Intentional differences between Figma/specs and implementation -->
