@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.21
+
+### Fixed
+
+- **Cursor-Selection Copy of a JSON Response Now Produces Valid JSON** — Manually drag-selecting part (or all) of a JSON response body and copying it yielded invalid JSON. `@uiw/react-json-view` lays its tree out as a one-token-per-line DOM stream, so the selectable text drops the separating commas, splits a container key across lines (`"key"` / `:` / `{`), prefixes every array element with its index (`0:"x"`), and carries non-JSON `N items` size badges. The copy interceptor previously only re-inserted commas, which corrupted split container keys (`"slideshow",`). It now reconstructs valid JSON via a container-stack state machine that drops the size badges and array-index prefixes, re-joins split `key`/`:`/value triples, and re-inserts separators — balanced selections come back pretty-printed and valid, partial selections come back separator-repaired. The library's built-in copy button (which uses `navigator.clipboard` directly) is unaffected. Closes #65. (#68)
+
 ## v0.1.20
 
 ### Fixed
