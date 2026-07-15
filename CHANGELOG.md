@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.22
+
+### Improved
+
+- **New App Icon — Vivid Gradient Underlay (No More Grey Backdrop on macOS)** — The umbrella glyph now sits on a full-bleed diagonal blue → violet → magenta gradient tile instead of floating on transparency. macOS places icons that don't fill their canvas onto a default grey squircle backdrop (Dock and Safari web apps alike), which is what made the old icon look washed out. The entire `src-tauri/icons/` set (`icon.icns`, `icon.ico`, all PNG sizes, Windows Store / Android / iOS variants) was regenerated from a new 1254×1254 master via `tauri icon`, so the desktop bundle picks the icon up on the next `tauri build`. Both web apps (main + marketing site) get a matching 64×64 `favicon.png` and a new 180×180 `apple-touch-icon.png` — full-bleed and opaque, since macOS masks the corners itself and transparent corners are exactly what triggers the grey underlay. The glyph was also redrawn with a proper J-hook handle (the old handle was a closed circle). `umbrella.svg` inline logos (website Hero/Footer/AppMockup, app loading screen) are unchanged.
+
 ## v0.1.21
 
 ### Fixed
