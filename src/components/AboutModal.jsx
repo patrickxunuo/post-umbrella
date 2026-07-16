@@ -19,7 +19,7 @@ export function AboutModal({ onClose, updateAvailable, tauriUpdate, downloading,
           <X size={16} />
         </button>
         <div className="about-modal-body">
-          <img src="/umbrella.svg" alt="Post Umbrella" className="about-logo" />
+          <img src="/umbrella-icon.png" alt="Post Umbrella" className="about-logo" />
           <h2 className="about-title">Post Umbrella</h2>
           {appVersion && (
             <span className="about-version">v{appVersion}</span>

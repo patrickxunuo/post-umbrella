@@ -3,7 +3,7 @@ export default function Footer() {
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <img src="/umbrella.svg" alt="" />
+          <img src="/umbrella-icon.png" alt="" />
           <span>Post Umbrella</span>
         </div>
         <div className="footer-right">

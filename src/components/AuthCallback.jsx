@@ -99,7 +99,7 @@ export function AuthCallback() {
     <div className="login-container">
       <div className="login-box">
         <div className={`login-logo${!error && !done ? ' login-logo-breathing' : ''}`}>
-          <img src="/umbrella.svg" alt="Post Umbrella" />
+          <img src="/umbrella-icon.png" alt="Post Umbrella" />
         </div>
         {error ? (
           <>

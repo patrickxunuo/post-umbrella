@@ -342,7 +342,7 @@ export default function AppMockup({ theme, onToggleTheme }) {
               <span /><span /><span />
             </div>
             <div className="mh-left">
-              <img src="/umbrella.svg" alt="" className="mh-logo" />
+              <img src="/umbrella-icon.png" alt="" className="mh-logo" />
               <span className="mh-title">Post Umbrella</span>
               <div className="mh-workspace">
                 <span>My Workspace</span>
