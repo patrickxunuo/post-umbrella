@@ -5,7 +5,7 @@ export default function Hero() {
     <section className="hero">
       <div className="hero-glow" />
 
-      <img src="/umbrella.svg" alt="" className="hero-logo" />
+      <img src="/umbrella-icon.png" alt="" className="hero-logo" />
 
       <p className="hero-brand">Post Umbrella</p>
 

@@ -133,7 +133,7 @@ export function Login({ onLogin }) {
         <WindowControls className="login-window-controls" compact />
         <div className="login-box">
           <div className="login-logo login-logo-breathing">
-            <img src="/umbrella.svg" alt="Post Umbrella" />
+            <img src="/umbrella-icon.png" alt="Post Umbrella" />
           </div>
           <h1>Waiting for browser <span className="animated-dots"><span>.</span><span>.</span><span>.</span></span></h1>
           <p className="login-subtitle">
@@ -159,7 +159,7 @@ export function Login({ onLogin }) {
         <WindowControls className="login-window-controls" compact />
         <div className="login-box">
           <div className="login-logo">
-            <img src="/umbrella.svg" alt="Post Umbrella" />
+            <img src="/umbrella-icon.png" alt="Post Umbrella" />
           </div>
           <h1>Check your email</h1>
           <p className="login-subtitle">
@@ -186,7 +186,7 @@ export function Login({ onLogin }) {
       <WindowControls className="login-window-controls" compact />
       <div className="login-box">
         <div className="login-logo">
-          <img src="/umbrella.svg" alt="Post Umbrella" />
+          <img src="/umbrella-icon.png" alt="Post Umbrella" />
         </div>
         <h1>Post Umbrella</h1>
         <p className="login-subtitle">Sign in to continue</p>

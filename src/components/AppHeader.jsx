@@ -41,7 +41,7 @@ export function AppHeader({
     <header className="app-header" data-tauri-drag-region>
       <div className="header-left">
         <div className="app-title">
-          <img src="/umbrella.svg" alt="" className="app-logo" />
+          <img src="/umbrella-icon.png" alt="" className="app-logo" />
           <h1>Post Umbrella</h1>
         </div>
         <WorkspaceSelector
