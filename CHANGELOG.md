@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.23
+
+### Improved
+
+- **App Icon Refreshed — Layered 3D Hexagonal Tile** — Replaces the flat gradient square from v0.1.22 with a layered 3D hexagonal tile (cyan → blue → violet gradient, white umbrella glyph). The supplied master image had its transparency checkerboard baked into the pixels (24-bit RGB, no alpha channel); real transparency was reconstructed by flood-filling the checker tones inward from the image borders — the cleaned master lives at the repo root as `new_post_umbrella_alpha.png` for future regeneration. The desktop icon set (`src-tauri/icons/`, all platforms) was regenerated from it via `tauri icon`. The icon now also replaces the in-app top-left header logo (`AppHeader`), the Login page logo (all three auth states), the website hero logo, and both favicons — via a new 256px transparent `umbrella-icon.png` UI asset and a 64px `favicon.png` in each app. `apple-touch-icon.png` is flattened onto white because iOS/macOS touch icons require opaque full-bleed images. `umbrella.svg` remains in AboutModal, AuthCallback, the app loading screen, and the website Footer/AppMockup.
+
 ## v0.1.22
 
 ### Improved
