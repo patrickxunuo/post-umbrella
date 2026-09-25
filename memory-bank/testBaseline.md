@@ -12,8 +12,9 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 39 / 40 baseline flows + 23 path-variables tests
-- Current batch: Path Variables (#38) complete; #40 caret-insert regression test added
+- Completed: 39 / 40 baseline flows + 23 path-variables tests + 11 virtualized-JSON-tree tests (GH-70)
+- Current batch: Path Variables (#38) complete; #40 caret-insert regression test added; GH-70 json-tree-virtualized executed & passing
+- Environment note (2026-09-24): specs that send to external hosts (httpbin.org, picsum, openapi fixtures) go through the Supabase edge proxy; when the `supabase_edge_runtime_post-umbrella` container is down they fail with `element(s) not found` on the response surface (64 tests, identical on base). Local `127.0.0.1` URLs bypass the proxy, so the GH-70 fixture server (`e2e/helpers/jsonFixtureServer.ts`) runs without it.
 
 ---
 
@@ -228,6 +229,13 @@
 
 ### Flows
 - [ ] json-copy-commas — Manual cursor-selection copy of a JSON response yields valid, comma-separated JSON (GH-65) — **regression captured; E2E authored, not yet executed in CI/worktree**: `@uiw/react-json-view` omits the inter-sibling commas from the selectable DOM text, so a native drag-select copy dropped them and produced invalid JSON. Fix intercepts the wrapper's `onCopy` and reinserts commas via the pure helper `reinsertJsonCommas` (`src/utils/jsonCopyFix.js`). Red → green captured by `src/utils/jsonCopyFix.test.js` (10 Vitest cases: flat/nested/array repair, partial-selection separation, no comma after container-open, no comma before a closer, idempotence on already-valid text, brace-in-string safety, single-value passthrough). E2E `e2e/response-viewer-copy-commas.spec.ts` selects the rendered tree, copies via the real clipboard path, and asserts `JSON.parse` succeeds — authored but unrunnable in this worktree (no Supabase backend creds; `auth.setup` returns 401). Run with the cookie-tab batch once a real backend is available.
+
+---
+
+## Module: Response Viewer — virtualized JSON tree (P0)
+
+### Flows
+- [x] json-tree-virtualized — Row-virtualized JSON tree (GH-70) — `e2e/response-viewer-virtualized-tree.spec.ts` — 11 tests (FE-001..011), **executed & passing 2026-09-24** on real local Supabase + Vite + the in-test Node fixture server (`/large.json` ≥ 10 MiB, `/types.json`, `/deep.json`, `/plain.txt`; app transport is the real browser-direct path for local URLs). Covers typed colors/badges/arrows/copy controls, `{}`/`[]` + untruncated long strings, bounded mounted rows + scroll-to-end < 1 s, expand/collapse all < 1 s, tab switch < 1 s with no error boundary, per-node toggle surviving scroll-away, cursor-selection copy → valid JSON, per-node copy, plain-text bodies unchanged, expand/collapse reset on re-send, search force-expansion after collapse-all. Unit: `src/utils/jsonTree.test.js` (UT-001..009 incl. ~10 MB perf budget), `src/utils/jsonCopyFix.test.js` (UT-010), `src/utils/persistOpenTabs.test.js` (UT-011). The pre-existing httpbin-based `response-viewer-expand-collapse` / `-copy-commas` / `-search` specs are unchanged (same `.json-view-wrapper`, `getByText`, `mark.response-search-highlight` contract) but need the edge proxy to run.
 
 ---
 

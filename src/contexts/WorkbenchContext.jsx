@@ -7,6 +7,7 @@ import { useResponseExecution } from '../hooks/useResponseExecution';
 import useWorkbenchStore from '../stores/workbenchStore';
 import useCollectionStore from '../stores/collectionStore';
 import * as data from '../data/index.js';
+import { persistOpenTabs } from '../utils/persistOpenTabs';
 
 const WorkbenchContext = createContext(null);
 
@@ -192,7 +193,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
       const { runState, docsCache, ...rest } = tab;
       return rest;
     });
-    localStorage.setItem('openTabs', JSON.stringify(persistentTabs));
+    persistOpenTabs(localStorage, persistentTabs);
   }, [openTabs]);
 
   useEffect(() => {
