@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.1.24
+
+### Improved
+
+- **Fast JSON Response Viewer for Large Responses** — Large JSON bodies (10 MB+) no longer freeze the app when opening a tab, switching back to it, expanding or collapsing, or searching. The response tree is now row-virtualized: only the rows in view are mounted, so the DOM stays bounded by the viewport regardless of response size, while keeping the same look — type-colored values, per-node expand/collapse arrows, item-count badges, and per-node copy. Expand all / Collapse all and per-node expansion (which survives scrolling away and back) stay responsive on large bodies, and cursor-selection copy still yields valid JSON. Small and large responses share one rendering path. Closes #69, #70. (#73, #76)
+- **Fast Search in the JSON Response Tree** — Searching a large JSON body used to re-walk the whole parsed value on every keystroke (~300–460 ms on 10 MB). Matches now come from one cached lowercased index per tree, and the active match is revealed by expanding just its ancestors, so typing, next/previous navigation, and jumping to hits inside collapsed or off-screen nodes stay fast. Highlights stay aligned even when lowercasing changes a key's length (e.g. `İ`). Closes #71. (#74, #76)
+- **Hexagonal Icon Everywhere** — The 3D hexagonal icon from v0.1.23 now also replaces the remaining `umbrella.svg` logos: the app loading screen, About modal, auth callback, MCP authorize/complete pages, and the website Footer and AppMockup.
+
+### Fixed
+
+- **Editing a Tab No Longer Re-Serializes Every Open Tab's Response** — Any edit in one tab re-wrote every open tab's response body to localStorage, making typing sluggish when several large responses were open. Tab metadata and each tab's response are now stored under separate keys, and a response is only written when it changes. Storage-quota failures drop responses from persistence without throwing, and the old inline format is migrated on load. Closes #72. (#75)
+- **Partial Copy Inside a String Keeps "N items" Text** — Drag-selecting part of a string value such as `"Cart has 3 items"` could copy an empty or truncated string, because the item-count badge stripping matched real text. Badges are now only stripped where the tree actually renders them. (#76)
+
 ## v0.1.23
 
 ### Improved
