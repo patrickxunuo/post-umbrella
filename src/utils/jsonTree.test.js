@@ -10,7 +10,8 @@ import {
   toggleNode,
   flattenVisibleRows,
   nodeToJsonText,
-  rowIndexMap,
+  findRowIndex,
+  revealNode,
 } from './jsonTree.js';
 
 // GH-70: pure, iterative tree helpers behind the row-virtualized JSON viewer.
@@ -171,12 +172,13 @@ describe('jsonTree (GH-70)', () => {
     expect(rows[8].node).toBe(tree.nodes[0]);
     expect(rows[7].node).toBe(findNode(tree, '["c"]'));
 
-    // rowIndexMap maps every rowId to its index.
-    const map = rowIndexMap(rows);
-    expect(map).toBeInstanceOf(Map);
-    expect(map.size).toBe(rows.length);
-    rows.forEach((row, i) => expect(map.get(row.rowId)).toBe(i));
-    expect(map.get('["a"]:close')).toBe(6);
+    // findRowIndex locates every open/leaf/empty row by its node id.
+    rows.forEach((row, i) => {
+      if (row.kind !== 'close') expect(findRowIndex(rows, row.rowId)).toBe(i);
+    });
+    // A container id resolves to its open row, never to its close row (index 6).
+    expect(rows[6].rowId).toBe('["a"]:close');
+    expect(findRowIndex(rows, '["a"]')).toBe(1);
 
     // A primitive root flattens to a single leaf row.
     const primRows = flattenVisibleRows(buildJsonTree('hi'), createExpansion('expanded'), null);
@@ -405,11 +407,14 @@ describe('jsonTree (GH-70)', () => {
     expect(rows[0]).toMatchObject({ kind: 'open', rowId: '[]', depth: 0, expanded: true });
     expect(rows[rows.length - 1]).toMatchObject({ kind: 'close', rowId: '[]:close', depth: 0 });
 
-    // rowIndexMap over the full row set stays cheap and complete.
-    const mapStart = performance.now();
-    const map = rowIndexMap(rows);
-    expect(performance.now() - mapStart).toBeLessThan(1000);
-    expect(map.size).toBe(rows.length);
+    // findRowIndex over the full row set stays cheap: the last non-close row is found.
+    let lastOpenIndex = rows.length - 1;
+    while (lastOpenIndex >= 0 && rows[lastOpenIndex].kind === 'close') lastOpenIndex--;
+    expect(lastOpenIndex).toBeGreaterThan(100000);
+    const lookupStart = performance.now();
+    const found = findRowIndex(rows, rows[lastOpenIndex].rowId);
+    expect(performance.now() - lookupStart).toBeLessThan(1000);
+    expect(found).toBe(lastOpenIndex);
 
     // No recursion: a 20000-deep nested array must not throw RangeError.
     let deep = [];
@@ -429,4 +434,155 @@ describe('jsonTree (GH-70)', () => {
     expect(deepRows[20000]).toMatchObject({ kind: 'empty', depth: 20000 });
     expect(() => flattenVisibleRows(deepTree, createExpansion('collapsed'), null)).not.toThrow();
   }, 60000);
+});
+
+// GH-71: row lookup and ancestor reveal used by the search dock on the virtualized tree.
+describe('jsonTree row lookup and reveal (GH-71)', () => {
+  const REVEAL_SAMPLE = { a: { b: { c: 1 } }, x: { y: 2 } };
+  const sortedOverrides = (expansion) => [...expansion.overrides].sort();
+
+  it('UT-110 findRowIndex finds open/leaf/empty rows by node id; close rows, hidden and unknown ids never match', () => {
+    const tree = buildJsonTree(SAMPLE);
+    const rows = flattenVisibleRows(tree, createExpansion('expanded'), null);
+    // [open [], open a, open a0, leaf a0b, close a0, leaf a1, close a, empty c, close []]
+
+    expect(findRowIndex(rows, '[]')).toBe(0);
+    expect(findRowIndex(rows, '["a"]')).toBe(1);
+    expect(findRowIndex(rows, '["a",0]')).toBe(2);
+    expect(findRowIndex(rows, '["a",0,"b"]')).toBe(3);
+    expect(findRowIndex(rows, '["a",1]')).toBe(5);
+    expect(findRowIndex(rows, '["c"]')).toBe(7);
+    expect(rows[findRowIndex(rows, '["a",0,"b"]')].kind).toBe('leaf');
+    expect(rows[findRowIndex(rows, '["c"]')].kind).toBe('empty');
+
+    // A container id never resolves to its close row.
+    const closeIndexes = rows.map((r, i) => (r.kind === 'close' ? i : -1)).filter((i) => i >= 0);
+    expect(closeIndexes).toEqual([4, 6, 8]);
+    tree.nodes.forEach((node) => {
+      const index = findRowIndex(rows, node.id);
+      expect(closeIndexes).not.toContain(index);
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(rows[index].node).toBe(node);
+      expect(rows[index].kind).not.toBe('close');
+    });
+
+    // Nodes inside a collapsed container are not visible -> -1; the container row itself is.
+    const collapsedA = toggleNode(createExpansion('expanded'), '["a"]');
+    const rowsA = flattenVisibleRows(tree, collapsedA, null);
+    expect(findRowIndex(rowsA, '["a"]')).toBe(1);
+    expect(rowsA[1].expanded).toBe(false);
+    expect(findRowIndex(rowsA, '["a",0]')).toBe(-1);
+    expect(findRowIndex(rowsA, '["a",0,"b"]')).toBe(-1);
+    expect(findRowIndex(rowsA, '["a",1]')).toBe(-1);
+    expect(findRowIndex(rowsA, '["c"]')).toBe(2);
+
+    // Everything collapsed: only the root row is visible.
+    const rowsCollapsed = flattenVisibleRows(tree, createExpansion('collapsed'), null);
+    expect(findRowIndex(rowsCollapsed, '[]')).toBe(0);
+    expect(findRowIndex(rowsCollapsed, '["a"]')).toBe(-1);
+    expect(findRowIndex(rowsCollapsed, '["c"]')).toBe(-1);
+
+    // Unknown ids and empty row lists.
+    expect(findRowIndex(rows, '["zzz"]')).toBe(-1);
+    expect(findRowIndex(rows, '["a",9]')).toBe(-1);
+    expect(findRowIndex(rows, '')).toBe(-1);
+    expect(findRowIndex([], '[]')).toBe(-1);
+
+    // A primitive root is a single leaf row.
+    const primRows = flattenVisibleRows(buildJsonTree(5), createExpansion('expanded'), null);
+    expect(findRowIndex(primRows, '[]')).toBe(0);
+  });
+
+  it('UT-111 revealNode expands every ancestor only, keeps identity when nothing changes, never mutates (B7)', () => {
+    const tree = buildJsonTree(REVEAL_SAMPLE);
+    const target = '["a","b"]';
+    const ancestors = ancestorIds(target);
+    expect(ancestors).toEqual(['[]', '["a"]']);
+    const ancestorNodes = ancestors.map((id) => findNode(tree, id));
+    const targetNode = findNode(tree, target);
+    const nodeX = findNode(tree, '["x"]');
+
+    // --- expanded mode: collapsing overrides on ancestors are removed; others are kept.
+    let exp = createExpansion('expanded');
+    for (const id of ['[]', '["a"]', target, '["x"]']) exp = toggleNode(exp, id);
+    const expBefore = { mode: exp.mode, overrides: sortedOverrides(exp), set: exp.overrides };
+
+    const expRevealed = revealNode(exp, target);
+    expect(expRevealed).not.toBe(exp);
+    expect(expRevealed.mode).toBe('expanded');
+    expect(expRevealed.overrides).toBeInstanceOf(Set);
+    expect(expRevealed.overrides).not.toBe(exp.overrides);
+    expect(sortedOverrides(expRevealed)).toEqual([target, '["x"]'].sort());
+    ancestors.forEach((a) => expect(!expRevealed.overrides.has(a)).toBe(true));
+    ancestorNodes.forEach((n) => expect(isNodeExpanded(n, expRevealed, null)).toBe(true));
+    // The node itself and the unrelated container keep their override (still collapsed).
+    expect(isNodeExpanded(targetNode, expRevealed, null)).toBe(false);
+    expect(isNodeExpanded(nodeX, expRevealed, null)).toBe(false);
+    // Input untouched.
+    expect(exp.mode).toBe(expBefore.mode);
+    expect(exp.overrides).toBe(expBefore.set);
+    expect(sortedOverrides(exp)).toEqual(expBefore.overrides);
+
+    // The revealed node is now visible in the rows.
+    expect(findRowIndex(flattenVisibleRows(tree, exp, null), target)).toBe(-1);
+    expect(findRowIndex(flattenVisibleRows(tree, expRevealed, null), target)).toBeGreaterThanOrEqual(0);
+
+    // --- collapsed mode: ancestors are added as overrides; the node itself is not.
+    let col = toggleNode(createExpansion('collapsed'), '["x"]');
+    const colBefore = { mode: col.mode, overrides: sortedOverrides(col), set: col.overrides };
+
+    const colRevealed = revealNode(col, target);
+    expect(colRevealed).not.toBe(col);
+    expect(colRevealed.mode).toBe('collapsed');
+    expect(colRevealed.overrides).toBeInstanceOf(Set);
+    expect(colRevealed.overrides).not.toBe(col.overrides);
+    expect(sortedOverrides(colRevealed)).toEqual(['[]', '["a"]', '["x"]'].sort());
+    ancestors.forEach((a) => expect(colRevealed.overrides.has(a)).toBe(true));
+    expect(colRevealed.overrides.has(target)).toBe(false);
+    ancestorNodes.forEach((n) => expect(isNodeExpanded(n, colRevealed, null)).toBe(true));
+    expect(isNodeExpanded(targetNode, colRevealed, null)).toBe(false);
+    expect(isNodeExpanded(nodeX, colRevealed, null)).toBe(true);
+    expect(col.mode).toBe(colBefore.mode);
+    expect(col.overrides).toBe(colBefore.set);
+    expect(sortedOverrides(col)).toEqual(colBefore.overrides);
+    expect(findRowIndex(flattenVisibleRows(tree, col, null), target)).toBe(-1);
+    expect(findRowIndex(flattenVisibleRows(tree, colRevealed, null), target)).toBeGreaterThanOrEqual(0);
+
+    // Collapsed mode with an existing override on the node itself: kept as is.
+    const colSelf = toggleNode(createExpansion('collapsed'), target);
+    const colSelfRevealed = revealNode(colSelf, target);
+    expect(sortedOverrides(colSelfRevealed)).toEqual(['[]', '["a"]', target].sort());
+    expect(isNodeExpanded(targetNode, colSelfRevealed, null)).toBe(true);
+    expect(sortedOverrides(colSelf)).toEqual([target]);
+
+    // Collapsed mode with some ancestors already open: only the missing ones are added.
+    const colRoot = toggleNode(createExpansion('collapsed'), '[]');
+    const colRootRevealed = revealNode(colRoot, '["a","b","c"]');
+    expect(sortedOverrides(colRootRevealed)).toEqual(['[]', '["a"]', '["a","b"]'].sort());
+    ancestorIds('["a","b","c"]').forEach((a) =>
+      expect(isNodeExpanded(findNode(tree, a), colRootRevealed, null)).toBe(true));
+    expect(sortedOverrides(colRoot)).toEqual(['[]']);
+
+    // --- identity when nothing needs to change.
+    const plain = createExpansion('expanded');
+    expect(revealNode(plain, target)).toBe(plain);
+    expect(revealNode(plain, '["a","b","c"]')).toBe(plain);
+    expect(plain.overrides.size).toBe(0);
+
+    const unrelated = toggleNode(createExpansion('expanded'), '["x"]');
+    expect(revealNode(unrelated, target)).toBe(unrelated);
+    const selfOnly = toggleNode(createExpansion('expanded'), target);
+    expect(revealNode(selfOnly, target)).toBe(selfOnly);
+    expect(sortedOverrides(selfOnly)).toEqual([target]);
+
+    const alreadyOpen = revealNode(col, target);
+    expect(revealNode(alreadyOpen, target)).toBe(alreadyOpen);
+    expect(revealNode(expRevealed, target)).toBe(expRevealed);
+
+    // The root has no ancestors.
+    const collapsedPlain = createExpansion('collapsed');
+    expect(revealNode(collapsedPlain, '[]')).toBe(collapsedPlain);
+    expect(revealNode(plain, '[]')).toBe(plain);
+    expect(collapsedPlain.overrides.size).toBe(0);
+  });
 });

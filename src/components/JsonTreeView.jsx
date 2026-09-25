@@ -1,23 +1,15 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-react';
-import { buildJsonTree, flattenVisibleRows, nodeToJsonText, rowIndexMap } from '../utils/jsonTree';
+import { findRowIndex, flattenVisibleRows, nodeToJsonText } from '../utils/jsonTree';
+import { nodeSearchText } from '../utils/jsonSearch';
 
 const ROW_HEIGHT = 20;
 const OVERSCAN = 20;
 const BODY_PADDING = 8;
 const COPIED_FEEDBACK_MS = 1500;
 const ELLIPSIS = '…';
-
-// Text the search dock matched against (raw string values, no quotes).
-function searchText(node) {
-  const { type, value } = node;
-  if (type === 'string') return value;
-  if (type === 'nan') return 'NaN';
-  if (type === 'undefined') return 'undefined';
-  if (type === 'null') return 'null';
-  return String(value);
-}
+const NO_ROWS = [];
 
 function escapeInner(text) {
   return JSON.stringify(text).slice(1, -1);
@@ -175,7 +167,7 @@ const Row = memo(function Row({ row, index, start, measureRef, highlightQuery, a
       {kind === 'leaf' && (
         <span className="json-tree-value" data-testid="json-tree-value" data-type={node.type}>
           <HighlightedText
-            text={searchText(node)}
+            text={nodeSearchText(node)}
             query={highlightQuery}
             activeOrdinal={activeValueOrdinal}
             quoted={node.type === 'string'}
@@ -190,12 +182,13 @@ const Row = memo(function Row({ row, index, start, measureRef, highlightQuery, a
   );
 });
 
-export function JsonTreeView({ value, expansion, onToggleNode, forcedIds, highlightQuery, activeMatch, onCopy }) {
+export function JsonTreeView({ tree, expansion, onToggleNode, forcedIds, highlightQuery, activeMatch, onCopy }) {
   const scrollRef = useRef(null);
-  const tree = useMemo(() => buildJsonTree(value), [value]);
-  const rows = useMemo(() => flattenVisibleRows(tree, expansion, forcedIds), [tree, expansion, forcedIds]);
-  const hasActiveMatch = activeMatch != null;
-  const indexMap = useMemo(() => (hasActiveMatch ? rowIndexMap(rows) : null), [rows, hasActiveMatch]);
+  const rows = useMemo(
+    () => (tree ? flattenVisibleRows(tree, expansion, forcedIds) : NO_ROWS),
+    [tree, expansion, forcedIds]
+  );
+  const activeIndex = useMemo(() => (activeMatch ? findRowIndex(rows, activeMatch.id) : -1), [rows, activeMatch]);
 
   const toggleRef = useRef(onToggleNode);
   useEffect(() => {
@@ -228,21 +221,20 @@ export function JsonTreeView({ value, expansion, onToggleNode, forcedIds, highli
   // (rows above it toggled), but not when unrelated rows change.
   const lastScrollRef = useRef(null);
   useEffect(() => {
-    if (!activeMatch || !indexMap) {
+    if (!activeMatch) {
       lastScrollRef.current = null;
       return;
     }
-    const index = indexMap.get(activeMatch.id);
-    if (index == null) return;
+    if (activeIndex < 0) return;
     const last = lastScrollRef.current;
-    if (last && last.match === activeMatch && last.index === index) return;
-    lastScrollRef.current = { match: activeMatch, index };
-    virtualizer.scrollToIndex(index, { align: 'center' });
+    if (last && last.match === activeMatch && last.index === activeIndex) return;
+    lastScrollRef.current = { match: activeMatch, index: activeIndex };
+    virtualizer.scrollToIndex(activeIndex, { align: 'center' });
     // Second pass once the newly mounted rows have been measured.
     requestAnimationFrame(() => {
-      if (scrollRef.current) virtualizer.scrollToIndex(index, { align: 'center' });
+      if (scrollRef.current) virtualizer.scrollToIndex(activeIndex, { align: 'center' });
     });
-  }, [activeMatch, indexMap, virtualizer]);
+  }, [activeMatch, activeIndex, virtualizer]);
 
   const items = virtualizer.getVirtualItems();
   const query = highlightQuery || '';

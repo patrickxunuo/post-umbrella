@@ -7,7 +7,10 @@ import { useToast } from './Toast';
 import { downloadResponse } from '../utils/downloadResponse';
 import { getResponseCookies } from '../utils/cookies';
 import { normalizeCopiedJson } from '../utils/jsonCopyFix';
-import { createExpansion, toggleNode } from '../utils/jsonTree';
+import { buildJsonTree, createExpansion, revealNode, toggleNode } from '../utils/jsonTree';
+import { findTreeMatches, normalizeSearchQuery, SEARCH_MATCH_CAP } from '../utils/jsonSearch';
+
+const NO_MATCHES = [];
 
 const isHtmlResponse = (headers) => {
   if (!Array.isArray(headers)) return false;
@@ -87,76 +90,6 @@ function buildHexDump(bytes, byteLimit = HEX_VIEW_BYTE_CAP) {
   return { text: lines.join('\n'), truncated: total > cap, totalBytes: total };
 }
 
-// JSON search helpers — walk parsed JSON DFS and emit match entries.
-// A match is { path, id, kind, text, start, length, ordinal } where `id` is the
-// tree node id (JSON.stringify(path)) and `ordinal` the occurrence index within text.
-const SEARCH_MATCH_CAP = 5000;
-
-// Let users type quotes around a term the way they see it in the tree view
-// (e.g. `"route_id"` matches the key `route_id`). Strip at most one leading
-// and one trailing double-quote. Middle quotes are preserved.
-function normalizeSearchQuery(raw) {
-  if (!raw) return '';
-  let q = raw;
-  if (q.startsWith('"')) q = q.slice(1);
-  if (q.length > 0 && q.endsWith('"')) q = q.slice(0, -1);
-  return q;
-}
-
-function findJsonMatches(json, query) {
-  if (!query) return [];
-  const q = String(query).toLowerCase();
-  if (!q) return [];
-  const out = [];
-  const pushMatches = (path, kind, text) => {
-    if (out.length >= SEARCH_MATCH_CAP) return;
-    const lower = text.toLowerCase();
-    const id = JSON.stringify(path);
-    let cursor = 0;
-    let ordinal = 0;
-    let idx;
-    while ((idx = lower.indexOf(q, cursor)) !== -1) {
-      out.push({ path: path.slice(), id, kind, text, start: idx, length: query.length, ordinal: ordinal++ });
-      if (out.length >= SEARCH_MATCH_CAP) return;
-      cursor = idx + q.length;
-    }
-  };
-  const stringifyLeaf = (v) => {
-    if (typeof v === 'string') return v;
-    if (typeof v === 'number' || typeof v === 'bigint') return String(v);
-    if (typeof v === 'boolean') return v ? 'true' : 'false';
-    if (v === null) return 'null';
-    if (v === undefined) return 'undefined';
-    try { return String(v); } catch { return ''; }
-  };
-  const walk = (node, path) => {
-    if (out.length >= SEARCH_MATCH_CAP) return;
-    if (node !== null && typeof node === 'object') {
-      if (Array.isArray(node)) {
-        for (let i = 0; i < node.length; i++) {
-          if (out.length >= SEARCH_MATCH_CAP) return;
-          path.push(i);
-          walk(node[i], path);
-          path.pop();
-        }
-      } else {
-        for (const key of Object.keys(node)) {
-          if (out.length >= SEARCH_MATCH_CAP) return;
-          pushMatches(path.concat(key), 'key', String(key));
-          path.push(key);
-          walk(node[key], path);
-          path.pop();
-        }
-      }
-    } else {
-      // leaf
-      pushMatches(path, 'value', stringifyLeaf(node));
-    }
-  };
-  walk(json, []);
-  return out;
-}
-
 function HexView({ body, showAll, onShowAll, testId }) {
   const { text, truncated, totalBytes } = useMemo(() => {
     const bytes = decodeToBytes(body);
@@ -211,11 +144,6 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchActiveIndex, setSearchActiveIndex] = useState(0);
-  // Last non-empty forceExpandSet — survives zero-match queries AND search close,
-  // so that an in-progress typo or stopping mid-search doesn't collapse the tree
-  // back to the pre-search state. Cleared only on explicit Collapse/Expand-all
-  // or on a new response.
-  const [persistentForceSet, setPersistentForceSet] = useState(null);
   // Cookie Value cells the user has clicked to keep expanded (set of row indices).
   const [expandedCookieRows, setExpandedCookieRows] = useState(() => new Set());
   const searchInputRef = useRef(null);
@@ -240,7 +168,6 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
     setSearchOpen(false);
     setSearchQuery('');
     setSearchActiveIndex(0);
-    setPersistentForceSet(null);
     setExpandedCookieRows(new Set());
   }, [displayResponse]);
 
@@ -259,6 +186,12 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   }, [displayResponse?.body]);
 
   const isJsonBody = jsonBody !== null;
+
+  // Built once per body and shared by the tree view and the search.
+  const jsonTree = useMemo(
+    () => (isExample || jsonBody === null ? null : buildJsonTree(jsonBody)),
+    [isExample, jsonBody]
+  );
 
   const isHtmlBody = useMemo(() => {
     return !isExample && !isJsonBody && isHtmlResponse(displayResponse?.headers);
@@ -298,63 +231,34 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
 
   // Match discovery (only when search is open and body is JSON non-example)
   const searchMatches = useMemo(() => {
-    if (!searchOpen || !effectiveSearchQuery || !isJsonBody || isExample || jsonBody == null) return [];
-    return findJsonMatches(jsonBody, effectiveSearchQuery);
-  }, [searchOpen, effectiveSearchQuery, isJsonBody, isExample, jsonBody]);
+    if (!searchOpen || !effectiveSearchQuery || !isJsonBody || isExample || !jsonTree) return NO_MATCHES;
+    return findTreeMatches(jsonTree, effectiveSearchQuery);
+  }, [searchOpen, effectiveSearchQuery, isJsonBody, isExample, jsonTree]);
 
-  // Force-expand set — every prefix of every match path (for the CURRENT query).
-  const forceExpandSet = useMemo(() => {
-    if (!searchOpen || !effectiveSearchQuery || searchMatches.length === 0) return null;
-    const s = new Set();
-    for (const m of searchMatches) {
-      for (let i = 0; i <= m.path.length; i++) {
-        s.add(JSON.stringify(m.path.slice(0, i)));
-      }
+  // The match the dock currently points at. Entries already have the
+  // { id, kind, ordinal } shape JsonTreeView expects and keep their identity.
+  const activeMatch =
+    searchMatches.length === 0
+      ? null
+      : searchMatches[Math.min(Math.max(searchActiveIndex, 0), searchMatches.length - 1)];
+
+  // Adjust the expansion while rendering (not in an effect) so the tree never
+  // renders the new matches with a stale expansion. A new non-empty match list
+  // starts from plain all-expanded (parity with the old library remount); a new
+  // active match gets its ancestors opened, even ones collapsed mid-search.
+  const [searchSync, setSearchSync] = useState({ matches: searchMatches, activeMatch });
+  if (searchSync.matches !== searchMatches || searchSync.activeMatch !== activeMatch) {
+    const resetAll = searchSync.matches !== searchMatches && searchMatches.length > 0;
+    const revealId = activeMatch && searchSync.activeMatch !== activeMatch ? activeMatch.id : null;
+    setSearchSync({ matches: searchMatches, activeMatch });
+    if (resetAll || revealId !== null) {
+      setExpansion((current) => {
+        let next = current;
+        if (resetAll && (next.mode !== 'expanded' || next.overrides.size > 0)) next = createExpansion('expanded');
+        return revealId === null ? next : revealNode(next, revealId);
+      });
     }
-    return s;
-  }, [searchOpen, effectiveSearchQuery, searchMatches]);
-
-  // Capture the latest non-empty forceExpandSet. This "sticky" set drives the
-  // tree's expansion after the current query stops matching (typo, zero results)
-  // and after the search bar closes — so we don't snap back to the pre-search
-  // collapse state.
-  useEffect(() => {
-    if (forceExpandSet) setPersistentForceSet(forceExpandSet);
-  }, [forceExpandSet]);
-
-  // What actually drives the tree's forced expansion:
-  //   - Active search with matches → forceExpandSet (current query's ancestors)
-  //   - No current matches, but persistent set present → persistent set
-  //   - Neither → null (the `expansion` state alone drives the tree)
-  const activeExpandSet = forceExpandSet || persistentForceSet;
-
-  // A new search expansion set starts from a clean all-expanded state so every
-  // forced ancestor is actually open (an earlier manual collapse would otherwise
-  // override it). Mirrors the previous behavior of re-mounting the tree.
-  useEffect(() => {
-    if (!activeExpandSet) return;
-    setExpansion((current) =>
-      current.mode === 'expanded' && current.overrides.size === 0 ? current : createExpansion('expanded')
-    );
-  }, [activeExpandSet]);
-
-  // While a search set is active the base policy is "expanded" regardless of
-  // the last Expand/Collapse-all choice; manual overrides still apply.
-  const treeExpansion = useMemo(
-    () =>
-      activeExpandSet && expansion.mode !== 'expanded'
-        ? { mode: 'expanded', overrides: expansion.overrides }
-        : expansion,
-    [activeExpandSet, expansion]
-  );
-
-  // The match the dock currently points at, in the shape JsonTreeView expects.
-  const activeMatch = useMemo(() => {
-    if (searchMatches.length === 0) return null;
-    const safeIndex = Math.min(Math.max(searchActiveIndex, 0), searchMatches.length - 1);
-    const m = searchMatches[safeIndex];
-    return { id: m.id, kind: m.kind, ordinal: m.ordinal };
-  }, [searchMatches, searchActiveIndex]);
+  }
 
   // Auto-close search when the body is no longer a JSON non-example view
   useEffect(() => {
@@ -458,13 +362,10 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
   };
 
   const handleExpandAll = () => {
-    // Explicit user action → drop any sticky search expansion so the mode alone drives the tree.
-    setPersistentForceSet(null);
     setExpansion(createExpansion('expanded'));
   };
 
   const handleCollapseAll = () => {
-    setPersistentForceSet(null);
     setExpansion(createExpansion('collapsed'));
   };
 
@@ -829,8 +730,8 @@ export function ResponseViewer({ response, loading, isExample, example, onExampl
               </div>
 
               <JsonTreeView
-                value={jsonBody}
-                expansion={treeExpansion}
+                tree={jsonTree}
+                expansion={expansion}
                 onToggleNode={handleToggleNode}
                 highlightQuery={effectiveSearchQuery}
                 activeMatch={activeMatch}

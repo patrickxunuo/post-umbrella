@@ -120,6 +120,21 @@ export function toggleNode(expansion, id) {
   return { mode: expansion.mode, overrides };
 }
 
+// Expands every ancestor of `id`; returns `expansion` itself when all already are.
+export function revealNode(expansion, id) {
+  const expandedMode = expansion.mode === 'expanded';
+  let overrides = null;
+  for (const ancestor of ancestorIds(id)) {
+    // An override flips the mode, so an overridden ancestor is collapsed in
+    // 'expanded' mode and a plain one is collapsed in 'collapsed' mode.
+    if (expansion.overrides.has(ancestor) !== expandedMode) continue;
+    if (!overrides) overrides = new Set(expansion.overrides);
+    if (expandedMode) overrides.delete(ancestor);
+    else overrides.add(ancestor);
+  }
+  return overrides ? { mode: expansion.mode, overrides } : expansion;
+}
+
 function closeRow(node) {
   return { kind: 'close', rowId: `${node.id}:close`, node, depth: node.depth, expanded: false };
 }
@@ -165,8 +180,10 @@ export function nodeToJsonText(node) {
   return String(value);
 }
 
-export function rowIndexMap(rows) {
-  const map = new Map();
-  for (let i = 0; i < rows.length; i++) map.set(rows[i].rowId, i);
-  return map;
+// Close rows carry `${id}:close`, so only the open/leaf/empty row can match.
+export function findRowIndex(rows, id) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].rowId === id) return i;
+  }
+  return -1;
 }
