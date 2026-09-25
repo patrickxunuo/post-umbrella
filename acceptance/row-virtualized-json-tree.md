@@ -99,6 +99,8 @@ export function normalizeCopiedJson(text)
 4. Else return the cleaned text. Non-string / empty input is returned unchanged. `rebuildCopiedJson` is deleted.
 
 ### `src/utils/persistOpenTabs.js`
+> Superseded by GH-72 (`acceptance/tab-persistence.md`): tabs and responses are now stored under split keys and UT-011 below was replaced by that spec's UT-001..UT-013.
+
 ```js
 export function persistOpenTabs(storage, tabs) // -> 'full' | 'stripped' | 'failed'
 ```
