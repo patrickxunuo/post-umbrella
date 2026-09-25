@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as data from '../data/index.js';
 import useCollectionStore from './collectionStore';
+import { loadOpenTabs } from '../utils/persistOpenTabs';
 
 // Helper: create a setter that supports both direct values and functional updates (like useState)
 const stateSetter = (key) => (set) => (updater) =>
@@ -8,7 +9,7 @@ const stateSetter = (key) => (set) => (updater) =>
 
 const useWorkbenchStore = create((set, get) => ({
   // Tab state
-  openTabs: JSON.parse(localStorage.getItem('openTabs') || '[]'),
+  openTabs: loadOpenTabs(localStorage),
   activeTabId: localStorage.getItem('activeTabId') || null,
   previewTabId: null,
   conflictedTabs: {},

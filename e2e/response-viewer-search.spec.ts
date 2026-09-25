@@ -1,13 +1,35 @@
 import { test, expect, Page } from '@playwright/test';
 import { cleanupTestCollections } from './helpers/cleanup';
+import { startJsonFixtureServer } from './helpers/jsonFixtureServer';
+
+// JSON search dock on the response viewer (GH-71 FE-110: existing flows ported
+// from httpbin.org to the local fixture server).
+//
+// Transport boundary: the fixture server lives in this Playwright worker process
+// and is bound to http://127.0.0.1:<port>. The app classifies 127.0.0.1 as a
+// local address, so its transport fetches the URL straight from the browser
+// (window.fetch) — the Supabase proxy Edge Function is never involved. Every
+// other part of the stack is real: the real app at baseURL and the real Supabase
+// backend for collections, requests and examples. No page.route().
 
 // Unique per-run names so parallel / repeated runs don't collide.
 const timestamp = Date.now();
 const uniqueName = (base: string) => `${base} ${timestamp}`;
 
-test.afterAll(async () => { await cleanupTestCollections(timestamp); });
+let fixture: { baseUrl: string; close(): Promise<void> };
+
+test.beforeAll(async () => {
+  fixture = await startJsonFixtureServer();
+});
+
+test.afterAll(async () => {
+  await fixture?.close();
+  await cleanupTestCollections(timestamp);
+});
 
 // --- Shared helpers (mirrored from the existing E2E suite's conventions) ---
+
+const SIDEBAR_TIMEOUT = 15000;
 
 async function createTestRequest(page: Page, collectionName: string) {
   const addCollectionBtn = page.locator('.sidebar-toolbar .btn-icon').last();
@@ -15,34 +37,37 @@ async function createTestRequest(page: Page, collectionName: string) {
   await addCollectionBtn.click();
 
   const promptModal = page.locator('.prompt-modal');
-  await expect(promptModal).toBeVisible({ timeout: 5000 });
+  await expect(promptModal).toBeVisible({ timeout: 10000 });
   await promptModal.locator('.prompt-input').fill(collectionName);
   await promptModal.locator('.prompt-btn-confirm').click();
   await expect(promptModal).not.toBeVisible();
 
   const collectionHeader = page.locator('.collection-header').filter({ hasText: collectionName });
-  await expect(collectionHeader).toBeVisible({ timeout: 5000 });
-  await collectionHeader.hover();
-  await collectionHeader.locator('.btn-menu').click();
-
+  await expect(collectionHeader).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
+  // The menu button only shows on hover, and a realtime sidebar re-render can
+  // drop the hover state mid-click; retry hover + click until the menu opens.
   const collectionMenu = page.locator('.collection-menu');
-  await expect(collectionMenu).toBeVisible();
+  await expect(async () => {
+    await collectionHeader.hover();
+    await collectionHeader.locator('.btn-menu').click({ timeout: 2000 });
+    await expect(collectionMenu).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: SIDEBAR_TIMEOUT });
   await collectionMenu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
 
   const requestItem = page.locator('.request-item').filter({ hasText: 'New Request' }).first();
-  await expect(requestItem).toBeVisible({ timeout: 5000 });
-  await expect(page.locator('.request-editor')).toBeVisible({ timeout: 5000 });
+  await expect(requestItem).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
+  await expect(page.locator('.request-editor')).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
 }
 
-async function sendRequestAndWaitForResponse(page: Page) {
+async function sendRequestAndWaitForResponse(page: Page, timeout = 30000) {
   const sendButton = page.locator('.btn-send');
   await expect(sendButton).toBeEnabled();
   await sendButton.click();
 
   const responseViewer = page.locator('.response-viewer').first();
-  await expect(responseViewer).toBeVisible({ timeout: 30000 });
-  await expect(responseViewer.locator('.response-meta')).toBeVisible({ timeout: 30000 });
-  await expect(page.locator('.response-viewer.loading')).not.toBeVisible({ timeout: 30000 });
+  await expect(responseViewer).toBeVisible({ timeout });
+  await expect(responseViewer.locator('.response-meta')).toBeVisible({ timeout });
+  await expect(page.locator('.response-viewer.loading')).not.toBeVisible({ timeout });
 }
 
 async function saveAsExample(page: Page, exampleName: string) {
@@ -58,17 +83,29 @@ async function saveAsExample(page: Page, exampleName: string) {
   await expect(exampleModal).not.toBeVisible({ timeout: 5000 });
 }
 
+const rowByPath = (page: Page, path: (string | number)[]) =>
+  page.locator(`[data-testid="json-tree-row"][data-path='${JSON.stringify(path)}']:not([data-kind="close"])`);
+
+// Screenshots land in test-results/screenshots/json-search-dock-<name>-<step>.png
+// when PAPERPLANE_CAPTURE_SCREENSHOTS=1.
+const CAPTURE = process.env.PAPERPLANE_CAPTURE_SCREENSHOTS === '1';
+async function snap(page: Page, name: string, step: string) {
+  if (!CAPTURE) return;
+  await page.screenshot({ path: `test-results/screenshots/json-search-dock-${name}-${step}.png` });
+}
+
 /**
- * httpbin.org/json returns a stable, 4-level-deep payload:
+ * deep.json (DEEP_FIXTURE, the httpbin.org/json shape) is a stable, 4-level-deep payload:
  *   { slideshow: { author, date, title, slides: [ {title, type}, {title, type, items: [string, string]} ] } }
- * With the new Feature 2 default (all-expanded), strings inside slides[1].items ARE visible
+ * The tree renders fully expanded by default, so strings inside slides[1].items ARE visible
  * immediately. For tests that need "find something that isn't rendered", we click Collapse-all first.
  */
-const DEEP_JSON_URL = 'https://httpbin.org/json';
-// A string that only appears inside httpbin.org/json at depth 4 (slides[1].items[0]).
+const deepJsonUrl = () => `${fixture.baseUrl}/deep.json`;
+const htmlUrl = () => `${fixture.baseUrl}/page.html`;
+const echoNumberUrl = () => `${fixture.baseUrl}/echo-number.json`;
+const typesJsonUrl = () => `${fixture.baseUrl}/types.json`;
+// A string that only appears inside deep.json at depth 4 (slides[1].items[0]) and in slides[0].title.
 const DEEP_TEXT_FRAGMENT = 'WonderWidgets';
-// The only top-level key in httpbin.org/json's response.
-const ROOT_KEY = 'slideshow';
 
 test.describe('Response viewer — JSON search dock', () => {
   test.beforeEach(async ({ page }) => {
@@ -85,11 +122,12 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Search Dock JSON Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
     await expect(dock).toBeVisible({ timeout: 10000 });
+    await snap(page, 'dock-visible-for-json', 'dock');
   });
 
   // 2
@@ -97,7 +135,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Search Dock HTML Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill('https://httpbin.org/html');
+    await page.locator('.url-input').fill(htmlUrl());
     await sendRequestAndWaitForResponse(page);
 
     // Sanity: HTML preview toggle present — response rendered as HTML not JSON-through-error.
@@ -105,6 +143,7 @@ test.describe('Response viewer — JSON search dock', () => {
 
     const dock = page.locator('[data-testid="response-json-dock"]');
     await expect(dock).toHaveCount(0);
+    await snap(page, 'dock-hidden-for-html', 'html');
   });
 
   // 3
@@ -113,7 +152,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const exampleName = uniqueName('Search Dock Example');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
 
     // Save the request first so it has an ID.
     const saveBtn = page.locator('.btn-save');
@@ -134,6 +173,8 @@ test.describe('Response viewer — JSON search dock', () => {
 
     const dock = page.locator('[data-testid="response-json-dock"]');
     await expect(dock).toHaveCount(0);
+    await expect(page.locator('[data-testid="response-search-input"]')).toHaveCount(0);
+    await snap(page, 'dock-hidden-in-example', 'example');
   });
 
   // 4
@@ -141,7 +182,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Search Dock Three Icons Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -164,7 +205,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Toolbar Download Only Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const meta = page.locator('.response-viewer .response-meta');
@@ -181,7 +222,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Search Icon Click Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -207,7 +248,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Ctrl-F Inside Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     // Focus inside the viewer.
@@ -225,7 +266,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Ctrl-F Outside Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     // Focus the sidebar's search input (outside the response viewer).
@@ -245,13 +286,13 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Default Expanded Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const jsonWrap = page.locator('.json-view-wrapper');
     await expect(jsonWrap).toBeVisible({ timeout: 10000 });
 
-    // With Feature 2, default is fully expanded — deep string is visible with no user action.
+    // Default is fully expanded — deep string is visible with no user action.
     await expect(jsonWrap.getByText(DEEP_TEXT_FRAGMENT, { exact: false }).first())
       .toBeVisible({ timeout: 10000 });
   });
@@ -261,7 +302,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Find After Collapse Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const jsonWrap = page.locator('.json-view-wrapper');
@@ -270,11 +311,12 @@ test.describe('Response viewer — JSON search dock', () => {
     const dock = page.locator('[data-testid="response-json-dock"]');
     await expect(dock).toBeVisible();
 
-    // Collapse everything so the deep string is out of the DOM.
+    // Collapse everything so the deep string is out of the DOM (its rows are not mounted).
     await dock.locator('[data-testid="response-collapse-all-btn"]').click();
     await expect(jsonWrap.getByText(DEEP_TEXT_FRAGMENT, { exact: false })).toHaveCount(0);
 
-    // Open search and query for it — force-expand must re-insert it wrapped in a <mark>.
+    // Open search and query for it — the search must expand the tree back to the
+    // match and render it wrapped in a <mark>.
     await dock.locator('[data-testid="response-search-btn"]').click();
     const input = page.locator('[data-testid="response-search-input"]');
     await expect(input).toBeFocused();
@@ -283,6 +325,7 @@ test.describe('Response viewer — JSON search dock', () => {
     // At least one highlighted match exists and is visible in the DOM.
     const highlights = page.locator('mark.response-search-highlight[data-search-hit="true"]');
     await expect(highlights.first()).toBeVisible({ timeout: 10000 });
+    await snap(page, 'finds-match-after-collapse-all', 'hit');
   });
 
   // 11
@@ -290,9 +333,10 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Number Substring Collection');
     await createTestRequest(page, collectionName);
 
-    // httpbin.org/anything echoes query params as string values in the `args` object.
-    // So "num": "12345" is present as a string in the response body. Query "34" matches.
-    await page.locator('.url-input').fill('https://httpbin.org/anything?num=12345');
+    // echo-number.json mirrors httpbin.org/anything?num=12345, which echoes query params
+    // as string values in the `args` object. So "num": "12345" is present in the
+    // response body. Query "34" matches.
+    await page.locator('.url-input').fill(echoNumberUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -305,22 +349,19 @@ test.describe('Response viewer — JSON search dock', () => {
 
     const highlights = page.locator('mark.response-search-highlight[data-search-hit="true"]');
     await expect(highlights.first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="response-search-count"]')).toHaveText('1 / 1');
+    const numValue = rowByPath(page, ['args', 'num']).locator('[data-testid="json-tree-value"]');
+    await expect(numValue.locator('mark.response-search-highlight[data-search-hit="true"]')).toHaveText('34');
   });
 
   // 12
-  // Boolean fixture: httpbin.org/anything does not stably reflect boolean tokens in its
-  // JSON body (query params echo as strings, not booleans). Without an app-local fixture
-  // endpoint that returns a JSON boolean leaf, we cannot deterministically test the
-  // `<JsonView.True/False>` render path against a real backend. Mark as fixme per spec.
-  test.fixme('boolean-substring-match', async ({ page }) => {
-    // TODO(Agent B / eFrank): provide a stable JSON fixture with a boolean leaf (e.g.
-    // { "active": true }) via a local test endpoint or by extending the proxy. Then
-    // query "tru" and assert a <mark> appears around the "tru" substring of the rendered
-    // `true` token.
+  // types.json carries a real JSON boolean leaf (`yes: true`), so the boolean render
+  // path can be exercised deterministically against the local fixture.
+  test('boolean-substring-match', async ({ page }) => {
     const collectionName = uniqueName('Boolean Substring Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill('https://example.invalid/boolean-fixture');
+    await page.locator('.url-input').fill(typesJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -331,6 +372,14 @@ test.describe('Response viewer — JSON search dock', () => {
 
     const highlights = page.locator('mark.response-search-highlight[data-search-hit="true"]');
     await expect(highlights.first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="response-search-count"]')).toHaveText('1 / 1');
+
+    // The <mark> wraps the "tru" substring of the rendered `true` token.
+    const yesValue = rowByPath(page, ['yes']).locator('[data-testid="json-tree-value"]');
+    await expect(yesValue).toHaveAttribute('data-type', 'boolean');
+    await expect(yesValue).toHaveText('true');
+    await expect(yesValue.locator('mark.response-search-highlight[data-search-hit="true"]')).toHaveText('tru');
+    await snap(page, 'boolean-substring-match', 'hit');
   });
 
   // 13
@@ -338,12 +387,12 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Key Substring Collection');
     await createTestRequest(page, collectionName);
 
-    // httpbin.org/json has key `author` at slideshow.author. Crucially, "author"
+    // deep.json has key `author` at slideshow.author. Crucially, "author"
     // does NOT appear as a substring in any value in that fixture — so a match
-    // here proves the KeyName highlighter is wired correctly (previous "slide"
-    // query coincidentally matched the VALUE "Sample Slide Show", masking a key
+    // here proves the key highlighter is wired correctly (a "slide" query
+    // would coincidentally match the VALUE "Sample Slide Show", masking a key
     // highlighter bug).
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -355,9 +404,13 @@ test.describe('Response viewer — JSON search dock', () => {
 
     const highlights = page.locator('mark.response-search-highlight[data-search-hit="true"]');
     await expect(highlights.first()).toBeVisible({ timeout: 10000 });
+    // The hit is rendered inside the key, not a value.
+    await expect(page.locator('[data-testid="json-tree-key"] mark.response-search-highlight[data-search-hit="true"]'))
+      .toHaveCount(1);
     // Counter must read at least 1 — exercises the match-count plumbing too.
     const count = page.locator('[data-testid="response-search-count"]');
     await expect(count).toContainText(/^\d+ \/ \d+/);
+    await snap(page, 'key-substring-match', 'hit');
   });
 
   // 14
@@ -365,7 +418,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Case Insensitive Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -373,24 +426,29 @@ test.describe('Response viewer — JSON search dock', () => {
 
     await dock.locator('[data-testid="response-search-btn"]').click();
     const input = page.locator('[data-testid="response-search-input"]');
+    const counter = page.locator('[data-testid="response-search-count"]');
 
     const marks = page.locator('mark.response-search-highlight[data-search-hit="true"]');
 
-    // Wait for the JsonView to settle (key-bump remount + render-prop highlights)
-    // before reading the count — otherwise .count() races React's render cycle.
+    // Wait for the counter and the marks to settle before reading the count —
+    // otherwise .count() races React's render cycle.
     await input.fill('wonder');
+    await expect(counter).toHaveText(/^1 \/ \d+$/);
     await expect(marks.first()).toBeVisible({ timeout: 5000 });
     const lowerCount = await marks.count();
     expect(lowerCount).toBeGreaterThan(0);
+    const lowerCounter = await counter.textContent();
 
     await input.fill('');
     await input.fill('WONDER');
+    await expect(counter).toHaveText(lowerCounter ?? '');
     await expect(marks.first()).toBeVisible({ timeout: 5000 });
     const upperCount = await marks.count();
     expect(upperCount).toBe(lowerCount);
 
     await input.fill('');
     await input.fill('Wonder');
+    await expect(counter).toHaveText(lowerCounter ?? '');
     await expect(marks.first()).toBeVisible({ timeout: 5000 });
     const mixedCount = await marks.count();
     expect(mixedCount).toBe(lowerCount);
@@ -401,7 +459,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Counter Format Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -429,7 +487,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Next Wrap Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -463,7 +521,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Prev Wrap Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -491,7 +549,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Enter Navigation Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -527,28 +585,52 @@ test.describe('Response viewer — JSON search dock', () => {
     }
   });
 
-  // 19 — removed.
-  // `active-highlight-unique` verified the `.response-search-highlight--active`
-  // class is present on exactly one <mark> at a time. The class is applied by a
-  // post-render DOM effect (classList.add on the match at searchActiveIndex).
-  // The subsequent sticky-expand state capture triggers a JsonView key bump
-  // whose remount replaces the DOM nodes with fresh ones, which drops the
-  // class. This is imperceptible to a real user (the class re-lands within one
-  // additional frame), but under Playwright the polling can catch the DOM
-  // during that gap. Navigation correctness is still covered by next-wraps-
-  // from-last, prev-wraps-from-first, and enter-advances-shift-enter-retreats.
-  //
-  // If we want to add active-highlight coverage back, the fix is in the impl:
-  // drive the active class through React props (pass searchActiveIndex into
-  // the highlighter and apply the class in JSX) instead of post-render DOM
-  // mutation, so React preserves it across remounts.
+  // 19
+  // The virtualized tree applies `.response-search-highlight--active` through React
+  // props on the row that holds the active match, so exactly one <mark> carries it
+  // at any time and it follows navigation.
+  test('active-highlight-unique', async ({ page }) => {
+    const collectionName = uniqueName('Active Highlight Collection');
+    await createTestRequest(page, collectionName);
+
+    await page.locator('.url-input').fill(deepJsonUrl());
+    await sendRequestAndWaitForResponse(page);
+
+    const dock = page.locator('[data-testid="response-json-dock"]');
+    await expect(dock).toBeVisible({ timeout: 10000 });
+
+    await dock.locator('[data-testid="response-search-btn"]').click();
+    const input = page.locator('[data-testid="response-search-input"]');
+    const counter = page.locator('[data-testid="response-search-count"]');
+    const nextBtn = page.locator('[data-testid="response-search-next"]');
+    const active = page.locator('mark.response-search-highlight--active');
+
+    await input.fill('WonderWidgets');
+    await expect(counter).toHaveText('1 / 3');
+    await expect(active).toHaveCount(1);
+    await expect(rowByPath(page, ['slideshow', 'slides', 0, 'title']).locator('mark.response-search-highlight--active'))
+      .toHaveCount(1);
+
+    await nextBtn.click();
+    await expect(counter).toHaveText('2 / 3');
+    await expect(active).toHaveCount(1);
+    await expect(rowByPath(page, ['slideshow', 'slides', 1, 'items', 0]).locator('mark.response-search-highlight--active'))
+      .toHaveCount(1);
+
+    await nextBtn.click();
+    await expect(counter).toHaveText('3 / 3');
+    await expect(active).toHaveCount(1);
+    await expect(rowByPath(page, ['slideshow', 'slides', 1, 'items', 1]).locator('mark.response-search-highlight--active'))
+      .toHaveCount(1);
+    await snap(page, 'active-highlight-unique', 'third');
+  });
 
   // 20
   test('escape-closes-search', async ({ page }) => {
     const collectionName = uniqueName('Escape Closes Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -576,7 +658,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Close Button Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -600,7 +682,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('New Response Closes Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const dock = page.locator('[data-testid="response-json-dock"]');
@@ -628,7 +710,7 @@ test.describe('Response viewer — JSON search dock', () => {
     const collectionName = uniqueName('Dock Expand Collapse Collection');
     await createTestRequest(page, collectionName);
 
-    await page.locator('.url-input').fill(DEEP_JSON_URL);
+    await page.locator('.url-input').fill(deepJsonUrl());
     await sendRequestAndWaitForResponse(page);
 
     const jsonWrap = page.locator('.json-view-wrapper');
@@ -642,10 +724,11 @@ test.describe('Response viewer — JSON search dock', () => {
       .toBeVisible({ timeout: 10000 });
     await dock.locator('[data-testid="response-collapse-all-btn"]').click();
     await expect(jsonWrap.getByText(DEEP_TEXT_FRAGMENT, { exact: false })).toHaveCount(0);
-    // (The library's collapsed={true} hides root-level key names too, so no
-    // ROOT_KEY assertion here — the jsonWrap itself stays mounted, which is
-    // what "collapsed vs unmounted" actually verifies.)
+    // Collapse-all leaves only the collapsed root row; the wrapper itself stays
+    // mounted, which is what "collapsed vs unmounted" actually verifies.
     await expect(jsonWrap).toBeVisible();
+    await expect(jsonWrap).toHaveAttribute('data-total-rows', '1');
+    await expect(rowByPath(page, [])).toHaveAttribute('data-expanded', 'false');
 
     // Click Expand-all → deep text back.
     await dock.locator('[data-testid="response-expand-all-btn"]').click();

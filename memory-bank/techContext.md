@@ -51,7 +51,7 @@
   - @codemirror/lang-json, @codemirror/lang-javascript — Language support
   - @codemirror/autocomplete, @codemirror/view, @codemirror/state — Editor extensions
   - @lezer/highlight — Syntax highlighting
-  - @uiw/react-json-view — JSON response viewer
+  - @tanstack/react-virtual — row virtualization for the response JSON tree (`src/components/JsonTreeView.jsx`; replaced `@uiw/react-json-view` in GH-70)
   - lucide-react — Icons
   - json5 — JSON with comments support
 

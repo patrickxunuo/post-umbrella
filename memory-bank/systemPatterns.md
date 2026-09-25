@@ -95,6 +95,19 @@ All CRUD in `src/data/supabase/index.js`:
 - Global styles in `App.css`
 - Reuse existing classes: `.response-toolbar`, `.response-tabs`, `.btn-primary`, `.btn-icon`, `.request-menu`
 
+### Virtualized JSON Tree (Response viewer, GH-70)
+- `src/utils/jsonTree.js` is the pure model: `buildJsonTree(value)` builds a flat preorder node table iteratively (`id = JSON.stringify(path)`, `end`, `isLast`, `childCount`); `flattenVisibleRows(tree, expansion, forcedIds)` derives the visible rows (`open | leaf | empty | close`); expansion state is `{ mode: 'expanded' | 'collapsed', overrides: Set<id> }` via `createExpansion` / `toggleNode` / `isNodeExpanded`
+- `src/components/JsonTreeView.jsx` renders the rows with `@tanstack/react-virtual` (rows absolutely positioned, `measureElement` for wrapped strings, `paddingStart/End`); selectors `json-tree`, `json-tree-row[data-path|data-kind|data-expanded]`, `json-tree-arrow`, `json-tree-key`, `json-tree-value[data-type]`, `json-tree-count`, `json-tree-copy`
+- Search hits are addressed by `{ id, kind: 'key' | 'value', ordinal }` (occurrence index within the raw text), never by DOM index — only mounted rows carry `<mark>`s. `forcedIds` has no producer (dead plumbing kept from GH-70)
+- Search (GH-71): `src/utils/jsonSearch.js` `findTreeMatches(tree, query)` scans one lowercased haystack per tree (key/value texts in `tree.nodes` order joined by `\0`, segment offsets in typed arrays, cached in a `WeakMap` keyed by the tree; per-text re-measure when `toLowerCase()` lengthens text, e.g. `İ`). `nodeSearchText(node)` is shared by discovery and the rendered leaf text. `ResponseViewer` builds the tree once and passes it as `JsonTreeView`'s `tree` prop; the `expansion` state alone drives the tree — a new non-empty match list resets it to plain all-expanded and a new active match gets `revealNode`, both applied during render via a stored previous-value state (`searchSync`) so the tree never renders stale expansion. Active row lookup is a linear `findRowIndex(rows, id)` (a 474k-entry `Map` cost ~180 ms)
+- Copy: each row's selectable text is a valid JSON line (real trailing commas; badges, ellipsis, array indices are `user-select: none`), so `normalizeCopiedJson` only tidies leaks and pretty-prints. The per-node copy button writes `nodeToJsonText(node)` directly
+
+### Tab Persistence (GH-72)
+- `src/utils/persistOpenTabs.js` owns tab persistence. `persistOpenTabs(localStorage, openTabs)` (called from the `WorkbenchContext` effect with the raw tab list) skips `isTemporary` tabs, strips `runState`/`docsCache`, writes the metadata **without** `response` to `openTabs`, and each response to its own `openTabs:response:<tabId>` key
+- A response key is written only when that tab's `response` object identity changes (per-storage `WeakMap` record), so a keystroke in one tab costs only the small metadata write; keys are removed when a tab closes, turns temporary or its response becomes null
+- Quota handling: a failed response write drops that response (key removed, not retried until the response object changes); a failed metadata write drops every response key and retries once; returns `'full' | 'stripped' | 'failed'`, never throws, and warns once per failure streak
+- `loadOpenTabs(localStorage)` is the store's initial `openTabs`: corrupt data loads as `[]`, responses are reattached from their keys (and recorded so startup rewrites nothing), legacy inline-response data migrates on the next write, orphaned response keys are removed
+
 ### Database Pattern
 - All IDs are UUIDs
 - Timestamps as Unix epoch integers (BIGINT)
@@ -114,3 +127,16 @@ All CRUD in `src/data/supabase/index.js`:
 - `{{var}}` in JSON body is not valid JSON — beautify/minify must use placeholder replacement
 - Supabase RLS policies must drop old policies before recreating on schema changes
 - Tab `runState` and `bottomPanelHeight` must be stripped from localStorage persistence
+- A large `tab.response` body overflows the localStorage quota — the `openTabs` write must stay inside `persistOpenTabs`, and reads must go through `loadOpenTabs`; a bare `localStorage.setItem`/`JSON.parse` of `openTabs` throws into the root ErrorBoundary
+- Tab `response` objects must be replaced, never mutated in place — persistence detects changes by object identity, so an in-place mutation is never persisted and a gratuitous `{ ...tab.response }` copy forces a full re-serialize of that body
+- Still serialized on every tab change (GH-72 out of scope): example tabs' `example.response_data` and base64 file uploads in `request.form_data` ride in the `openTabs` metadata
+- Multiple app windows share localStorage: response keys are per tab id, so closing a tab in one window drops its persisted response for the others, and a load in a new window removes keys it sees as orphans
+- TanStack Virtual memoizes measurements on option-callback identity — pass a `useCallback`-stable `getItemKey` (an inline arrow rebuilds all measurements every render; 30–60 ms at ~1M rows)
+- Copy normalizers must be structure-anchored: rewrite only row shapes (`^`/`: ` before, `,?$` after), never free-floating substrings — a global `…` or `N items` replace corrupts string values; `user-select: none` on decorations is the primary mechanism
+- Browser max scroll height (~33.5M px Chromium, ~17.9M px Firefox) bounds a 20 px-row virtual list to roughly 1.6M / 0.9M rows
+- After swapping a dependency, clear `node_modules/.vite` before running the dev server/E2E — the dep-optimizer cache still references the removed package and the app fails to load
+- Playwright wipes `test-results/` on every run (single-spec re-runs included) — copy screenshot evidence before follow-up runs; `test-results/.last-run.json` is tracked and always shows modified, exclude it from commits
+- Windows clipboard read-back is CRLF — normalize (`\r\n` → `\n`) before multi-line equality assertions in E2E
+- Single-run timing assertions on a cold O(n) scan flake under Vitest's parallel workers — warm up and assert on the fastest of several runs, or use a generous budget
+- `JsonTreeView` `splitMatches` slices the original text at offsets found in the lowercased text, so a highlight lands on the wrong characters when lowercasing changes length (`İ`); counts/ordinals still agree with discovery (pre-existing, not fixed in GH-71)
+- E2E sidebar setup: the collection `.btn-menu` only shows on hover and a realtime re-render can drop the hover mid-click — wrap hover + click + menu-visible in `expect(...).toPass()` (done in the two response-search specs)
