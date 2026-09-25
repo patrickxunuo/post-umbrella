@@ -454,47 +454,166 @@
   text-align: center;
 }
 
-/* JSON Viewer Wrapper (@uiw/react-json-view) */
+/* JSON tree view — row-virtualized; only rows near the viewport are mounted.
+   The wrapper is the scroll element, .json-tree-body is sized to the virtual
+   total height and rows are absolutely positioned inside it. */
 .json-view-wrapper {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-anchor: none;
   min-height: 0;
   border: 1px solid var(--border-primary);
   border-radius: var(--radius-md);
   background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
 }
 
-.json-view-wrapper [data-testid="w-rjv-wrap"] {
-  background: var(--bg-secondary) !important;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
+.json-tree-body {
+  position: relative;
+  width: 100%;
 }
 
-.json-view-wrapper .w-rjv-line {
+.json-tree-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: 12px;
+  line-height: 20px;
   white-space: pre-wrap;
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
-.json-view-wrapper .w-rjv-line:hover {
+.json-tree-row:hover {
   background: var(--bg-hover);
 }
 
-/* GH-65: the "N items" size badge and collapsed-node ellipsis are decorative,
-   not part of the JSON. Keep them visible but exclude them from text selection
-   so a manual cursor-drag copy yields valid JSON (the helper in jsonCopyFix.js
-   strips any that still leak through). */
-.json-view-wrapper .w-rjv-object-size,
-.json-view-wrapper .w-rjv-object-extra,
-.json-view-wrapper .w-rjv-ellipsis {
+.json-tree-arrow,
+.json-tree-arrow-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  vertical-align: top;
   -webkit-user-select: none;
   user-select: none;
 }
 
-/* Ensure string values wrap properly */
-.json-view-wrapper [data-testid="value-string"] {
-  white-space: pre-wrap;
-  word-break: break-all;
+.json-tree-arrow {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.json-tree-arrow:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.json-tree-arrow:focus-visible,
+.json-tree-copy:focus-visible {
+  outline: 1px solid var(--border-focus);
+  outline-offset: -1px;
+}
+
+.json-tree-key {
+  color: #0ea5e9;
+}
+
+.json-tree-value[data-type="string"] {
+  color: #22c55e;
+}
+
+.json-tree-value[data-type="int"],
+.json-tree-value[data-type="float"] {
+  color: #f59e0b;
+}
+
+.json-tree-value[data-type="boolean"] {
+  color: #8b5cf6;
+}
+
+.json-tree-value[data-type="null"] {
+  color: #ef4444;
+}
+
+.json-tree-value[data-type="undefined"] {
+  color: #586e75;
+}
+
+.json-tree-value[data-type="nan"] {
+  color: #859900;
+}
+
+.json-tree-bracket,
+.json-tree-colon,
+.json-tree-index,
+.json-tree-ellipsis,
+.json-tree-comma,
+.json-tree-count {
+  color: var(--text-tertiary);
+}
+
+/* Decorations that are not part of the JSON stay out of a cursor-drag
+   selection so a native copy of the rows yields valid JSON. */
+.json-tree-index,
+.json-tree-colon--index,
+.json-tree-ellipsis,
+.json-tree-count {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.json-tree-count {
+  margin-left: 6px;
+  font-size: 11px;
+}
+
+/* Per-node copy control: always in the layout (so it can be hovered/clicked),
+   revealed on row hover / keyboard focus and while showing the copied check. */
+.json-tree-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  vertical-align: top;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.json-tree-row:hover .json-tree-copy,
+.json-tree-row:focus-within .json-tree-copy,
+.json-tree-copy[data-copied="true"] {
+  opacity: 1;
+}
+
+.json-tree-copy:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.json-tree-copy[data-copied="true"] {
+  color: var(--accent-success);
 }
 
 .response-headers table {
