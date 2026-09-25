@@ -189,11 +189,7 @@ export function WorkbenchProvider({ children, prompt, confirm, toast }) {
 
   // Persist tabs to localStorage
   useEffect(() => {
-    const persistentTabs = openTabs.filter((tab) => !tab.isTemporary).map(tab => {
-      const { runState, docsCache, ...rest } = tab;
-      return rest;
-    });
-    persistOpenTabs(localStorage, persistentTabs);
+    persistOpenTabs(localStorage, openTabs);
   }, [openTabs]);
 
   useEffect(() => {

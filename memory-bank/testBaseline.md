@@ -12,7 +12,7 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 39 / 40 baseline flows + 23 path-variables tests + 11 virtualized-JSON-tree tests (GH-70) + 9 virtualized-search tests (GH-71)
+- Completed: 39 / 40 baseline flows + 23 path-variables tests + 11 virtualized-JSON-tree tests (GH-70) + 9 virtualized-search tests (GH-71) + 3 tab-persistence tests (GH-72)
 - Current batch: Path Variables (#38) complete; #40 caret-insert regression test added; GH-70 json-tree-virtualized executed & passing
 - Environment note (2026-09-24): specs that send to external hosts (httpbin.org, picsum, openapi fixtures) go through the Supabase edge proxy; when the `supabase_edge_runtime_post-umbrella` container is down they fail with `element(s) not found` on the response surface (64 tests, identical on base). Local `127.0.0.1` URLs bypass the proxy, so the GH-70 fixture server (`e2e/helpers/jsonFixtureServer.ts`) runs without it.
 
@@ -236,7 +236,14 @@
 
 ### Flows
 - [x] json-search-virtualized — Response search on the virtualized tree (GH-71) — `e2e/response-viewer-search-virtualized.spec.ts` — 9 tests (FE-101..109), **executed & passing 2026-09-25** on real local Supabase + the local fixture server: Ctrl+F `defaultPrevented`, per-keystroke < 1 s and long-task budget on `large.json`, collapsed-node discovery, off-screen active match, `5000+` cap + wraparound, quoted key query, sticky expansion, reveal of a container collapsed mid-search, no search on plain text. FE-102/103/108 fail on the pre-GH-71 implementation. `e2e/response-viewer-search.spec.ts` (23 tests) now runs on the fixture server (`/deep.json`, `/types.json`, `/page.html`, `/echo-number.json`) instead of httpbin, so it no longer needs the edge proxy; the former `test.fixme` boolean test is real. Unit: `src/utils/jsonSearch.test.js` (UT-101..109), `src/utils/jsonTree.test.js` (UT-110/111).
-- [x] json-tree-virtualized — Row-virtualized JSON tree (GH-70) — `e2e/response-viewer-virtualized-tree.spec.ts` — 11 tests (FE-001..011), **executed & passing 2026-09-24** on real local Supabase + Vite + the in-test Node fixture server (`/large.json` ≥ 10 MiB, `/types.json`, `/deep.json`, `/plain.txt`; app transport is the real browser-direct path for local URLs). Covers typed colors/badges/arrows/copy controls, `{}`/`[]` + untruncated long strings, bounded mounted rows + scroll-to-end < 1 s, expand/collapse all < 1 s, tab switch < 1 s with no error boundary, per-node toggle surviving scroll-away, cursor-selection copy → valid JSON, per-node copy, plain-text bodies unchanged, expand/collapse reset on re-send, search force-expansion after collapse-all. Unit: `src/utils/jsonTree.test.js` (UT-001..009 incl. ~10 MB perf budget), `src/utils/jsonCopyFix.test.js` (UT-010), `src/utils/persistOpenTabs.test.js` (UT-011). The pre-existing httpbin-based `response-viewer-expand-collapse` / `-copy-commas` / `-search` specs are unchanged (same `.json-view-wrapper`, `getByText`, `mark.response-search-highlight` contract) but need the edge proxy to run.
+- [x] json-tree-virtualized — Row-virtualized JSON tree (GH-70) — `e2e/response-viewer-virtualized-tree.spec.ts` — 11 tests (FE-001..011), **executed & passing 2026-09-24** on real local Supabase + Vite + the in-test Node fixture server (`/large.json` ≥ 10 MiB, `/types.json`, `/deep.json`, `/plain.txt`; app transport is the real browser-direct path for local URLs). Covers typed colors/badges/arrows/copy controls, `{}`/`[]` + untruncated long strings, bounded mounted rows + scroll-to-end < 1 s, expand/collapse all < 1 s, tab switch < 1 s with no error boundary, per-node toggle surviving scroll-away, cursor-selection copy → valid JSON, per-node copy, plain-text bodies unchanged, expand/collapse reset on re-send, search force-expansion after collapse-all. Unit: `src/utils/jsonTree.test.js` (UT-001..009 incl. ~10 MB perf budget), `src/utils/jsonCopyFix.test.js` (UT-010), `src/utils/persistOpenTabs.test.js` (UT-011, superseded by GH-72). The pre-existing httpbin-based `response-viewer-expand-collapse` / `-copy-commas` / `-search` specs are unchanged (same `.json-view-wrapper`, `getByText`, `mark.response-search-highlight` contract) but need the edge proxy to run.
+
+---
+
+## Module: Tabs — persistence (P0)
+
+### Flows
+- [x] tab-persistence — Tab persistence without re-serializing responses (GH-72) — `e2e/tab-persistence.spec.ts` — 3 tests, **executed & passing 2026-09-25** on real local Supabase + the local fixture server. FE-001 (regression): three tabs holding `/large.json` (>= 10 MiB), typing in a fourth tab's URL — median of 10 keystrokes timed from Node vs a no-response baseline in the same test must stay within 50 ms, and an in-page `Storage.prototype.setItem` recorder (records, then delegates) must see no `openTabs:response:*` write and every `openTabs` write < 1 MiB. **Red → green**: 17 ms vs 628 ms per keystroke with 31.6M-char `openTabs` writes on the unfixed code; 18.5 vs 17.5 ms and ~2.4K-char writes after the fix. FE-002: two small responses restore after reload without re-sending. FE-003: an over-quota response leaves its key absent while the tab stays listed, no error boundary, tabs usable, small response restored. Unit: `src/utils/persistOpenTabs.test.js` (UT-001..013, replaces GH-70's UT-011).
 
 ---
 
@@ -254,6 +261,7 @@
 ## Bugs Discovered
 <!-- Format: - [JIRA-ID] description (found in flow-name) — status -->
 - [GH-62] pm.collectionVariables.set() silently dropped undeclared keys (no collection_variables row to attach a current_value to) + VariablePopover showed a stale collection-var value after a script ran (coll-var-script-autocreate) — FIXED (auto-create on set, mirroring pm.environment.set; collectionVarsVersion bump refreshes the popover).
+- [GH-72] Every tab change re-serialized all open tabs' response bodies into `openTabs` (30+ MB per keystroke with three 10 MB responses, plus quota-retry passes) (tab-persistence) — FIXED (split `openTabs:response:<tabId>` keys written only on response identity change; red→green in FE-001).
 - [GH-65] Manual cursor-selection copy of a JSON response dropped the inter-sibling commas (react-json-view omits them from selectable DOM text), producing invalid JSON; the built-in copy button was unaffected (json-copy-commas) — FIXED (wrapper `onCopy` reinserts commas via `reinsertJsonCommas`; red→green captured in `src/utils/jsonCopyFix.test.js`).
 
 ## Design Discrepancies
