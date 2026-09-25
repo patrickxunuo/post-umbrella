@@ -19,21 +19,40 @@ function identity(text) {
   return text;
 }
 
+// Lowercasing can lengthen text (e.g. 'İ' -> 'i̇'); map each lowered index back
+// to the original so hits are cut from `text` at the right place.
+function lowerOffsetMap(text) {
+  const map = [];
+  let i = 0;
+  for (const ch of text) {
+    const lowered = ch.toLowerCase();
+    for (let k = 0; k < lowered.length; k++) map.push(i);
+    i += ch.length;
+  }
+  map.push(text.length);
+  return map;
+}
+
 function splitMatches(text, query) {
   const q = query.toLowerCase();
   if (!q) return null;
   const lower = text.toLowerCase();
   if (!lower.includes(q)) return null;
+  const toOriginal = lower.length === text.length ? null : lowerOffsetMap(text);
+  const orig = toOriginal ? (i) => toOriginal[i] : (i) => i;
   const parts = [];
   let cursor = 0;
   let ordinal = 0;
   let idx;
   while ((idx = lower.indexOf(q, cursor)) !== -1) {
-    if (idx > cursor) parts.push({ text: text.slice(cursor, idx), hit: false, ordinal: -1 });
-    parts.push({ text: text.slice(idx, idx + q.length), hit: true, ordinal: ordinal++ });
+    const start = orig(idx);
+    const from = orig(cursor);
+    if (start > from) parts.push({ text: text.slice(from, start), hit: false, ordinal: -1 });
+    parts.push({ text: text.slice(start, orig(idx + q.length)), hit: true, ordinal: ordinal++ });
     cursor = idx + q.length;
   }
-  if (cursor < text.length) parts.push({ text: text.slice(cursor), hit: false, ordinal: -1 });
+  const from = orig(cursor);
+  if (from < text.length) parts.push({ text: text.slice(from), hit: false, ordinal: -1 });
   return parts;
 }
 
