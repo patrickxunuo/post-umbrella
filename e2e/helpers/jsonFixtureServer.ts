@@ -1,17 +1,21 @@
 /**
- * Local JSON fixture server for the virtualized-tree E2E suite (GH-70).
+ * Local JSON fixture server for the virtualized-tree and response-search E2E
+ * suites (GH-70, GH-71).
  *
  * Bound to 127.0.0.1 on a free port. The app's transport treats 127.0.0.1 as a
  * local address and fetches it straight from the browser (no Supabase proxy),
  * so the server only has to answer CORS.
  *
  * Routes:
- *   GET /large.json  deterministic body, serialized size >= 10 MiB
- *   GET /types.json  TYPES_FIXTURE
- *   GET /deep.json   DEEP_FIXTURE (httpbin.org/json shape)
- *   GET /plain.txt   text/plain 'hello plain text'
- *   OPTIONS *        204
- *   anything else    404
+ *   GET /large.json        deterministic body, serialized size >= 10 MiB
+ *   GET /types.json        TYPES_FIXTURE
+ *   GET /deep.json         DEEP_FIXTURE (httpbin.org/json shape)
+ *   GET /plain.txt         text/plain 'hello plain text'
+ *   GET /page.html         text/html HTML_FIXTURE (httpbin.org/html stand-in)
+ *   GET /echo-number.json  ECHO_NUMBER_FIXTURE (httpbin.org/anything?num=12345 shape:
+ *                          the query value echoed back as the string "12345")
+ *   OPTIONS *              204
+ *   anything else          404
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -50,6 +54,24 @@ export const DEEP_FIXTURE = {
 };
 
 export const PLAIN_TEXT_FIXTURE = 'hello plain text';
+
+/** A small HTML document served as text/html (not JSON-parseable). */
+export const HTML_FIXTURE = [
+  '<!DOCTYPE html>',
+  '<html>',
+  '  <head><meta charset="utf-8"><title>Fixture Page</title></head>',
+  '  <body>',
+  '    <h1>Herman Melville - Moby-Dick</h1>',
+  '    <p>Availing himself of the mild, summer-cool weather that now reigned in these latitudes.</p>',
+  '  </body>',
+  '</html>',
+].join('\n');
+
+/** Mirrors httpbin.org/anything?num=12345: query params echo back as string values under `args`. */
+export const ECHO_NUMBER_FIXTURE = {
+  args: { num: '12345' },
+  method: 'GET',
+};
 
 export interface LargeRecord {
   id: number;
@@ -129,6 +151,7 @@ function largeBody(): Buffer {
 
 const JSON_TYPE = 'application/json; charset=utf-8';
 const TEXT_TYPE = 'text/plain; charset=utf-8';
+const HTML_TYPE = 'text/html; charset=utf-8';
 
 function send(res: ServerResponse, status: number, type: string, body: Buffer) {
   res.writeHead(status, {
@@ -146,6 +169,8 @@ export async function startJsonFixtureServer(): Promise<{ baseUrl: string; close
     '/types.json': { type: JSON_TYPE, body: Buffer.from(JSON.stringify(TYPES_FIXTURE), 'utf8') },
     '/deep.json': { type: JSON_TYPE, body: Buffer.from(JSON.stringify(DEEP_FIXTURE), 'utf8') },
     '/plain.txt': { type: TEXT_TYPE, body: Buffer.from(PLAIN_TEXT_FIXTURE, 'utf8') },
+    '/page.html': { type: HTML_TYPE, body: Buffer.from(HTML_FIXTURE, 'utf8') },
+    '/echo-number.json': { type: JSON_TYPE, body: Buffer.from(JSON.stringify(ECHO_NUMBER_FIXTURE), 'utf8') },
   };
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
