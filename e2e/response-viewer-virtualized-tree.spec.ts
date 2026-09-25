@@ -29,6 +29,23 @@ test.afterAll(async () => {
 
 const SIDEBAR_TIMEOUT = 15000;
 
+/**
+ * The header actions are visibility:hidden until hovered, and a click never
+ * re-hovers, so if the sidebar reflows under a stale hover the click would wait
+ * forever. Retry hover + click together until the menu opens.
+ */
+async function openCollectionMenu(page: Page, collectionHeader: Locator) {
+  const collectionMenu = page.locator('.collection-menu');
+  await expect(async () => {
+    await collectionHeader.hover();
+    if (!(await collectionMenu.isVisible())) {
+      await collectionHeader.locator('.btn-menu').click({ timeout: 2000 });
+    }
+    await expect(collectionMenu).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: SIDEBAR_TIMEOUT });
+  return collectionMenu;
+}
+
 async function createTestRequest(page: Page, collectionName: string) {
   const addCollectionBtn = page.locator('.sidebar-toolbar .btn-icon').last();
   await expect(addCollectionBtn).toBeEnabled({ timeout: 10000 });
@@ -43,11 +60,7 @@ async function createTestRequest(page: Page, collectionName: string) {
   // Sidebar rows arrive via the real backend; allow for a loaded machine.
   const collectionHeader = page.locator('.collection-header').filter({ hasText: collectionName });
   await expect(collectionHeader).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
-  await collectionHeader.hover();
-  await collectionHeader.locator('.btn-menu').click();
-
-  const collectionMenu = page.locator('.collection-menu');
-  await expect(collectionMenu).toBeVisible();
+  const collectionMenu = await openCollectionMenu(page, collectionHeader);
   await collectionMenu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
 
   const requestItem = page.locator('.request-item').filter({ hasText: 'New Request' }).first();
@@ -59,11 +72,7 @@ async function createTestRequest(page: Page, collectionName: string) {
 async function addRequestToCollection(page: Page, collectionName: string) {
   const collectionHeader = page.locator('.collection-header').filter({ hasText: collectionName });
   await expect(collectionHeader).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
-  await collectionHeader.hover();
-  await collectionHeader.locator('.btn-menu').click();
-
-  const collectionMenu = page.locator('.collection-menu');
-  await expect(collectionMenu).toBeVisible();
+  const collectionMenu = await openCollectionMenu(page, collectionHeader);
   await collectionMenu.locator('.request-menu-item').filter({ hasText: 'Add Request' }).click();
   await expect(page.locator('.request-editor')).toBeVisible({ timeout: SIDEBAR_TIMEOUT });
 }
