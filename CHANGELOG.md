@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.25
+
+### Improved
+
+- **Add Existing Users to Workspaces** — Inviting an email that already has an account in another workspace no longer fails with "User with this email already exists." Admins and system users can now add active or pending accounts to workspaces they manage through the existing invite flow; a toast confirms "Added <email> to <workspace name>" and the member list refreshes. The existing account keeps its global role, status, active workspace, and other memberships, and no invitation email is sent. Already-member, disabled-account, developer, and unauthorized-workspace requests return clear errors. Email matching is case-insensitive, and overlapping requests no longer create duplicate memberships. New-account invitations are unchanged. Closes #77. (#78)
+
 ## v0.1.24
 
 ### Improved
