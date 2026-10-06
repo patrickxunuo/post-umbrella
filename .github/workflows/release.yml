@@ -104,4 +104,23 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
-          updaterJsonPreferNsis: true
+          # Parallel jobs race when each merges latest.json; the updater-json job writes it once.
+          includeUpdaterJson: false
+
+  updater-json:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Publish latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: node .github/scripts/publish-updater-json.mjs
