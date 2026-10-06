@@ -386,3 +386,20 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
+
+# Functions verify the caller's token themselves; keep gateway JWT checks off
+# so `supabase functions deploy` matches production.
+[functions.add-workspace-member]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.import-collection]
+verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.proxy]
+verify_jwt = false
