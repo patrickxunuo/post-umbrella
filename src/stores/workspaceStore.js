@@ -206,9 +206,13 @@ const useWorkspaceStore = create((set, get) => ({
   handleInviteUser: async (email, role, workspaceIds) => {
     const { _toast: toast, loadAllUsers } = get();
     try {
-      await data.inviteUser(email, role, workspaceIds);
-      toast?.success(`Invitation sent to ${email}`);
-      loadAllUsers();
+      const result = await data.inviteUser(email, role, workspaceIds);
+      if (result.action === 'added') {
+        toast?.success(`Added ${result.email || email} to ${result.workspace_names.join(', ')}`);
+      } else {
+        toast?.success(`Invitation sent to ${email}`);
+      }
+      await loadAllUsers();
       return true;
     } catch (err) {
       toast?.error(err.message || 'Failed to invite user');

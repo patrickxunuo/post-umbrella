@@ -102,3 +102,13 @@ Vite will auto-select next available port (5174, 5175, etc.)
 
 ## Last Verified
 2026-03-06
+
+## E2E Environment — existing-account invites (GH-77)
+
+Prerequisites: dependencies installed, Chromium installed for Playwright, Docker running the existing local Supabase stack with container `supabase_auth_post-umbrella`, Deno on PATH, and free ports 8000 and 5173. The focused runner uses `localhost:54321` (IPv6 works when Docker's IPv4 forwarding is unavailable), the actual checked-out invitation Edge Function in Deno, and this checkout's Vite UI. It reads the local Auth JWT secret from Docker without printing it; no production credentials or backend mocks are used.
+
+```bash
+node e2e/helpers/inviteFlightRunner.mjs --ui e2e/invite-existing-user.spec.ts --project=chromium --no-deps --reporter=list
+```
+
+The runner invokes configured `npm run test:e2e` with the supplied filters, owns/awaits its Deno/Vite processes and tears them down. Specs create and clean isolated local users/workspaces and authenticate their own callers (`--no-deps` avoids the unrelated shared login setup). It does not reset the database or provide other Edge Functions such as the HTTP proxy; this is the focused invite environment, not a replacement for the whole application's test environment. Set `PAPERPLANE_CAPTURE_SCREENSHOTS=1` to collect opened/pending/completed/error/reload states under `test-results/screenshots/`. Verified: 4/4 passed on 2026-10-06.
