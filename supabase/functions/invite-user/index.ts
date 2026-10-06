@@ -77,17 +77,17 @@ Deno.serve(async (req: Request) => {
     }
 
     // Non-system users can only invite to workspaces they belong to
-    let validWorkspaceIds = Array.isArray(workspaceIds) ? workspaceIds : [];
+    let validWorkspaceIds = Array.isArray(workspaceIds) ? [...new Set(workspaceIds)] : [];
     if (currentProfile.role !== "system" && validWorkspaceIds.length > 0) {
-      const { data: userWorkspaces } = await adminClient
+      const { data: userWorkspaces, error: workspaceAccessError } = await adminClient
         .from("workspace_members")
         .select("workspace_id")
         .eq("user_id", currentUser.id);
 
-      const userWsIds = new Set(userWorkspaces?.map((w: { workspace_id: string }) => w.workspace_id) || []);
-      validWorkspaceIds = validWorkspaceIds.filter((id: string) => userWsIds.has(id));
+      if (workspaceAccessError) throw workspaceAccessError;
 
-      if (validWorkspaceIds.length === 0 && workspaceIds.length > 0) {
+      const userWsIds = new Set(userWorkspaces?.map((w: { workspace_id: string }) => w.workspace_id) || []);
+      if (validWorkspaceIds.some((id: string) => !userWsIds.has(id))) {
         return new Response(
           JSON.stringify({ message: "You can only invite users to workspaces you belong to" }),
           { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -118,17 +118,93 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Check if user with this email already exists in user_profiles
-    const { data: existingProfile } = await adminClient
+    // Escape LIKE metacharacters so case-insensitive lookup remains an exact email match.
+    const normalizedEmail = email.trim().toLowerCase();
+    const emailPattern = normalizedEmail.replace(/[\\%_]/g, "\\$&");
+    const { data: existingProfile, error: profileLookupError } = await adminClient
       .from("user_profiles")
-      .select("user_id, status")
-      .eq("email", email.toLowerCase())
-      .single();
+      .select("user_id, email, role, status")
+      .ilike("email", emailPattern)
+      .maybeSingle();
+
+    if (profileLookupError) throw profileLookupError;
 
     if (existingProfile) {
-      return new Response(
-        JSON.stringify({ message: "User with this email already exists" }),
+      if (currentProfile.role === "developer") {
+        return new Response(
+          JSON.stringify({ message: "This person already has an account. A workspace admin must add them to the workspace." }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (!["active", "pending"].includes(existingProfile.status)) {
+        return new Response(
+          JSON.stringify({ message: "This account is disabled and cannot be added to a workspace" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (validWorkspaceIds.length === 0) {
+        return new Response(
+          JSON.stringify({ message: "No workspace selected" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: memberships, error: membershipLookupError } = await adminClient
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", existingProfile.user_id)
+        .in("workspace_id", validWorkspaceIds);
+      if (membershipLookupError) throw membershipLookupError;
+      const existingIds = new Set(memberships?.map((member: { workspace_id: string }) => member.workspace_id));
+      const missingIds = validWorkspaceIds.filter((id: string) => !existingIds.has(id));
+      const alreadyMember = () => new Response(
+        JSON.stringify({ message: "User is already a member of the workspace" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+      if (missingIds.length === 0) return alreadyMember();
+
+      const { data: workspaces, error: workspaceLookupError } = await adminClient
+        .from("workspaces")
+        .select("id, name")
+        .in("id", missingIds);
+      if (workspaceLookupError) throw workspaceLookupError;
+      if (workspaces?.length !== missingIds.length) {
+        return new Response(
+          JSON.stringify({ message: "One or more selected workspaces do not exist" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      // Ignore conflicts rather than overwriting another invitation's membership metadata.
+      const { data: addedMembers, error: memberError } = await adminClient
+        .from("workspace_members")
+        .upsert(missingIds.map((workspaceId: string) => ({
+          workspace_id: workspaceId,
+          user_id: existingProfile.user_id,
+          added_by: currentUser.id,
+          created_at: now,
+        })), { onConflict: "workspace_id,user_id", ignoreDuplicates: true })
+        .select("workspace_id");
+      if (memberError) throw memberError;
+      const addedIds = new Set(addedMembers?.map((member: { workspace_id: string }) => member.workspace_id));
+      const addedWorkspaces = missingIds.filter((id: string) => addedIds.has(id));
+      if (addedWorkspaces.length === 0) return alreadyMember();
+      const namesById = new Map(workspaces.map((workspace: { id: string; name: string }) => [workspace.id, workspace.name]));
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          action: "added",
+          user_id: existingProfile.user_id,
+          email: existingProfile.email,
+          role: existingProfile.role,
+          status: existingProfile.status,
+          workspaces: addedWorkspaces,
+          workspace_names: addedWorkspaces.map((id: string) => namesById.get(id)),
+          email_sent: false,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -244,6 +320,7 @@ Deno.serve(async (req: Request) => {
 
     const responseData: Record<string, unknown> = {
       success: true,
+      action: "invited",
       user_id: newUserId,
       email,
       role,

@@ -30,7 +30,7 @@ export function InviteUserModal({
   // Validate email domain if restriction is set
   const isEmailValid = (emailAddr) => {
     if (!EMAIL_DOMAIN) return true;
-    return emailAddr.endsWith(EMAIL_DOMAIN);
+    return emailAddr.toLowerCase().endsWith(EMAIL_DOMAIN.toLowerCase());
   };
 
   // Get available roles based on user's role
@@ -63,7 +63,7 @@ export function InviteUserModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (inviting || !email.trim()) return;
 
     if (!isEmailValid(email.trim())) {
       toast.warning(`Only ${EMAIL_DOMAIN} emails are allowed`);
@@ -114,6 +114,8 @@ export function InviteUserModal({
             <div className="invite-modal-input">
               <Mail size={14} />
               <input
+                data-testid="invite-email"
+                aria-label="Email address"
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
@@ -163,6 +165,7 @@ export function InviteUserModal({
               Cancel
             </button>
             <button
+              data-testid="invite-submit"
               type="submit"
               className="btn-primary"
               disabled={inviting || !email.trim()}

@@ -105,13 +105,13 @@ export function UserManagement({
   // Validate email domain if restriction is set
   const isEmailValid = (emailAddr) => {
     if (!EMAIL_DOMAIN) return true;
-    return emailAddr.endsWith(EMAIL_DOMAIN);
+    return emailAddr.toLowerCase().endsWith(EMAIL_DOMAIN.toLowerCase());
   };
 
   // Handle invite submission
   const handleInvite = async (e) => {
     e.preventDefault();
-    if (!inviteEmail.trim()) return;
+    if (inviting || !inviteEmail.trim()) return;
 
     // Validate email domain
     if (!isEmailValid(inviteEmail.trim())) {
@@ -371,6 +371,8 @@ export function UserManagement({
                 <div className="invite-email">
                   <Mail size={14} className="input-icon" />
                   <input
+                    data-testid="invite-email"
+                    aria-label="Email address"
                     type="email"
                     value={inviteEmail}
                     onChange={e => setInviteEmail(e.target.value)}
@@ -451,6 +453,7 @@ export function UserManagement({
                 )}
 
                 <button
+                  data-testid="invite-submit"
                   type="submit"
                   className="btn-primary invite-btn"
                   disabled={inviting || !inviteEmail.trim()}

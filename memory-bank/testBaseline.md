@@ -12,7 +12,7 @@
 - Base URL: http://127.0.0.1:5173
 
 ## Progress
-- Completed: 39 / 40 baseline flows + 23 path-variables tests + 11 virtualized-JSON-tree tests (GH-70) + 9 virtualized-search tests (GH-71) + 3 tab-persistence tests (GH-72)
+- Completed: 39 / 40 baseline flows + 23 path-variables tests + 11 virtualized-JSON-tree tests (GH-70) + 9 virtualized-search tests (GH-71) + 3 tab-persistence tests (GH-72) + 4 existing-account invite tests (GH-77)
 - Current batch: Path Variables (#38) complete; #40 caret-insert regression test added; GH-70 json-tree-virtualized executed & passing
 - Environment note (2026-09-24): specs that send to external hosts (httpbin.org, picsum, openapi fixtures) go through the Supabase edge proxy; when the `supabase_edge_runtime_post-umbrella` container is down they fail with `element(s) not found` on the response surface (64 tests, identical on base). Local `127.0.0.1` URLs bypass the proxy, so the GH-70 fixture server (`e2e/helpers/jsonFixtureServer.ts`) runs without it.
 
@@ -29,6 +29,8 @@
 ---
 
 ## Module: Workspaces (P0)
+
+- [x] existing-account-invite (GH-77) — `e2e/invite-existing-user.spec.ts`, 4 real-backend tests passed: membership/role invariants, admin immediate feedback and repeated submission protection, close/reopen/reload, already-member retry, disabled/developer errors. Actual handler/Supabase red 400 → green; full unit regression 271 passed. Runner/prerequisites: `devSetup.md` E2E Environment.
 
 ### Flows
 - [ ] workspace-switch — User switches between workspaces — simple
